@@ -18,7 +18,7 @@
 #     `run mlx` downloads a ~1.8 GB MLX text model and a ~13.9 GB SDXL-Turbo
 #     diffusion snapshot — expect this to take a while on first run. That
 #     13.9 GB is real, not a mistake: `MLXDiffusionBackend`
-#     (manifold-mlx, Sources/StableDiffusion/Configuration.swift
+#     (manifold-mlx, Sources/StableDiffusion/Load.swift
 #     `presetSDXLTurbo`) hardcodes the plain (fp32) safetensors paths —
 #     `unet/diffusion_pytorch_model.safetensors` (10.3 GB) and friends —
 #     and upconverts to float16 in memory at load time; it never reads the
@@ -115,7 +115,7 @@ download_mlx_text_model() {
 }
 
 # Exactly the files `StableDiffusionConfiguration.presetSDXLTurbo` opens
-# (manifold-mlx Sources/StableDiffusion/Configuration.swift) plus
+# (manifold-mlx Sources/StableDiffusion/Load.swift) plus
 # `model_index.json`, which the loader itself never reads but this app's
 # own `discoverSDXLTurbo()` (LocalInferenceExampleMLXApp.swift) uses as the
 # on-disk "is the snapshot present" marker. Listed as exact filenames, not
@@ -141,11 +141,15 @@ readonly -a SDXL_TURBO_FILES=(
 
 download_sdxl_turbo() {
     require_command hf "Install with: pip install -U \"huggingface_hub[cli]\" (or: brew install huggingface-cli)."
-    if [[ -f "$IMAGE_MODEL_DIR/unet/diffusion_pytorch_model.safetensors" ]]; then
-        echo "SDXL-Turbo already present at $IMAGE_MODEL_DIR — skipping download."
-        return
-    fi
-    echo "Downloading $IMAGE_MODEL_REPO to $IMAGE_MODEL_DIR (real network — ~13.9 GB, the exact files the MLX diffusion loader opens)…"
+    # No "already present" short-circuit: a single-file existence check (this
+    # used to test only unet/diffusion_pytorch_model.safetensors) is a proxy
+    # for 14 files, and an interruption between file 1 and file 14 leaves the
+    # script permanently reporting "already present" while the app still
+    # fails to load. `hf download` is idempotent and etag-verified per file —
+    # it already skips a network transfer for anything present and unchanged
+    # — so re-invoking it unconditionally is cheap on a complete snapshot and
+    # correct on a partial one.
+    echo "Downloading $IMAGE_MODEL_REPO to $IMAGE_MODEL_DIR (real network — ~13.9 GB, the exact files the MLX diffusion loader opens; already-complete files are skipped by hf download itself)…"
     mkdir -p "$IMAGE_MODEL_DIR"
     hf download "$IMAGE_MODEL_REPO" "${SDXL_TURBO_FILES[@]}" --local-dir "$IMAGE_MODEL_DIR"
 }
