@@ -65,13 +65,22 @@
 #                       against) is provably identical to before. A lower
 #                       value shrinks the "up to N seconds after the child
 #                       already exited before this loop notices" latency tax
-#                       every wrapped invocation pays — cheap to lower (one
-#                       extra `kill -0` + `grep -c` per tick), so a caller
-#                       driving many short-lived wrapped invocations back to
-#                       back (scripts/test.sh's local-gate driver) sets this
-#                       low instead of eating N seconds of pure sleep per
-#                       invocation for no reason a multi-minute CI build ever
-#                       has.
+#                       every wrapped invocation pays. Not free per tick —
+#                       lowering this to 1 means ~15x more `kill -0`/`grep -cE`
+#                       scans over a monotonically growing log for the
+#                       duration of the run, not just at the end — but the
+#                       shape is still cheap in absolute terms at real log
+#                       scale: measured ~43ms per scan over a 3 MB log,
+#                       ~1.6s of extra CPU per 40s of wall time, extrapolating
+#                       to ~20s of one-core CPU across a 20-minute gate.
+#                       Against the ~45s of wall clock a caller reclaims per
+#                       gate invocation by lowering this (felt on every local
+#                       iteration, unlike CI's multi-minute real builds,
+#                       where the 15s default is comparatively free), that
+#                       trade is worth it — but it is a trade, not a free
+#                       lunch, and a caller lowering this further than
+#                       scripts/test.sh's local-gate driver does should size
+#                       it against their own log growth rate.
 #
 # Exit codes
 # ----------
@@ -115,9 +124,13 @@ mkdir -p "$(dirname "$WATCHDOG_LOG")" "$WATCHDOG_DIAGNOSTICS_DIR"
 TEST_PID=$!
 
 # Watchdog loop. We wake every $POLL_INTERVAL seconds and check whether any
-# progress line has appeared in the last $STALL_SECONDS. Using mtime is
-# deterministic across log rotations and survives the `tee` buffering that
-# would otherwise hide writes from `wc -l` polling.
+# progress line has appeared in the last $STALL_SECONDS. The mechanism is a
+# count-based high-water mark (grep -cE against the progress pattern, below),
+# not mtime: mtime would be weaker than what's actually implemented here —
+# any output at all (a hung process's stderr chatter, a retry loop with no
+# real progress) refreshes mtime and would falsely re-arm the timer, whereas
+# the count only advances on a line that actually matches the progress
+# pattern, so a stall with unrelated chatter still gets caught.
 POLL_INTERVAL="${WATCHDOG_POLL_INTERVAL:-15}"
 LAST_PROGRESS_TS=$(date +%s)
 LAST_LINE_COUNT=0
