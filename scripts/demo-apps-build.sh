@@ -34,7 +34,11 @@ set -uo pipefail   # fail-open-ok: NOT -e — we want to run all configs and rep
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ADVANCED_DIR="$REPO_ROOT/Example"
 MINIMAL_DIR="$REPO_ROOT/Example/Examples"
-DERIVED_DATA_PATH="$REPO_ROOT/DerivedData/DemoAppsGate"
+# DerivedData (incl. SourcePackages) must live OUTSIDE the repo root because
+# the repo root is a local SwiftPM package in the example projects' graphs —
+# in-repo DerivedData retriggers package resolution in an infinite loop (bit
+# 2026-08-10/11, ~5h wedges).
+DERIVED_DATA_PATH="${MANIFOLD_DD_ROOT:-$HOME/Library/Caches/ManifoldKit}/DemoAppsGate-$(basename "$REPO_ROOT")"
 
 IOS_DESTINATION="${1:-}"
 if [[ "$IOS_DESTINATION" == "--destination" ]]; then
