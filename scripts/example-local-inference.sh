@@ -52,7 +52,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXAMPLES_DIR="$REPO_ROOT/Example/Examples"
 PROJECT="ManifoldExamples.xcodeproj"
-DERIVED_DATA_PATH="$REPO_ROOT/DerivedData/LocalInferenceExampleGate"
+# DerivedData (incl. SourcePackages) must live OUTSIDE the repo root because
+# the repo root is a local SwiftPM package in the example projects' graphs —
+# in-repo DerivedData retriggers package resolution in an infinite loop (bit
+# 2026-08-10/11, ~5h wedges).
+DERIVED_DATA_PATH="${MANIFOLD_DD_ROOT:-$HOME/Library/Caches/ManifoldKit}/LocalInferenceExampleGate-$(basename "$REPO_ROOT")"
 MODELS_DIR="$HOME/Documents/Models"
 MLX_TEXT_MODEL_REPO="mlx-community/Llama-3.2-3B-Instruct-4bit"
 IMAGE_MODEL_REPO="stabilityai/sdxl-turbo"
