@@ -1,5 +1,143 @@
 # Changelog
 
+## [0.76.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.75.0...v0.76.0) (2026-08-14)
+
+ManifoldKit 0.76 makes the companion-package architecture tangible with runnable MLX and llama.cpp
+apps, fixes tool-source registration so independent features no longer erase one another, and
+continues the deliberate pre-1.0 removal of public surface with no adopters. The release also
+hardens the examples and assurance lanes that prove those paths work outside the core test suite.
+
+### Highlights
+
+#### Run first-party local engines from complete example apps
+
+`LocalInferenceExample` adds separate, buildable MLX and llama.cpp app targets instead of leaving
+the companion wiring as prose. The llama target demonstrates zero-UI first-launch seeding through
+`quickStart(backends:seed:)`; the MLX target demonstrates text plus on-device diffusion through
+the manual bootstrap path. Keeping the engines in separate targets also documents the
+process-global runtime boundary that host apps need to respect.
+
+```swift
+import ManifoldKit
+import ManifoldLlama
+
+let result = try await ManifoldKit.quickStart(
+    backends: [LlamaBackends.self],
+    configuration: ManifoldConfiguration(
+        appName: "Local Chat",
+        bundleIdentifier: "com.example.local-chat"
+    ),
+    seed: .recommendedSmallModel { progress in
+        print("Downloading starter model: \(Int(progress * 100))%")
+    }
+)
+```
+
+See [#2460](https://github.com/ManifoldKit/ManifoldKit/pull/2460) and
+`Example/Examples/LocalInferenceExample/`.
+
+#### Register tool sources without erasing earlier features (breaking)
+
+`ManifoldBootstrap.addToolSources(_:)` finally behaves like an additive API: sources installed at
+build time or by another feature remain registered, while a later source of the same dynamic type
+replaces the earlier instances of that type. The batching-only
+`addGenerationToolSources(viewModel:)` convenience is removed; register the concrete sources you
+wired instead.
+
+```swift
+import ManifoldPersistenceSwiftData
+import ManifoldRuntime
+
+func registerToolSources(
+    bootstrap: ManifoldBootstrap,
+    sources: [any SessionToolSource]
+) async {
+    await bootstrap.addToolSources(sources)
+}
+```
+
+See [`docs/MIGRATION-additive-tool-sources.md`](docs/MIGRATION-additive-tool-sources.md) and
+[#2441](https://github.com/ManifoldKit/ManifoldKit/pull/2441). The three built-in UI sources now
+conform to the same contract ([#2415](https://github.com/ManifoldKit/ManifoldKit/pull/2415)).
+
+#### Retire zero-adoption bridges while preserving the useful instruction loader (breaking)
+
+Three unused surfaces leave the package graph: `ChatExporter`, the `ManifoldAnyLanguageModel`
+bridge and its dependency, and the SKILL.md/tool-invocation half of `ManifoldSkills`. AGENTS.md
+loading survives as the lighter `ManifoldAgentInstructions` product, while export callers move to
+`ExportButton` or `ConversationExporter` and custom OpenAI-compatible providers use
+`APIEndpointRecord(provider: .custom)`.
+
+```swift
+import ManifoldAgentInstructions
+
+var options = ConversationRuntimeOptions()
+options.addAgentInstructions(currentDirectory: projectRoot)
+let (progress, task) = ManifoldBootstrap.build(
+    configuration: configuration,
+    runtimeOptions: options
+)
+```
+
+See [`docs/MIGRATION-skills-removed.md`](docs/MIGRATION-skills-removed.md),
+[`docs/MIGRATION-chatexporter-removed.md`](docs/MIGRATION-chatexporter-removed.md), and
+[`docs/MIGRATION-anylanguagemodel-retired.md`](docs/MIGRATION-anylanguagemodel-retired.md)
+([#2456](https://github.com/ManifoldKit/ManifoldKit/pull/2456),
+[#2442](https://github.com/ManifoldKit/ManifoldKit/pull/2442),
+[#2443](https://github.com/ManifoldKit/ManifoldKit/pull/2443)).
+
+### Fixes
+
+- **Chat state follows the action the user took** — branching through `quickStart()` now switches
+  the active session, backend availability is resolved from runtime registration instead of
+  compile-time linkage, and `GenerationSettingsView` contains the diagnostics disclosure its docs
+  promised ([#2466](https://github.com/ManifoldKit/ManifoldKit/pull/2466),
+  [#2452](https://github.com/ManifoldKit/ManifoldKit/pull/2452),
+  [#2458](https://github.com/ManifoldKit/ManifoldKit/pull/2458)).
+- **Seeded local chat resolves real models** — the curated Qwen3 GGUF identifiers now point at
+  repositories that exist, so `.recommendedSmallModel` can complete instead of failing at the
+  download boundary ([#2469](https://github.com/ManifoldKit/ManifoldKit/pull/2469)).
+- **Tool and eval records describe the run that actually happened** — normalized GGUF quant names
+  no longer leak suffix residue, decoy tools cannot collide with required tools or inflate scored
+  sets or leak per-skill argument hints, and repeated sweeps cover the full decoy/repeat matrix
+  ([#2448](https://github.com/ManifoldKit/ManifoldKit/pull/2448),
+  [#2450](https://github.com/ManifoldKit/ManifoldKit/pull/2450),
+  [#2449](https://github.com/ManifoldKit/ManifoldKit/pull/2449),
+  [#2413](https://github.com/ManifoldKit/ManifoldKit/pull/2413)).
+- **The fuzz harness reports product findings, not its own scaffolding artifacts**
+  ([#2426](https://github.com/ManifoldKit/ManifoldKit/pull/2426)).
+- **Local gates no longer corrupt one another** — test runs serialize behind a machine-wide lock,
+  Keychain tests use a private namespace, and example DerivedData lives outside the package root so
+  remote dependency checkout cannot trigger an endless package-resolution loop
+  ([#2464](https://github.com/ManifoldKit/ManifoldKit/pull/2464),
+  [#2472](https://github.com/ManifoldKit/ManifoldKit/pull/2472),
+  [#2475](https://github.com/ManifoldKit/ManifoldKit/pull/2475)).
+
+### Assurance and documentation
+
+- **Real product vehicles back the readiness claims** — demo coverage now binds every row to exact
+  tests, records companion and consumer evidence (including the fireside eval adopter), surfaces
+  demonstration status in the readiness table, and includes a real end-to-end server vehicle
+  ([#2454](https://github.com/ManifoldKit/ManifoldKit/pull/2454),
+  [#2457](https://github.com/ManifoldKit/ManifoldKit/pull/2457),
+  [#2459](https://github.com/ManifoldKit/ManifoldKit/pull/2459),
+  [#2455](https://github.com/ManifoldKit/ManifoldKit/pull/2455),
+  [#2461](https://github.com/ManifoldKit/ManifoldKit/pull/2461),
+  [#2467](https://github.com/ManifoldKit/ManifoldKit/pull/2467)).
+- **Assurance lanes cover the surfaces they name** — macro coverage resolves to real test methods,
+  and pull requests receive dependency review before merge
+  ([#2465](https://github.com/ManifoldKit/ManifoldKit/pull/2465),
+  [#2451](https://github.com/ManifoldKit/ManifoldKit/pull/2451)).
+- **Integration sweeps fail before wasting model time** and collate comparable records across
+  runtimes; score publication is withheld when coverage is below its declared floor
+  ([#2410](https://github.com/ManifoldKit/ManifoldKit/pull/2410),
+  [#2412](https://github.com/ManifoldKit/ManifoldKit/pull/2412)).
+- **Consumer guidance matches the shipped surface** with a session-bootstrap section, explicit
+  quick-start readiness boundaries, and audited umbrella re-exports
+  ([#2447](https://github.com/ManifoldKit/ManifoldKit/pull/2447),
+  [#2419](https://github.com/ManifoldKit/ManifoldKit/pull/2419),
+  [#2424](https://github.com/ManifoldKit/ManifoldKit/pull/2424)).
+
 ## [0.75.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.74.0...v0.75.0) (2026-07-27)
 
 A context window that cannot say "I don't know" turns out to be a recurring defect class, not a

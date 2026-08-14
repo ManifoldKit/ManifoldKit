@@ -45,7 +45,7 @@ in v0.48). In your consumer `Package.swift`:
 dependencies: [
     .package(
         url: "https://github.com/ManifoldKit/ManifoldKit.git",
-        from: "0.75.0" // x-release-please-version
+        from: "0.76.0" // x-release-please-version
     ),
     .package(
         url: "https://github.com/ManifoldKit/manifold-mlx.git",
