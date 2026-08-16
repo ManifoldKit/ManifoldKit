@@ -157,15 +157,22 @@ final class GateLockSelfTestScriptTests: XCTestCase {
         args: [String],
         environment: [String: String] = [:],
         timeout: TimeInterval = 60
-    ) throws -> (status: Int32, output: String) {
+    ) throws -> (status: Int32, output: String, childOutputFile: URL) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = [script.path] + args
-        if !environment.isEmpty {
-            process.environment = ProcessInfo.processInfo.environment.merging(
-                environment, uniquingKeysWith: { _, new in new }
-            )
-        }
+        // XCTest itself may be running inside scripts/test.sh --profile local,
+        // where this inherited path is CI's live watchdog log. Every nested
+        // script invocation must get a unique private log, including the
+        // normal, sabotage, timeout, mismatch, and stuck-child paths below.
+        let childOutputFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("manifoldkit-gate-lock-child-output-\(UUID().uuidString).log")
+        defer { try? FileManager.default.removeItem(at: childOutputFile) }
+        var childEnvironment = ProcessInfo.processInfo.environment.merging(
+            environment, uniquingKeysWith: { _, new in new }
+        )
+        childEnvironment["MANIFOLD_TEST_OUTPUT_FILE"] = childOutputFile.path
+        process.environment = childEnvironment
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
@@ -198,7 +205,7 @@ final class GateLockSelfTestScriptTests: XCTestCase {
 
         process.waitUntilExit()
         let output = capturedData.withLock { String(data: $0, encoding: .utf8) ?? "" }
-        return (process.terminationStatus, output)
+        return (process.terminationStatus, output, childOutputFile)
     }
 
     private func isProcessAlive(_ pid: pid_t) -> Bool {
@@ -394,6 +401,35 @@ final class GateLockSelfTestScriptTests: XCTestCase {
             "an inherited-but-widowed sentinel must be reported as stale, never trusted silently:\n\(result.output)"
         )
         XCTAssertTrue(result.output.contains("RESULT: PASS"), "overall self-test result line missing:\n\(result.output)")
+    }
+
+    /// The XCTest subprocess is itself nested under the full local gate in
+    /// CI. It must override that enclosing gate's live watchdog log rather
+    /// than inheriting it: if this runner-side assignment is removed, the
+    /// child reports the outer path here and this tripwire fails before a
+    /// real gate can be clobbered (#2476/#2481).
+    func test_lockSelfTest_childUsesPrivateOutputFileInsteadOfEnclosingGateLog() throws {
+        guard let root = repoRoot() else {
+            XCTFail("scripts/test.sh not found from test bundle location — path derivation is broken, not legitimately absent")
+            return
+        }
+        let enclosingLog = FileManager.default.temporaryDirectory
+            .appendingPathComponent("manifoldkit-gate-lock-enclosing-output-\(UUID().uuidString).log")
+        let sentinel = "outer gate log must remain private\n"
+        try sentinel.write(to: enclosingLog, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: enclosingLog) }
+
+        let result = try run(
+            script: root.appendingPathComponent("scripts/test.sh"),
+            args: ["--lock-selftest"],
+            environment: ["MANIFOLD_TEST_OUTPUT_FILE": enclosingLog.path],
+            timeout: 120
+        )
+
+        XCTAssertEqual(result.status, 0, "the private child log path must preserve a healthy lock self-test:\n\(result.output)")
+        XCTAssertNotEqual(result.childOutputFile.path, enclosingLog.path, "the child must never inherit the enclosing gate log path")
+        XCTAssertTrue(result.output.contains("enclosing log inherited '" + result.childOutputFile.path + "' intact"), "scenario G must report the unique child path it actually observed, not the enclosing path:\n\(result.output)")
+        XCTAssertEqual(try String(contentsOf: enclosingLog, encoding: .utf8), sentinel, "the child must leave the enclosing gate log untouched")
     }
 
     /// Scenario F's ready/release barrier is intentionally a real
