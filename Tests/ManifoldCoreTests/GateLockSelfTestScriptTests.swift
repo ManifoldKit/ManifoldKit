@@ -549,9 +549,11 @@ final class GateLockSelfTestScriptTests: XCTestCase {
         XCTAssertTrue(result.output.contains("scenario F: deliberately ignoring observer release and TERM until cleanup"), "the stuck-child fixture must announce itself:\n\(result.output)")
         XCTAssertTrue(result.output.contains("scenario F: FAIL"), "the bounded cleanup path must reach scenario F's explicit failure:\n\(result.output)")
         XCTAssertTrue(result.output.contains("exit_timeout=1"), "the post-release exit timeout must be reported:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("exit=137"), "the KILLed lock-owning parent must report its real wait status rather than silently converting it to success:\n\(result.output)")
         XCTAssertTrue(result.output.contains("reap_status=reaped-after-KILL"), "the TERM/KILL reaping result must be reported instead of an unbounded wait:\n\(result.output)")
         XCTAssertTrue(result.output.contains("stub_reap_status=reaped-after-force-exit"), "the observer must retain the force-exit marker until the orphaned stub is gone:\n\(result.output)")
         XCTAssertTrue(result.output.contains("stub_invocations=1/1"), "the two stuck-child diagnostic lines must not be counted as two stub launches; the old log-line count produced CI's false-red:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("lock_cleanup=reclaimed-validated-dead-parent lock_gone=1"), "KILL bypasses the nested owner's EXIT trap, so Scenario F must reclaim only its validated dead private owner record before deleting the fixture root:\n\(result.output)")
         XCTAssertFalse(isProcessAlive(recordedIdentity.pid), "the exact PID recorded by the fixture stub must be gone once --lock-selftest returns")
         XCTAssertTrue(result.output.contains("RESULT: FAIL"), "the bounded cleanup path must reach the aggregate failure:\n\(result.output)")
     }

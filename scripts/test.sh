@@ -1084,6 +1084,7 @@ STUB
     local scenario_f_stub_invocation_file="$scenario_f_root/stub-invocations"
     local scenario_f_identity_observed_file="$scenario_f_root/identity-mismatch-observed"
     local scenario_f_term_seen_file="${MANIFOLD_GATE_SELFTEST_F_TERM_SEEN_FILE:-$scenario_f_root/stub-term-seen}"
+    local scenario_f_parent_hold_file="$scenario_f_root/parent-hold-release"
     rm -f "$scenario_f_stub_pid_file" "$scenario_f_stub_invocation_file"
     rm -f "$scenario_f_identity_observed_file" "$scenario_f_term_seen_file"
     PATH="$scenario_f_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_f_lock" \
@@ -1091,6 +1092,7 @@ STUB
         MANIFOLD_GATE_SELFTEST_F_READY_FILE="$scenario_f_root/ready" \
         MANIFOLD_GATE_SELFTEST_F_RELEASE_FILE="$scenario_f_root/release" \
         MANIFOLD_GATE_SELFTEST_F_FORCE_EXIT_FILE="$scenario_f_root/force-exit" \
+        MANIFOLD_GATE_SELFTEST_F_PARENT_HOLD_FILE="$scenario_f_parent_hold_file" \
         MANIFOLD_GATE_SELFTEST_F_STUB_PID_FILE="$scenario_f_stub_pid_file" \
         MANIFOLD_GATE_SELFTEST_F_STUB_INVOCATION_RECORD_FILE="$scenario_f_stub_invocation_file" \
         MANIFOLD_GATE_SELFTEST_F_IDENTITY_MISMATCH_OBSERVED_FILE="$scenario_f_identity_observed_file" \
@@ -1140,6 +1142,7 @@ STUB
     local scenario_f_exit_timeout=0 scenario_f_exit=125
     local scenario_f_reap_status="reaped-normally"
     local scenario_f_cleanup_stage="none"
+    local scenario_f_parent_reaped=0
     scenario_f_poll_i=0
     while kill -0 "$scenario_f_pid" 2>/dev/null && [[ $scenario_f_poll_i -lt 200 ]]; do
         sleep 0.05
@@ -1158,6 +1161,20 @@ STUB
         done
         if kill -0 "$scenario_f_pid" 2>/dev/null; then
             scenario_f_cleanup_stage="KILL"
+            # Let the known direct stub exit while its known parent remains
+            # alive and waiting. KILLing the parent first would orphan that
+            # stub and turn its normal post-exit state into a PID-identity
+            # race. This is only a marker; it never signals a PID.
+            touch "$scenario_f_root/force-exit"
+            local scenario_f_pre_kill_stub_pid
+            scenario_f_pre_kill_stub_pid="$(sed -n '1p' "$scenario_f_stub_pid_file" 2>/dev/null)" || scenario_f_pre_kill_stub_pid=""
+            if [[ "$scenario_f_pre_kill_stub_pid" =~ ^[0-9]+$ ]]; then
+                scenario_f_poll_i=0
+                while kill -0 "$scenario_f_pre_kill_stub_pid" 2>/dev/null && [[ $scenario_f_poll_i -lt 20 ]]; do
+                    sleep 0.05
+                    scenario_f_poll_i=$((scenario_f_poll_i + 1))
+                done
+            fi
             if ! kill -KILL "$scenario_f_pid" 2>/dev/null; then
                 scenario_f_reap_status="KILL-send-failed"
             fi
@@ -1172,6 +1189,7 @@ STUB
         scenario_f_exit=124
         scenario_f_reap_status="still-live-after-${scenario_f_cleanup_stage}"
     elif wait "$scenario_f_pid" 2>/dev/null; then
+        scenario_f_parent_reaped=1
         scenario_f_exit=0
         case "$scenario_f_cleanup_stage" in
             TERM) scenario_f_reap_status="reaped-after-TERM" ;;
@@ -1179,14 +1197,42 @@ STUB
         esac
     else
         scenario_f_exit=$?
+        scenario_f_parent_reaped=1
         case "$scenario_f_cleanup_stage" in
             TERM) scenario_f_reap_status="reaped-after-TERM" ;;
             KILL) scenario_f_reap_status="reaped-after-KILL" ;;
         esac
     fi
-    # The ignore-release fixture's direct stub child becomes orphaned when
-    # its TERM-ignoring parent is KILLed. Keep the force-exit marker and the
-    # temp root alive until that exact, recorded stub identity has gone away.
+    # KILL skips the lock owner's EXIT trap. Scenario F's lock is private to
+    # this self-test, and this removal is permitted only after reaping the
+    # direct owner, confirming no process currently holds its PID, and reading
+    # the unchanged owner record immediately before unlinking. A live/reused
+    # PID or changed record stays loud and untouched.
+    local scenario_f_lock_cleanup="not-needed"
+    if [[ -e "$scenario_f_lock" ]]; then
+        scenario_f_lock_cleanup="unvalidated-stale-lock"
+        local scenario_f_stale_owner
+        scenario_f_stale_owner="$(sed -n '1p' "$scenario_f_lock" 2>/dev/null)" || scenario_f_stale_owner=""
+        if [[ $scenario_f_parent_reaped -eq 1 && "$scenario_f_stale_owner" == "$scenario_f_pid" ]] && ! kill -0 "$scenario_f_pid" 2>/dev/null; then
+            scenario_f_stale_owner="$(sed -n '1p' "$scenario_f_lock" 2>/dev/null)" || scenario_f_stale_owner=""
+            if [[ "$scenario_f_stale_owner" == "$scenario_f_pid" ]] && ! kill -0 "$scenario_f_pid" 2>/dev/null; then
+                rm -f "$scenario_f_lock"
+                if [[ ! -e "$scenario_f_lock" ]]; then
+                    scenario_f_lock_cleanup="reclaimed-validated-dead-parent"
+                else
+                    scenario_f_lock_cleanup="validated-parent-remove-failed"
+                fi
+            else
+                scenario_f_lock_cleanup="owner-changed-or-pid-reused-before-reclaim"
+            fi
+        elif kill -0 "$scenario_f_pid" 2>/dev/null; then
+            scenario_f_lock_cleanup="parent-pid-still-live-or-reused"
+        fi
+    fi
+    # The ignore-release fixture normally exits its direct stub before its
+    # TERM-ignoring parent is KILLed. Keep the force-exit marker and the temp
+    # root alive until that exact recorded identity has gone away; the guarded
+    # fallback below remains necessary if that bounded pre-KILL wait fails.
     # A numeric PID alone is unsafe: it can be reused after the stub exits.
     # Before every TERM/KILL, corroborate PID + process start identity + the
     # unique scenario-F stub command path; a mismatch is loud and NEVER gets
@@ -1345,7 +1391,7 @@ STUB
           && $scenario_f_stub_invocations -eq 1 ]]; then
         echo "[lock-selftest] scenario F: PASS (bare invocation pid ${scenario_f_pid} held the lock via the fallthrough call site at the ready/release handshake, ran once against the stub \`swift\`, released cleanly, lock file gone)"
     else
-        echo "[lock-selftest] scenario F: FAIL (exit=${scenario_f_exit} exit_timeout=${scenario_f_exit_timeout} reap_status=${scenario_f_reap_status} stub_pid=${scenario_f_stub_pid:-<missing>} stub_reap_status=${scenario_f_stub_reap_status} handshake_ready=${scenario_f_ready} (${scenario_f_handshake_status}) lock_owner=${scenario_f_lock_owner} (expected pid=${scenario_f_pid}) stub_invocations=${scenario_f_stub_invocations}/1 lock_gone=${scenario_f_lock_gone})"
+        echo "[lock-selftest] scenario F: FAIL (exit=${scenario_f_exit} exit_timeout=${scenario_f_exit_timeout} reap_status=${scenario_f_reap_status} stub_pid=${scenario_f_stub_pid:-<missing>} stub_reap_status=${scenario_f_stub_reap_status} handshake_ready=${scenario_f_ready} (${scenario_f_handshake_status}) lock_owner=${scenario_f_lock_owner} (expected pid=${scenario_f_pid}) stub_invocations=${scenario_f_stub_invocations}/1 lock_cleanup=${scenario_f_lock_cleanup} lock_gone=${scenario_f_lock_gone})"
         failures=$((failures + 1))
     fi
 
@@ -1863,6 +1909,24 @@ set +e
 swift test ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} 2>&1 | tee "$OUTPUT_FILE"
 SWIFT_EXIT=${PIPESTATUS[0]}
 set -e
+
+# Scenario F's stuck-child fixture keeps the lock-owning nested shell alive
+# after its stub exits. The observer can then reap that known owner itself,
+# rather than orphaning the stub by KILLing its parent first. This variable is
+# passed only by --lock-selftest; it is never a production control surface.
+if [[ "${MANIFOLD_GATE_SELFTEST_F_CHILD_MODE:-}" == "ignore-release" ]]; then
+    parent_hold_file="${MANIFOLD_GATE_SELFTEST_F_PARENT_HOLD_FILE:?'scenario F ignore-release fixture needs MANIFOLD_GATE_SELFTEST_F_PARENT_HOLD_FILE'}"
+    echo "[lock-selftest child] scenario F: holding lock-owning parent for observer cleanup"
+    parent_hold_i=0
+    while [[ ! -e "$parent_hold_file" && $parent_hold_i -lt 300 ]]; do
+        sleep 0.05
+        parent_hold_i=$((parent_hold_i + 1))
+    done
+    if [[ ! -e "$parent_hold_file" ]]; then
+        echo "[lock-selftest child] scenario F: FAIL (parent hold timed out after 15s)" >&2
+        exit 81
+    fi
+fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
