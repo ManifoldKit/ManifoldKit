@@ -984,11 +984,16 @@ fi
 ready_file="${MANIFOLD_GATE_SELFTEST_F_READY_FILE:?'scenario F stub needs MANIFOLD_GATE_SELFTEST_F_READY_FILE'}"
 release_file="${MANIFOLD_GATE_SELFTEST_F_RELEASE_FILE:?'scenario F stub needs MANIFOLD_GATE_SELFTEST_F_RELEASE_FILE'}"
 stub_pid_file="${MANIFOLD_GATE_SELFTEST_F_STUB_PID_FILE:?'scenario F stub needs MANIFOLD_GATE_SELFTEST_F_STUB_PID_FILE'}"
+stub_invocation_file="${MANIFOLD_GATE_SELFTEST_F_STUB_INVOCATION_RECORD_FILE:?'scenario F stub needs MANIFOLD_GATE_SELFTEST_F_STUB_INVOCATION_RECORD_FILE'}"
 stub_start_identity="$(ps -p "$$" -o lstart=)"
 if [[ "${MANIFOLD_GATE_SELFTEST_F_STUB_MODE:-}" == "identity-mismatch" ]]; then
     stub_start_identity="deliberately-mismatched-start-identity"
 fi
 printf '%s\n%s\n%s\n' "$$" "$stub_start_identity" "$0" > "$stub_pid_file"
+# Count real stub launches separately from diagnostic output. The stuck-child
+# fixture intentionally logs both that it is ignoring release and that it saw
+# force-exit; those are two messages from one process, not two invocations.
+printf '%s\n' "$$" >> "$stub_invocation_file"
 
 if [[ "${MANIFOLD_GATE_SELFTEST_F_STUB_MODE:-}" != "withhold-ready" ]]; then
     touch "$ready_file"
@@ -1047,6 +1052,12 @@ if [[ "${MANIFOLD_GATE_SELFTEST_F_STUB_MODE:-}" == "identity-mismatch" ]]; then
     exit 77
 fi
 
+if [[ "${MANIFOLD_GATE_SELFTEST_F_STUB_MODE:-}" == "extra-diagnostic" ]]; then
+    # Narrow XCTest seam: output has no bearing on how many times this stub
+    # was launched. Scenario F must keep passing with this second message.
+    echo "[stub-swift] scenario F: deliberately emitting an extra diagnostic line"
+fi
+
 echo "[stub-swift] $*"
 echo "Test Case '-[ManifoldMCPTests.StubTest testStub]' passed (0.001 seconds)."
 exit 0
@@ -1070,9 +1081,10 @@ STUB
     # request a separate record so it can verify the fixture stub is gone
     # after this self-test has returned.
     local scenario_f_stub_pid_file="${MANIFOLD_GATE_SELFTEST_F_STUB_PID_RECORD_FILE:-$scenario_f_root/stub.pid}"
+    local scenario_f_stub_invocation_file="$scenario_f_root/stub-invocations"
     local scenario_f_identity_observed_file="$scenario_f_root/identity-mismatch-observed"
     local scenario_f_term_seen_file="${MANIFOLD_GATE_SELFTEST_F_TERM_SEEN_FILE:-$scenario_f_root/stub-term-seen}"
-    rm -f "$scenario_f_stub_pid_file"
+    rm -f "$scenario_f_stub_pid_file" "$scenario_f_stub_invocation_file"
     rm -f "$scenario_f_identity_observed_file" "$scenario_f_term_seen_file"
     PATH="$scenario_f_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_f_lock" \
         MANIFOLD_TEST_OUTPUT_FILE="$scenario_f_root/nested-test-output.log" \
@@ -1080,6 +1092,7 @@ STUB
         MANIFOLD_GATE_SELFTEST_F_RELEASE_FILE="$scenario_f_root/release" \
         MANIFOLD_GATE_SELFTEST_F_FORCE_EXIT_FILE="$scenario_f_root/force-exit" \
         MANIFOLD_GATE_SELFTEST_F_STUB_PID_FILE="$scenario_f_stub_pid_file" \
+        MANIFOLD_GATE_SELFTEST_F_STUB_INVOCATION_RECORD_FILE="$scenario_f_stub_invocation_file" \
         MANIFOLD_GATE_SELFTEST_F_IDENTITY_MISMATCH_OBSERVED_FILE="$scenario_f_identity_observed_file" \
         MANIFOLD_GATE_SELFTEST_F_TERM_SEEN_FILE="$scenario_f_term_seen_file" \
         MANIFOLD_GATE_SELFTEST_F_CHILD_MODE="${MANIFOLD_GATE_SELFTEST_F_STUB_MODE:-}" \
@@ -1188,10 +1201,19 @@ STUB
     fi
 
     scenario_f_stub_identity_state() {
-        local current_start_identity current_command
+        local current_start_identity current_command current_state
         if ! kill -0 "$scenario_f_stub_pid" 2>/dev/null; then
             return 1  # gone
         fi
+        # A zombie has terminated and cannot touch the marker/root or receive
+        # a signal. `kill -0` still succeeds until its reaper runs, so do not
+        # misclassify that normal post-exit state as a reused PID.
+        if ! current_state="$(ps -p "$scenario_f_stub_pid" -o stat= 2>/dev/null)"; then
+            return 1
+        fi
+        case "$current_state" in
+            Z*|*Z*) return 1 ;;
+        esac
         if ! current_start_identity="$(ps -p "$scenario_f_stub_pid" -o lstart= 2>/dev/null)"; then
             return 2  # identity cannot be corroborated
         fi
@@ -1275,11 +1297,17 @@ STUB
 
         # A mismatch fixture has now received its observation marker and the
         # force-exit marker, but no signal. Wait boundedly for that known stub
-        # to leave before deleting its root; if an unrelated process reused
-        # the PID, preserve the loud mismatch rather than touching it.
+        # to terminate before deleting its root. A zombie is terminated even
+        # though `kill -0` still reports it until its parent reaps it; a PID
+        # reuse remains loud and is never touched.
         scenario_f_poll_i=0
         while [[ $scenario_f_poll_i -lt 20 ]]; do
-            if ! kill -0 "$scenario_f_stub_pid" 2>/dev/null; then
+            if scenario_f_stub_identity_state; then
+                scenario_f_stub_state=0
+            else
+                scenario_f_stub_state=$?
+            fi
+            if [[ $scenario_f_stub_state -eq 1 ]]; then
                 scenario_f_stub_reap_complete=1
                 break
             fi
@@ -1304,15 +1332,20 @@ STUB
     local scenario_f_lock_gone=1
     [[ -e "$scenario_f_lock" ]] && scenario_f_lock_gone=0
 
-    local scenario_f_stub_lines
-    scenario_f_stub_lines="$(grep -c '^\[stub-swift\]' "$scenario_f_log")" || scenario_f_stub_lines=0
+    # This is an invocation record, not a log-line count. The stuck-child and
+    # extra-diagnostic fixtures legitimately emit more than one `[stub-swift]`
+    # line from their one process; counting those messages made Scenario F
+    # false-red under CI's cleanup timing.
+    local scenario_f_stub_invocations
+    scenario_f_stub_invocations="$(wc -l < "$scenario_f_stub_invocation_file" 2>/dev/null | tr -d '[:space:]')" || scenario_f_stub_invocations=0
+    [[ "$scenario_f_stub_invocations" =~ ^[0-9]+$ ]] || scenario_f_stub_invocations=0
 
     if [[ $scenario_f_exit -eq 0 && $scenario_f_exit_timeout -eq 0 && $scenario_f_ready -eq 1 && $scenario_f_owner_ok -eq 1 && $scenario_f_lock_gone -eq 1 \
           && $scenario_f_stub_pid_recorded -eq 1 && $scenario_f_stub_reap_complete -eq 1 \
-          && $scenario_f_stub_lines -eq 1 ]]; then
+          && $scenario_f_stub_invocations -eq 1 ]]; then
         echo "[lock-selftest] scenario F: PASS (bare invocation pid ${scenario_f_pid} held the lock via the fallthrough call site at the ready/release handshake, ran once against the stub \`swift\`, released cleanly, lock file gone)"
     else
-        echo "[lock-selftest] scenario F: FAIL (exit=${scenario_f_exit} exit_timeout=${scenario_f_exit_timeout} reap_status=${scenario_f_reap_status} stub_pid=${scenario_f_stub_pid:-<missing>} stub_reap_status=${scenario_f_stub_reap_status} handshake_ready=${scenario_f_ready} (${scenario_f_handshake_status}) lock_owner=${scenario_f_lock_owner} (expected pid=${scenario_f_pid}) stub_invocations=${scenario_f_stub_lines}/1 lock_gone=${scenario_f_lock_gone})"
+        echo "[lock-selftest] scenario F: FAIL (exit=${scenario_f_exit} exit_timeout=${scenario_f_exit_timeout} reap_status=${scenario_f_reap_status} stub_pid=${scenario_f_stub_pid:-<missing>} stub_reap_status=${scenario_f_stub_reap_status} handshake_ready=${scenario_f_ready} (${scenario_f_handshake_status}) lock_owner=${scenario_f_lock_owner} (expected pid=${scenario_f_pid}) stub_invocations=${scenario_f_stub_invocations}/1 lock_gone=${scenario_f_lock_gone})"
         failures=$((failures + 1))
     fi
 

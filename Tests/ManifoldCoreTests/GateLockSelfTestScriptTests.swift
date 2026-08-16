@@ -210,7 +210,12 @@ final class GateLockSelfTestScriptTests: XCTestCase {
 
     private func isProcessAlive(_ pid: pid_t) -> Bool {
         guard pid > 0 else { return false }
-        if kill(pid, 0) == 0 { return true }
+        // `kill(pid, 0)` remains successful for a zombie until its parent
+        // reaps it. It cannot execute or receive a signal, so classify it as
+        // terminated for the fixture's orphan-safety assertions.
+        if kill(pid, 0) == 0 {
+            return psValue(pid: pid, field: "stat")?.trimmingCharacters(in: .whitespaces).hasPrefix("Z") != true
+        }
         return errno == EPERM
     }
 
@@ -546,8 +551,32 @@ final class GateLockSelfTestScriptTests: XCTestCase {
         XCTAssertTrue(result.output.contains("exit_timeout=1"), "the post-release exit timeout must be reported:\n\(result.output)")
         XCTAssertTrue(result.output.contains("reap_status=reaped-after-KILL"), "the TERM/KILL reaping result must be reported instead of an unbounded wait:\n\(result.output)")
         XCTAssertTrue(result.output.contains("stub_reap_status=reaped-after-force-exit"), "the observer must retain the force-exit marker until the orphaned stub is gone:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("stub_invocations=1/1"), "the two stuck-child diagnostic lines must not be counted as two stub launches; the old log-line count produced CI's false-red:\n\(result.output)")
         XCTAssertFalse(isProcessAlive(recordedIdentity.pid), "the exact PID recorded by the fixture stub must be gone once --lock-selftest returns")
         XCTAssertTrue(result.output.contains("RESULT: FAIL"), "the bounded cleanup path must reach the aggregate failure:\n\(result.output)")
+    }
+
+    /// One stub process may emit several diagnostics. Scenario F used to
+    /// count `[stub-swift]` log lines as launches, so this deliberately
+    /// harmless second line made the scenario (and aggregate self-test) fail
+    /// with `stub_invocations=2/1`. The dedicated PID record must keep the
+    /// real self-test green; replacing it with the old log-line count is a
+    /// deterministic demonstrated-red for this guard.
+    func test_lockSelfTest_fallthroughDiagnosticOutputIsNotAnInvocation() throws {
+        guard let root = repoRoot() else {
+            XCTFail("scripts/test.sh not found from test bundle location — path derivation is broken, not legitimately absent")
+            return
+        }
+        let result = try run(
+            script: root.appendingPathComponent("scripts/test.sh"),
+            args: ["--lock-selftest"],
+            environment: ["MANIFOLD_GATE_SELFTEST_F_STUB_MODE": "extra-diagnostic"],
+            timeout: 120
+        )
+
+        XCTAssertEqual(result.status, 0, "extra stub diagnostics are not extra invocations and must not fail the self-test:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("scenario F: deliberately emitting an extra diagnostic line"), "the demonstrated-red fixture did not reach its extra-output seam:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("scenario F: PASS"), "scenario F must use the dedicated invocation record rather than its log lines:\n\(result.output)")
     }
 
     /// A numeric PID can be reused after the fixture exits. This seam writes
