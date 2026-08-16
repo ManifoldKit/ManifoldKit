@@ -254,8 +254,10 @@ explicitly opts out of that guarantee (e.g. a throwaway spike product tagged
 Tier membership is deliberately not used to hide evidence gaps. The
 current release-blocking set and its evidence-to-clear live in the
 [release-health ledger](RELEASE-1.0.md#release-health--qualification-ledger).
-Two non-blocking placement questions remain here because they concern
-compatibility classification rather than a particular release's health:
+Two product-scoped questions remain here because they concern compatibility
+classification as well as a particular release's health. They do not reorder
+the immediate remediation lanes, but their affected promises remain withheld
+in the ledger:
 
 1. **`ManifoldServerKit`'s Tier 2 placement is not fully machine-verified.**
    Its public seam (`ServerBackendProvider`, `ManifoldServer.serve`) is

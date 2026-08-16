@@ -187,7 +187,9 @@ only when its row below is clear with the stated evidence. An open row is an
 operational demotion of the affected promise for the current release: either
 fix it and record the evidence, or explicitly remove that promise from the
 release claim. A passing unit suite, declared CI route, or old green run is not
-a substitute for the evidence named here.
+a substitute for the evidence named here. This ledger does not produce a
+blanket “all Tier 2 qualified” result: claims remain scoped to the products and
+paths whose evidence is actually clear.
 
 ### Tier 1/2 blockers
 
@@ -201,6 +203,18 @@ a substitute for the evidence named here.
 The rows are in the approved remediation sequence, not severity: rows 1–2 are
 the first parallel lane, followed by rows 3–4. A release cannot skip an
 unresolved blocker by calling a later canary green.
+
+### Additional product-scoped qualification gaps
+
+These gaps do not reorder the immediate remediation sequence above, but they
+prevent an aggregate claim that every Tier 2 product is fully release-qualified.
+Each affected promise stays withheld until its own evidence is clear.
+
+| Product | Promise withheld | Evidence required to clear |
+|---|---|---|
+| `ManifoldServerKit` | Public-API compatibility qualification. | Bring its trait-gated public seam under api-digester coverage, or add an equivalent enforced surface-diff gate with demonstrated-red evidence. |
+| `ManifoldFuzz` | Live first-party integration qualification. | Add a release canary or demonstration vehicle that imports and exercises `ManifoldFuzz`; public-surface baseline coverage alone is insufficient. |
+| `ManifoldAppEval` | Full release qualification. | Clear the registry-derived core-main canary in row 7 **and** add the in-repo demonstration vehicle tracked by #2453 M3. The canary alone qualifies core compatibility, not the missing demonstration path. |
 
 ### Release-context gates after the blockers
 
@@ -365,8 +379,10 @@ drags `manifold-mlx` / `manifold-llama` to 1.0. Each companion versions on its
 own cadence and declares a **supported-core range** (the existing
 `.upToNextMinor` pin plus a qualifying compat canary express and enforce this).
 A companion may sit at `0.x` against a `1.x` core, or reach `1.0` before core
-does; the only contract between them is the declared core range and a verified
-green canary for every registry participant. Rationale: the packages were split precisely so a heavy GPU/native
+does; the only contract between core and those companions is the declared core
+range and a verified green companion canary. Current evidence is recorded in
+the release-health ledger rather than assumed by this policy. Rationale: the
+packages were split precisely so a heavy GPU/native
 dependency evolves on its own clock; re-coupling their version numbers would
 re-import the coupling the split removed.
 
