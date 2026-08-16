@@ -36,7 +36,8 @@ final class ColdStartHumanCacheAuditTest: XCTestCase {
 
     /// Exercises the production predicate against the regressions that would
     /// otherwise make a green run indistinguishable from stale output: a broad
-    /// fallback, an unbounded exact key, and a hit without provenance evidence.
+    /// fallback, an unbounded exact key, widened provenance lookup, and a hit
+    /// without provenance evidence.
     func test_sabotage_cachePolicyFlagsBroadRestoreMissingFreshnessAndMissingProvenance() throws {
         let workflow = try Self.workflowContents()
 
@@ -62,6 +63,56 @@ final class ColdStartHumanCacheAuditTest: XCTestCase {
         XCTAssertTrue(
             freshnessViolations.contains { $0.contains("UTC-day") },
             "An exact key without its UTC-day freshness generation must be rejected; got \(freshnessViolations)"
+        )
+
+        let widenedFallback = workflow.replacingOccurrences(
+            of: "if [[ \"${cache_count}\" == \"0\" ]]; then",
+            with: "if [[ \"${cache_count}\" -ge \"0\" ]]; then"
+        )
+        let fallbackViolations = Self.cachePolicyViolations(workflow: widenedFallback)
+        XCTAssertTrue(
+            fallbackViolations.contains { $0.contains("only after the current-ref lookup returns zero") },
+            "The default-branch fallback must be rejected unless the current ref has no cache; got \(fallbackViolations)"
+        )
+
+        let withoutCurrentRef = workflow.replacingOccurrences(
+            of: "          cache_ref=\"${GITHUB_REF}\"\n",
+            with: ""
+        )
+        let currentRefViolations = Self.cachePolicyViolations(workflow: withoutCurrentRef)
+        XCTAssertTrue(
+            currentRefViolations.contains { $0.contains("current PR ref") },
+            "The current PR ref must be queried before considering main; got \(currentRefViolations)"
+        )
+
+        let withoutCacheKeyExtraction = workflow.replacingOccurrences(
+            of: "          cache_key=\"$(printf '%s' \"${cache_metadata}\" | jq -er '.actions_caches[0].key')\"\n",
+            with: ""
+        )
+        let keyExtractionViolations = Self.cachePolicyViolations(workflow: withoutCacheKeyExtraction)
+        XCTAssertTrue(
+            keyExtractionViolations.contains { $0.contains("cache_key extraction") },
+            "A provenance record must extract the restored cache key; got \(keyExtractionViolations)"
+        )
+
+        let withoutCacheKeyEquality = workflow.replacingOccurrences(
+            of: "          if [[ \"${cache_key}\" != \"${CACHE_KEY}\" ]]; then\n",
+            with: ""
+        )
+        let keyEqualityViolations = Self.cachePolicyViolations(workflow: withoutCacheKeyEquality)
+        XCTAssertTrue(
+            keyEqualityViolations.contains { $0.contains("equality guard") },
+            "A provenance record must fail closed when the restored key differs; got \(keyEqualityViolations)"
+        )
+
+        let equalityGuardWithoutExit = workflow.replacingOccurrences(
+            of: "            exit 1\n          fi\n\n          echo \"cold-start cache provenance: id=${cache_id} key=${cache_key} createdAt=${cache_created_at} ref=${cache_ref}\"",
+            with: "          fi\n\n          echo \"cold-start cache provenance: id=${cache_id} key=${cache_key} createdAt=${cache_created_at} ref=${cache_ref}\""
+        )
+        let guardExitViolations = Self.cachePolicyViolations(workflow: equalityGuardWithoutExit)
+        XCTAssertTrue(
+            guardExitViolations.contains { $0.contains("equality guard") },
+            "A cache-key mismatch guard without a failing exit must be rejected; got \(guardExitViolations)"
         )
 
         let withoutProvenance = workflow.replacingOccurrences(
@@ -130,6 +181,49 @@ final class ColdStartHumanCacheAuditTest: XCTestCase {
             ]
             for fragment in requiredFragments where !provenanceStep.contains(fragment) {
                 violations.append("The provenance step is missing required evidence: `\(fragment)`.")
+            }
+
+            let currentRefSelection = "cache_ref=\"${GITHUB_REF}\""
+            let currentRefLookup = "cache_metadata=\"$(fetch_cache_metadata \"${cache_ref}\")\""
+            let currentRefCount = "cache_count=\"$(printf '%s' \"${cache_metadata}\" | jq -er '.total_count')\""
+            let zeroCountFallback = "if [[ \"${cache_count}\" == \"0\" ]]; then"
+            let defaultBranchFallback = "cache_ref=\"refs/heads/${DEFAULT_BRANCH}\""
+            let currentRefIndex = provenanceStep.range(of: currentRefSelection)?.lowerBound
+            let currentRefLookupIndex = provenanceStep.range(of: currentRefLookup)?.lowerBound
+            let currentRefCountIndex = provenanceStep.range(of: currentRefCount)?.lowerBound
+            let zeroCountIndex = provenanceStep.range(of: zeroCountFallback)?.lowerBound
+            let defaultBranchIndex = provenanceStep.range(of: defaultBranchFallback)?.lowerBound
+            let firstCacheRefAssignment = provenanceStep.range(of: "cache_ref=")?.lowerBound
+            if currentRefIndex == nil || currentRefIndex != firstCacheRefAssignment {
+                violations.append("The provenance lookup must start with the current PR ref (GITHUB_REF).")
+            }
+            if let currentRefIndex, let currentRefLookupIndex, let currentRefCountIndex,
+               let zeroCountIndex, let defaultBranchIndex {
+                if currentRefIndex > currentRefLookupIndex ||
+                    currentRefLookupIndex > currentRefCountIndex ||
+                    currentRefCountIndex > zeroCountIndex ||
+                    zeroCountIndex > defaultBranchIndex {
+                    violations.append("The default-branch fallback may run only after the current-ref lookup returns zero cache records.")
+                }
+            } else {
+                violations.append("The default-branch fallback may run only after the current-ref lookup returns zero cache records.")
+            }
+
+            let cacheKeyExtraction = "cache_key=\"$(printf '%s' \"${cache_metadata}\" | jq -er '.actions_caches[0].key')\""
+            if !provenanceStep.contains(cacheKeyExtraction) {
+                violations.append("The provenance step is missing cache_key extraction from Actions metadata.")
+            }
+            let cacheKeyEqualityGuard = "if [[ \"${cache_key}\" != \"${CACHE_KEY}\" ]]; then"
+            let cacheKeyGuardBody = provenanceStep.range(of: cacheKeyEqualityGuard).flatMap { guardStart in
+                let suffix = provenanceStep[guardStart.upperBound...]
+                return suffix.range(of: "\n          fi").map { guardEnd in
+                    String(provenanceStep[guardStart.lowerBound..<guardEnd.lowerBound])
+                }
+            }
+            if !provenanceStep.contains(cacheKeyEqualityGuard) ||
+                cacheKeyGuardBody?.contains("Cache metadata key ${cache_key} does not match current key ${CACHE_KEY}") != true ||
+                cacheKeyGuardBody?.contains("exit 1") != true {
+                violations.append("The provenance step needs a fail-closed cache-key equality guard.")
             }
         }
 
