@@ -366,6 +366,15 @@ release_gate_lock() {
 }
 trap release_gate_lock EXIT
 
+# Narrow self-test seam for scenario F's cleanup proof. The outer
+# `--lock-selftest` never receives this variable: it is passed only to the
+# nested bare invocation below, where ignoring TERM lets the observer prove
+# its TERM/KILL/reap path remains bounded and still reaches its own result
+# reporting. This is deliberately not a production control surface.
+if [[ "${MANIFOLD_GATE_SELFTEST_F_CHILD_MODE:-}" == "ignore-release" ]]; then
+    trap '' TERM
+fi
+
 # ── Lock self-test (hidden verbs, no swift test involved) ───────────────────
 # The cheapest honest proof the lock does what it claims: exercise the real
 # acquire/release code path above against an isolated lock directory (never
@@ -960,9 +969,84 @@ STUB
     # Same stub as scenario E: no real build, exits fast, emits the one
     # line test.sh's own MCP-filter tripwire would otherwise flag (moot for
     # a bare invocation — no --filter means MCP_FILTER_REQUESTED stays
-    # 0 — but harmless to include, and keeps the two stubs identical).
+    # 0 — but harmless to include). Unlike E, this stub deliberately pauses
+    # at a ready/release handshake. It is only reached AFTER the bare nested
+    # invocation's fallthrough acquire, so its ready marker lets the observer
+    # inspect a stable lock owner instead of racing a fast acquire/run/release
+    # lifecycle at a 50ms polling interval (#2479).
     cat > "$scenario_f_stub_dir/swift" <<'STUB'
 #!/usr/bin/env bash
+if [[ "${1:-}" == "--stub-effectiveness-probe" ]]; then
+    echo "[stub-swift] $*"
+    exit 0
+fi
+
+ready_file="${MANIFOLD_GATE_SELFTEST_F_READY_FILE:?'scenario F stub needs MANIFOLD_GATE_SELFTEST_F_READY_FILE'}"
+release_file="${MANIFOLD_GATE_SELFTEST_F_RELEASE_FILE:?'scenario F stub needs MANIFOLD_GATE_SELFTEST_F_RELEASE_FILE'}"
+stub_pid_file="${MANIFOLD_GATE_SELFTEST_F_STUB_PID_FILE:?'scenario F stub needs MANIFOLD_GATE_SELFTEST_F_STUB_PID_FILE'}"
+stub_start_identity="$(ps -p "$$" -o lstart=)"
+if [[ "${MANIFOLD_GATE_SELFTEST_F_STUB_MODE:-}" == "identity-mismatch" ]]; then
+    stub_start_identity="deliberately-mismatched-start-identity"
+fi
+printf '%s\n%s\n%s\n' "$$" "$stub_start_identity" "$0" > "$stub_pid_file"
+
+if [[ "${MANIFOLD_GATE_SELFTEST_F_STUB_MODE:-}" != "withhold-ready" ]]; then
+    touch "$ready_file"
+else
+    echo "[stub-swift] scenario F: deliberately withholding the ready signal"
+fi
+
+wait_i=0
+while [[ ! -e "$release_file" && $wait_i -lt 200 ]]; do
+    sleep 0.05
+    wait_i=$((wait_i + 1))
+done
+if [[ ! -e "$release_file" ]]; then
+    echo "[stub-swift] scenario F: FAIL (timed out after 10s waiting for the observer release signal)" >&2
+    exit 76
+fi
+
+# XCTest's bounded-reap fixture needs the nested test.sh process itself to
+# survive TERM, then leaves this direct child alive until the observer has
+# sent KILL and dropped the force-exit marker. That makes the cleanup path
+# real without leaking a long-running orphan if the nested shell is killed.
+if [[ "${MANIFOLD_GATE_SELFTEST_F_STUB_MODE:-}" == "ignore-release" ]]; then
+    force_exit_file="${MANIFOLD_GATE_SELFTEST_F_FORCE_EXIT_FILE:?'scenario F ignore-release fixture needs MANIFOLD_GATE_SELFTEST_F_FORCE_EXIT_FILE'}"
+    trap '' TERM
+    echo "[stub-swift] scenario F: deliberately ignoring observer release and TERM until cleanup"
+    while [[ ! -e "$force_exit_file" ]]; do
+        sleep 0.05
+    done
+    echo "[stub-swift] scenario F: cleanup force-exit observed"
+    exit 77
+fi
+
+# This deliberately records a mismatched start identity while retaining the
+# real PID. The observer must report the mismatch and refuse to signal that
+# PID; the marker below makes this a deterministic XCTest proof rather than a
+# PID-reuse race that is hard to reproduce intentionally.
+if [[ "${MANIFOLD_GATE_SELFTEST_F_STUB_MODE:-}" == "identity-mismatch" ]]; then
+    identity_observed_file="${MANIFOLD_GATE_SELFTEST_F_IDENTITY_MISMATCH_OBSERVED_FILE:?'scenario F identity fixture needs MANIFOLD_GATE_SELFTEST_F_IDENTITY_MISMATCH_OBSERVED_FILE'}"
+    force_exit_file="${MANIFOLD_GATE_SELFTEST_F_FORCE_EXIT_FILE:?'scenario F identity fixture needs MANIFOLD_GATE_SELFTEST_F_FORCE_EXIT_FILE'}"
+    term_seen_file="${MANIFOLD_GATE_SELFTEST_F_TERM_SEEN_FILE:?'scenario F identity fixture needs MANIFOLD_GATE_SELFTEST_F_TERM_SEEN_FILE'}"
+    trap 'touch "$term_seen_file"; exit 79' TERM
+    echo "[stub-swift] scenario F: deliberately reporting a mismatched process identity"
+    wait_i=0
+    while [[ ! -e "$identity_observed_file" && $wait_i -lt 300 ]]; do
+        sleep 0.05
+        wait_i=$((wait_i + 1))
+    done
+    if [[ ! -e "$identity_observed_file" ]]; then
+        echo "[stub-swift] scenario F: FAIL (identity mismatch was not observed before 15s timeout)" >&2
+        exit 80
+    fi
+    while [[ ! -e "$force_exit_file" ]]; do
+        sleep 0.05
+    done
+    echo "[stub-swift] scenario F: identity mismatch cleanup observed"
+    exit 77
+fi
+
 echo "[stub-swift] $*"
 echo "Test Case '-[ManifoldMCPTests.StubTest testStub]' passed (0.001 seconds)."
 exit 0
@@ -982,42 +1066,240 @@ STUB
     # through to the single acquire_gate_lock call at the bottom of the
     # script — the call site this scenario exists to prove is live.
     # MANIFOLD_TEST_OUTPUT_FILE overridden for the same reason as scenario E.
+    # The default PID record lives under scenario F's temp root. XCTest can
+    # request a separate record so it can verify the fixture stub is gone
+    # after this self-test has returned.
+    local scenario_f_stub_pid_file="${MANIFOLD_GATE_SELFTEST_F_STUB_PID_RECORD_FILE:-$scenario_f_root/stub.pid}"
+    local scenario_f_identity_observed_file="$scenario_f_root/identity-mismatch-observed"
+    local scenario_f_term_seen_file="${MANIFOLD_GATE_SELFTEST_F_TERM_SEEN_FILE:-$scenario_f_root/stub-term-seen}"
+    rm -f "$scenario_f_stub_pid_file"
+    rm -f "$scenario_f_identity_observed_file" "$scenario_f_term_seen_file"
     PATH="$scenario_f_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_f_lock" \
         MANIFOLD_TEST_OUTPUT_FILE="$scenario_f_root/nested-test-output.log" \
+        MANIFOLD_GATE_SELFTEST_F_READY_FILE="$scenario_f_root/ready" \
+        MANIFOLD_GATE_SELFTEST_F_RELEASE_FILE="$scenario_f_root/release" \
+        MANIFOLD_GATE_SELFTEST_F_FORCE_EXIT_FILE="$scenario_f_root/force-exit" \
+        MANIFOLD_GATE_SELFTEST_F_STUB_PID_FILE="$scenario_f_stub_pid_file" \
+        MANIFOLD_GATE_SELFTEST_F_IDENTITY_MISMATCH_OBSERVED_FILE="$scenario_f_identity_observed_file" \
+        MANIFOLD_GATE_SELFTEST_F_TERM_SEEN_FILE="$scenario_f_term_seen_file" \
+        MANIFOLD_GATE_SELFTEST_F_CHILD_MODE="${MANIFOLD_GATE_SELFTEST_F_STUB_MODE:-}" \
         "$scenario_f_copy" > "$scenario_f_log" 2>&1 &
     local scenario_f_pid=$!
 
-    local scenario_f_samples="" scenario_f_sample_count=0
+    # The stub reaches its ready marker only after the nested invocation has
+    # passed the fallthrough acquire. Wait for that bounded handshake, then
+    # inspect the lock exactly once while the stub is deliberately held. This
+    # avoids the old n=0 false-red: a successful stub used to acquire, run,
+    # and release entirely between two 50ms observer samples.
+    local scenario_f_ready_file="$scenario_f_root/ready"
+    local scenario_f_release_file="$scenario_f_root/release"
+    local scenario_f_ready=0 scenario_f_handshake_status="ready"
+    local scenario_f_lock_owner="<not-observed>"
     local scenario_f_poll_i=0
-    while kill -0 "$scenario_f_pid" 2>/dev/null && [[ $scenario_f_poll_i -lt 200 ]]; do
+    while [[ ! -e "$scenario_f_ready_file" ]] && kill -0 "$scenario_f_pid" 2>/dev/null && [[ $scenario_f_poll_i -lt 100 ]]; do
+        sleep 0.05
+        scenario_f_poll_i=$((scenario_f_poll_i + 1))
+    done
+    if [[ -e "$scenario_f_ready_file" ]]; then
+        scenario_f_ready=1
         if [[ -s "$scenario_f_lock" ]]; then
-            local scenario_f_sample
-            scenario_f_sample="$(sed -n '1p' "$scenario_f_lock" 2>/dev/null)" || scenario_f_sample=""
-            if [[ -n "$scenario_f_sample" ]]; then
-                scenario_f_samples="$scenario_f_samples $scenario_f_sample"
-                scenario_f_sample_count=$((scenario_f_sample_count + 1))
-            fi
+            scenario_f_lock_owner="$(sed -n '1p' "$scenario_f_lock" 2>/dev/null)" || scenario_f_lock_owner=""
+            [[ -z "$scenario_f_lock_owner" ]] && scenario_f_lock_owner="<empty>"
+        else
+            scenario_f_lock_owner="<missing>"
         fi
+    elif [[ $scenario_f_poll_i -ge 100 ]]; then
+        scenario_f_handshake_status="timed out waiting 5s for ready marker"
+    else
+        scenario_f_handshake_status="child exited before ready marker"
+    fi
+
+    # Always release the stub, including when the ready marker or lock is
+    # absent. A sabotaged call site must report a deterministic failure, not
+    # strand a child until an outer timeout happens to clean it up.
+    touch "$scenario_f_release_file"
+
+    # The nested run should exit immediately once released. If it does not,
+    # clean it up with two separately bounded grace periods. Do NOT call an
+    # unconditional `wait` after TERM/KILL: under `set -e`, a non-zero wait
+    # could abort before scenario F and the aggregate RESULT are printed, and
+    # a pathological child could make that wait hang forever.
+    local scenario_f_exit_timeout=0 scenario_f_exit=125
+    local scenario_f_reap_status="reaped-normally"
+    local scenario_f_cleanup_stage="none"
+    scenario_f_poll_i=0
+    while kill -0 "$scenario_f_pid" 2>/dev/null && [[ $scenario_f_poll_i -lt 200 ]]; do
         sleep 0.05
         scenario_f_poll_i=$((scenario_f_poll_i + 1))
     done
     if kill -0 "$scenario_f_pid" 2>/dev/null; then
-        kill -TERM "$scenario_f_pid" 2>/dev/null || true
-        sleep 1
-        kill -KILL "$scenario_f_pid" 2>/dev/null || true
+        scenario_f_exit_timeout=1
+        scenario_f_cleanup_stage="TERM"
+        if ! kill -TERM "$scenario_f_pid" 2>/dev/null; then
+            scenario_f_reap_status="TERM-send-failed"
+        fi
+        scenario_f_poll_i=0
+        while kill -0 "$scenario_f_pid" 2>/dev/null && [[ $scenario_f_poll_i -lt 20 ]]; do
+            sleep 0.05
+            scenario_f_poll_i=$((scenario_f_poll_i + 1))
+        done
+        if kill -0 "$scenario_f_pid" 2>/dev/null; then
+            scenario_f_cleanup_stage="KILL"
+            if ! kill -KILL "$scenario_f_pid" 2>/dev/null; then
+                scenario_f_reap_status="KILL-send-failed"
+            fi
+            scenario_f_poll_i=0
+            while kill -0 "$scenario_f_pid" 2>/dev/null && [[ $scenario_f_poll_i -lt 20 ]]; do
+                sleep 0.05
+                scenario_f_poll_i=$((scenario_f_poll_i + 1))
+            done
+        fi
     fi
-    wait "$scenario_f_pid" 2>/dev/null
-    local scenario_f_exit=$?
+    if kill -0 "$scenario_f_pid" 2>/dev/null; then
+        scenario_f_exit=124
+        scenario_f_reap_status="still-live-after-${scenario_f_cleanup_stage}"
+    elif wait "$scenario_f_pid" 2>/dev/null; then
+        scenario_f_exit=0
+        case "$scenario_f_cleanup_stage" in
+            TERM) scenario_f_reap_status="reaped-after-TERM" ;;
+            KILL) scenario_f_reap_status="reaped-after-KILL" ;;
+        esac
+    else
+        scenario_f_exit=$?
+        case "$scenario_f_cleanup_stage" in
+            TERM) scenario_f_reap_status="reaped-after-TERM" ;;
+            KILL) scenario_f_reap_status="reaped-after-KILL" ;;
+        esac
+    fi
+    # The ignore-release fixture's direct stub child becomes orphaned when
+    # its TERM-ignoring parent is KILLed. Keep the force-exit marker and the
+    # temp root alive until that exact, recorded stub identity has gone away.
+    # A numeric PID alone is unsafe: it can be reused after the stub exits.
+    # Before every TERM/KILL, corroborate PID + process start identity + the
+    # unique scenario-F stub command path; a mismatch is loud and NEVER gets
+    # signalled. This remains a poll protocol rather than `wait`, since the
+    # stub is no longer our direct child once the nested shell is KILLed.
+    local scenario_f_stub_pid="" scenario_f_stub_start_identity="" scenario_f_stub_pid_recorded=0
+    local scenario_f_stub_reap_complete=0 scenario_f_stub_identity_mismatch=0
+    local scenario_f_stub_reap_status="missing-pid-record"
+    if [[ -s "$scenario_f_stub_pid_file" ]]; then
+        scenario_f_stub_pid="$(sed -n '1p' "$scenario_f_stub_pid_file" 2>/dev/null)" || scenario_f_stub_pid=""
+        scenario_f_stub_start_identity="$(sed -n '2p' "$scenario_f_stub_pid_file" 2>/dev/null)" || scenario_f_stub_start_identity=""
+    fi
+
+    scenario_f_stub_identity_state() {
+        local current_start_identity current_command
+        if ! kill -0 "$scenario_f_stub_pid" 2>/dev/null; then
+            return 1  # gone
+        fi
+        if ! current_start_identity="$(ps -p "$scenario_f_stub_pid" -o lstart= 2>/dev/null)"; then
+            return 2  # identity cannot be corroborated
+        fi
+        if ! current_command="$(ps -p "$scenario_f_stub_pid" -o command= 2>/dev/null)"; then
+            return 2
+        fi
+        if [[ "$current_start_identity" == "$scenario_f_stub_start_identity" \
+              && "$current_command" == *"$scenario_f_stub_dir/swift"* ]]; then
+            return 0  # the exact fixture stub is still alive
+        fi
+        return 2  # PID reuse or a non-fixture process: never signal it
+    }
+
+    touch "$scenario_f_root/force-exit"
+    if [[ "$scenario_f_stub_pid" =~ ^[0-9]+$ && -n "$scenario_f_stub_start_identity" ]]; then
+        scenario_f_stub_pid_recorded=1
+        scenario_f_poll_i=0
+        while [[ $scenario_f_poll_i -lt 20 ]]; do
+            if scenario_f_stub_identity_state; then
+                scenario_f_stub_state=0
+            else
+                scenario_f_stub_state=$?
+            fi
+            [[ $scenario_f_stub_state -ne 0 ]] && break
+            sleep 0.05
+            scenario_f_poll_i=$((scenario_f_poll_i + 1))
+        done
+        if [[ $scenario_f_stub_state -eq 2 ]]; then
+            scenario_f_stub_identity_mismatch=1
+            scenario_f_stub_reap_status="identity-mismatch"
+            touch "$scenario_f_identity_observed_file"
+        elif [[ $scenario_f_stub_state -eq 0 ]]; then
+            # Revalidate immediately before signalling: a reused PID must
+            # take the mismatch branch above, never receive TERM or KILL.
+            if scenario_f_stub_identity_state; then
+                scenario_f_stub_state=0
+            else
+                scenario_f_stub_state=$?
+            fi
+            if [[ $scenario_f_stub_state -eq 0 ]] && kill -TERM "$scenario_f_stub_pid" 2>/dev/null; then
+                scenario_f_stub_reap_status="TERM-sent"
+            elif [[ $scenario_f_stub_state -eq 0 ]]; then
+                scenario_f_stub_reap_status="TERM-send-failed"
+            else
+                scenario_f_stub_identity_mismatch=1
+                scenario_f_stub_reap_status="identity-mismatch-before-TERM"
+                touch "$scenario_f_identity_observed_file"
+            fi
+            scenario_f_poll_i=0
+            while [[ $scenario_f_stub_identity_mismatch -eq 0 && $scenario_f_poll_i -lt 20 ]]; do
+                if scenario_f_stub_identity_state; then
+                    scenario_f_stub_state=0
+                else
+                    scenario_f_stub_state=$?
+                fi
+                [[ $scenario_f_stub_state -ne 0 ]] && break
+                sleep 0.05
+                scenario_f_poll_i=$((scenario_f_poll_i + 1))
+            done
+            if [[ $scenario_f_stub_state -eq 2 ]]; then
+                scenario_f_stub_identity_mismatch=1
+                scenario_f_stub_reap_status="identity-mismatch-before-KILL"
+                touch "$scenario_f_identity_observed_file"
+            elif [[ $scenario_f_stub_state -eq 0 ]]; then
+                if scenario_f_stub_identity_state; then
+                    scenario_f_stub_state=0
+                else
+                    scenario_f_stub_state=$?
+                fi
+                if [[ $scenario_f_stub_state -eq 0 ]] && kill -KILL "$scenario_f_stub_pid" 2>/dev/null; then
+                    scenario_f_stub_reap_status="KILL-sent"
+                elif [[ $scenario_f_stub_state -eq 0 ]]; then
+                    scenario_f_stub_reap_status="KILL-send-failed"
+                else
+                    scenario_f_stub_identity_mismatch=1
+                    scenario_f_stub_reap_status="identity-mismatch-before-KILL"
+                    touch "$scenario_f_identity_observed_file"
+                fi
+            fi
+        fi
+
+        # A mismatch fixture has now received its observation marker and the
+        # force-exit marker, but no signal. Wait boundedly for that known stub
+        # to leave before deleting its root; if an unrelated process reused
+        # the PID, preserve the loud mismatch rather than touching it.
+        scenario_f_poll_i=0
+        while [[ $scenario_f_poll_i -lt 20 ]]; do
+            if ! kill -0 "$scenario_f_stub_pid" 2>/dev/null; then
+                scenario_f_stub_reap_complete=1
+                break
+            fi
+            sleep 0.05
+            scenario_f_poll_i=$((scenario_f_poll_i + 1))
+        done
+        if [[ $scenario_f_stub_reap_complete -eq 1 ]]; then
+            if [[ $scenario_f_stub_identity_mismatch -eq 1 ]]; then
+                scenario_f_stub_reap_status="identity-mismatch-reaped-after-force-exit"
+            else
+                scenario_f_stub_reap_status="reaped-after-force-exit"
+            fi
+        else
+            scenario_f_stub_reap_status="still-live-after-${scenario_f_stub_reap_status}"
+        fi
+    fi
     cat "$scenario_f_log"
 
-    local scenario_f_samples_ok=1
-    if [[ $scenario_f_sample_count -eq 0 ]]; then
-        scenario_f_samples_ok=0
-    fi
-    local scenario_f_s
-    for scenario_f_s in $scenario_f_samples; do
-        [[ "$scenario_f_s" == "$scenario_f_pid" ]] || scenario_f_samples_ok=0
-    done
+    local scenario_f_owner_ok=0
+    [[ "$scenario_f_lock_owner" == "$scenario_f_pid" ]] && scenario_f_owner_ok=1
 
     local scenario_f_lock_gone=1
     [[ -e "$scenario_f_lock" ]] && scenario_f_lock_gone=0
@@ -1025,11 +1307,12 @@ STUB
     local scenario_f_stub_lines
     scenario_f_stub_lines="$(grep -c '^\[stub-swift\]' "$scenario_f_log")" || scenario_f_stub_lines=0
 
-    if [[ $scenario_f_exit -eq 0 && $scenario_f_samples_ok -eq 1 && $scenario_f_lock_gone -eq 1 \
+    if [[ $scenario_f_exit -eq 0 && $scenario_f_exit_timeout -eq 0 && $scenario_f_ready -eq 1 && $scenario_f_owner_ok -eq 1 && $scenario_f_lock_gone -eq 1 \
+          && $scenario_f_stub_pid_recorded -eq 1 && $scenario_f_stub_reap_complete -eq 1 \
           && $scenario_f_stub_lines -eq 1 ]]; then
-        echo "[lock-selftest] scenario F: PASS (bare invocation pid ${scenario_f_pid} acquired the lock via the fallthrough call site, ${scenario_f_sample_count} sample(s), ran against the stub \`swift\`, lock file gone)"
+        echo "[lock-selftest] scenario F: PASS (bare invocation pid ${scenario_f_pid} held the lock via the fallthrough call site at the ready/release handshake, ran once against the stub \`swift\`, released cleanly, lock file gone)"
     else
-        echo "[lock-selftest] scenario F: FAIL (exit=${scenario_f_exit} samples_ok=${scenario_f_samples_ok} (n=${scenario_f_sample_count}, samples='${scenario_f_samples}', expected pid=${scenario_f_pid}) stub_invocations=${scenario_f_stub_lines}/1 lock_gone=${scenario_f_lock_gone})"
+        echo "[lock-selftest] scenario F: FAIL (exit=${scenario_f_exit} exit_timeout=${scenario_f_exit_timeout} reap_status=${scenario_f_reap_status} stub_pid=${scenario_f_stub_pid:-<missing>} stub_reap_status=${scenario_f_stub_reap_status} handshake_ready=${scenario_f_ready} (${scenario_f_handshake_status}) lock_owner=${scenario_f_lock_owner} (expected pid=${scenario_f_pid}) stub_invocations=${scenario_f_stub_lines}/1 lock_gone=${scenario_f_lock_gone})"
         failures=$((failures + 1))
     fi
 
@@ -1532,6 +1815,8 @@ fi
 # by the three-invocation shape above — those children see
 # MANIFOLD_GATE_LOCK_OWNER_PID already exported by their parent and return
 # immediately without re-acquiring (see acquire_gate_lock's doc comment).
+# FALLTHROUGH_GATE_LOCK_ACQUIRE: scenario F's sabotage test removes exactly
+# this call site and must make --lock-selftest fail deterministically.
 acquire_gate_lock
 echo "Running swift test in: $PACKAGE_DIR"
 echo "Output captured to: $OUTPUT_FILE"

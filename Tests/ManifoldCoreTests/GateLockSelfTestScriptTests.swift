@@ -1,5 +1,6 @@
 import XCTest
 import os
+import Darwin
 
 /// Integration test for the machine-wide gate-lock serialization in
 /// `scripts/test.sh` (2026-08-09 incident: six concurrent worker gates
@@ -200,6 +201,74 @@ final class GateLockSelfTestScriptTests: XCTestCase {
         return (process.terminationStatus, output)
     }
 
+    private func isProcessAlive(_ pid: pid_t) -> Bool {
+        guard pid > 0 else { return false }
+        if kill(pid, 0) == 0 { return true }
+        return errno == EPERM
+    }
+
+    private struct StubProcessIdentity {
+        let pid: pid_t
+        let startIdentity: String
+        let stubCommandPath: String
+    }
+
+    private func recordedStubIdentity(at record: URL) -> StubProcessIdentity? {
+        guard let text = try? String(contentsOf: record, encoding: .utf8),
+              let lines = Optional(text.split(whereSeparator: \.isNewline)),
+              lines.count >= 3,
+              let pid = pid_t(String(lines[0])),
+              !lines[1].isEmpty,
+              !lines[2].isEmpty else { return nil }
+        return StubProcessIdentity(
+            pid: pid,
+            startIdentity: String(lines[1]),
+            stubCommandPath: String(lines[2])
+        )
+    }
+
+    private func psValue(pid: pid_t, field: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-p", String(pid), "-o", "\(field)="]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let value = output.trimmingCharacters(in: .newlines)
+        return value.isEmpty ? nil : value
+    }
+
+    private func processSnapshot(pid: pid_t) -> (startIdentity: String, command: String)? {
+        guard let startIdentity = psValue(pid: pid, field: "lstart"),
+              let command = psValue(pid: pid, field: "command") else { return nil }
+        return (startIdentity, command)
+    }
+
+    private func recordedStubIsStillOwned(_ identity: StubProcessIdentity) -> Bool {
+        guard isProcessAlive(identity.pid),
+              let snapshot = processSnapshot(pid: identity.pid) else { return false }
+        return snapshot.startIdentity == identity.startIdentity
+            && snapshot.command.contains(identity.stubCommandPath)
+    }
+
+    private func cleanupRecordedStubIfStillOwned(
+        _ identity: StubProcessIdentity,
+        signal: (pid_t) -> Void
+    ) {
+        // Signal only after PID + start identity + unique stub path agree.
+        // A dead/reused or deliberately mismatched record is left alone.
+        guard recordedStubIsStillOwned(identity) else { return }
+        signal(identity.pid)
+    }
+
     /// Runs all seven self-test scenarios (waiting on a live holder;
     /// reclaiming a dead holder's lock; rejecting a widowed sentinel;
     /// concurrent-reclaim serialization; the lock actually being wired into
@@ -325,6 +394,186 @@ final class GateLockSelfTestScriptTests: XCTestCase {
             "an inherited-but-widowed sentinel must be reported as stale, never trusted silently:\n\(result.output)"
         )
         XCTAssertTrue(result.output.contains("RESULT: PASS"), "overall self-test result line missing:\n\(result.output)")
+    }
+
+    /// Scenario F's ready/release barrier is intentionally a real
+    /// end-to-end contract rather than a timing-sensitive observer. Remove
+    /// only the fallthrough call site from a temporary copy and assert the
+    /// actual self-test reports both scenario F and its aggregate result as
+    /// failed. The stub still reaches its ready marker, so this is a direct
+    /// proof that the failure is the missing lock owner — not a flaky sample
+    /// that happened to miss a fast successful invocation (#2479).
+    func test_lockSelfTest_fallthroughAcquireSabotageFailsDeterministically() throws {
+        guard let root = repoRoot() else {
+            XCTFail("scripts/test.sh not found from test bundle location — path derivation is broken, not legitimately absent")
+            return
+        }
+        let script = root.appendingPathComponent("scripts/test.sh")
+        let source = try String(contentsOf: script, encoding: .utf8)
+        let fallthroughCallSite = """
+        # FALLTHROUGH_GATE_LOCK_ACQUIRE: scenario F's sabotage test removes exactly
+        # this call site and must make --lock-selftest fail deterministically.
+        acquire_gate_lock
+        """
+        XCTAssertTrue(source.contains(fallthroughCallSite), "fallthrough acquire marker missing; sabotage would not target the intended call site")
+        let sabotaged = source.replacingOccurrences(
+            of: fallthroughCallSite,
+            with: "# FALLTHROUGH_GATE_LOCK_ACQUIRE: deliberately removed by XCTest sabotage.\n"
+        )
+
+        let sandbox = FileManager.default.temporaryDirectory
+            .appendingPathComponent("manifoldkit-gate-lock-fallthrough-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+        try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        let sabotagedScript = sandbox.appendingPathComponent("test.sh")
+        try sabotaged.write(to: sabotagedScript, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: sabotagedScript.path
+        )
+
+        let result = try run(script: sabotagedScript, args: ["--lock-selftest"], timeout: 120)
+        XCTAssertNotEqual(result.status, 0, "removing only the fallthrough acquire must fail the real self-test:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("scenario F: FAIL"), "the fallthrough sabotage must fail scenario F specifically:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("handshake_ready=1"), "the sabotaged run must reach the stable handshake, not fail on an observer race:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("lock_owner=<missing>"), "the sabotaged run must report the missing owner explicitly:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("RESULT: FAIL"), "the aggregate self-test must fail when scenario F fails:\n\(result.output)")
+    }
+
+    /// A missing ready marker is a degraded handshake path, not a reason to
+    /// wait indefinitely or silently accept a bare invocation. The in-script
+    /// stub seam is limited to the self-test and gives this XCTest a bounded
+    /// way to prove timeout reporting stays loud.
+    func test_lockSelfTest_fallthroughHandshakeTimeoutIsReported() throws {
+        guard let root = repoRoot() else {
+            XCTFail("scripts/test.sh not found from test bundle location — path derivation is broken, not legitimately absent")
+            return
+        }
+        let script = root.appendingPathComponent("scripts/test.sh")
+        let result = try run(
+            script: script,
+            args: ["--lock-selftest"],
+            environment: ["MANIFOLD_GATE_SELFTEST_F_STUB_MODE": "withhold-ready"],
+            timeout: 120
+        )
+
+        XCTAssertNotEqual(result.status, 0, "a missing scenario F ready marker must fail the self-test:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("scenario F: deliberately withholding the ready signal"), "the degraded stub path must announce itself:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("scenario F: FAIL"), "the missing-ready path must fail scenario F:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("handshake_ready=0 (timed out waiting 5s for ready marker)"), "the handshake timeout must be reported explicitly:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("RESULT: FAIL"), "the aggregate self-test must fail on a handshake timeout:\n\(result.output)")
+    }
+
+    /// The observer's post-release cleanup is an error path too: if the
+    /// nested bare invocation ignores its release signal and TERM, scenario F
+    /// must finish its bounded KILL/reap attempt and print both its own and
+    /// the aggregate failure. This seam specifically prevents an unguarded
+    /// `wait` under `set -e` from hanging or aborting the self-test before
+    /// either result line is emitted.
+    func test_lockSelfTest_fallthroughStuckChildIsBoundedAndReported() throws {
+        guard let root = repoRoot() else {
+            XCTFail("scripts/test.sh not found from test bundle location — path derivation is broken, not legitimately absent")
+            return
+        }
+        let script = root.appendingPathComponent("scripts/test.sh")
+        let sandbox = FileManager.default.temporaryDirectory
+            .appendingPathComponent("manifoldkit-gate-lock-stuck-child-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+        let stubPIDRecord = sandbox.appendingPathComponent("stub.pid")
+        defer {
+            // Keep a failing future regression test from leaking a fixture;
+            // this is deliberately only the PID recorded by its own stub.
+            if let identity = recordedStubIdentity(at: stubPIDRecord) {
+                cleanupRecordedStubIfStillOwned(identity) { pid in
+                    _ = kill(pid, SIGKILL)
+                }
+            }
+        }
+        let result = try run(
+            script: script,
+            args: ["--lock-selftest"],
+            environment: [
+                "MANIFOLD_GATE_SELFTEST_F_STUB_MODE": "ignore-release",
+                "MANIFOLD_GATE_SELFTEST_F_STUB_PID_RECORD_FILE": stubPIDRecord.path,
+            ],
+            timeout: 120
+        )
+        guard let recordedIdentity = recordedStubIdentity(at: stubPIDRecord) else {
+            XCTFail("the stuck-child fixture did not record its own PID")
+            return
+        }
+
+        XCTAssertNotEqual(result.status, 0, "a scenario F child that ignores release and TERM must fail the self-test:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("scenario F: deliberately ignoring observer release and TERM until cleanup"), "the stuck-child fixture must announce itself:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("scenario F: FAIL"), "the bounded cleanup path must reach scenario F's explicit failure:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("exit_timeout=1"), "the post-release exit timeout must be reported:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("reap_status=reaped-after-KILL"), "the TERM/KILL reaping result must be reported instead of an unbounded wait:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("stub_reap_status=reaped-after-force-exit"), "the observer must retain the force-exit marker until the orphaned stub is gone:\n\(result.output)")
+        XCTAssertFalse(isProcessAlive(recordedIdentity.pid), "the exact PID recorded by the fixture stub must be gone once --lock-selftest returns")
+        XCTAssertTrue(result.output.contains("RESULT: FAIL"), "the bounded cleanup path must reach the aggregate failure:\n\(result.output)")
+    }
+
+    /// A numeric PID can be reused after the fixture exits. This seam writes
+    /// the real PID with an intentionally wrong start identity, holds until
+    /// the observer reports that mismatch, and records any TERM it receives.
+    /// The observer must fail loudly and release the fixture without ever
+    /// signalling the uncorroborated PID.
+    func test_lockSelfTest_identityMismatchRefusesToSignalRecordedPID() throws {
+        guard let root = repoRoot() else {
+            XCTFail("scripts/test.sh not found from test bundle location — path derivation is broken, not legitimately absent")
+            return
+        }
+        let sandbox = FileManager.default.temporaryDirectory
+            .appendingPathComponent("manifoldkit-gate-lock-identity-mismatch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+        let stubPIDRecord = sandbox.appendingPathComponent("stub.pid")
+        let termSeen = sandbox.appendingPathComponent("term-seen")
+        defer {
+            if let identity = recordedStubIdentity(at: stubPIDRecord) {
+                cleanupRecordedStubIfStillOwned(identity) { pid in
+                    _ = kill(pid, SIGKILL)
+                }
+            }
+        }
+
+        let result = try run(
+            script: root.appendingPathComponent("scripts/test.sh"),
+            args: ["--lock-selftest"],
+            environment: [
+                "MANIFOLD_GATE_SELFTEST_F_STUB_MODE": "identity-mismatch",
+                "MANIFOLD_GATE_SELFTEST_F_STUB_PID_RECORD_FILE": stubPIDRecord.path,
+                "MANIFOLD_GATE_SELFTEST_F_TERM_SEEN_FILE": termSeen.path,
+            ],
+            timeout: 120
+        )
+        guard let recordedIdentity = recordedStubIdentity(at: stubPIDRecord) else {
+            XCTFail("the identity-mismatch fixture did not record its own PID")
+            return
+        }
+
+        XCTAssertNotEqual(result.status, 0, "an uncorroborated scenario F PID must fail the self-test:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("deliberately reporting a mismatched process identity"), "the identity-mismatch fixture must announce itself:\n\(result.output)")
+        XCTAssertTrue(result.output.contains("stub_reap_status=identity-mismatch-reaped-after-force-exit"), "the mismatch must be reported rather than signalled:\n\(result.output)")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: termSeen.path), "the identity-mismatch fixture must not receive TERM")
+        XCTAssertFalse(isProcessAlive(recordedIdentity.pid), "the identity-mismatch fixture must exit after force cleanup")
+        XCTAssertTrue(result.output.contains("scenario F: FAIL") && result.output.contains("RESULT: FAIL"), "identity mismatch must fail scenario F and the aggregate self-test:\n\(result.output)")
+
+        guard let currentSnapshot = processSnapshot(pid: getpid()) else {
+            XCTFail("could not inspect this XCTest process for the cleanup mismatch seam")
+            return
+        }
+        let mismatchedCurrentProcess = StubProcessIdentity(
+            pid: getpid(),
+            startIdentity: "deliberately-wrong-start-identity",
+            stubCommandPath: currentSnapshot.command
+        )
+        var didAttemptSignal = false
+        cleanupRecordedStubIfStillOwned(mismatchedCurrentProcess) { _ in
+            didAttemptSignal = true
+        }
+        XCTAssertFalse(didAttemptSignal, "cleanup must refuse a live PID whose recorded start identity does not match")
     }
 
     /// `MANIFOLD_GATE_NO_LOCK=1` is the documented opt-out for a deliberate
