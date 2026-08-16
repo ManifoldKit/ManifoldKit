@@ -170,13 +170,13 @@ jobs:
 
           cache_id="$(printf '%s' "${cache_metadata}" | jq -er '.actions_caches[0].id')"
           cache_created_at="$(printf '%s' "${cache_metadata}" | jq -er '.actions_caches[0].created_at')"
-          cache_key="$(printf '%s' "${cache_metadata}" | jq -er '.actions_caches[0].key')"
-          if [[ "${cache_key}" != "${CACHE_KEY}" ]]; then
-            echo "::error::Cache metadata key ${cache_key} does not match current key ${CACHE_KEY}."
+          restored_cache_key="$(printf '%s' "${cache_metadata}" | jq -er '.actions_caches[0].key')"
+          if [[ "${restored_cache_key}" != "${CACHE_KEY}" ]]; then
+            echo "::error::Cache metadata key ${restored_cache_key} does not match current key ${CACHE_KEY}."
             exit 1
           fi
 
-          echo "cold-start cache provenance: id=${cache_id} key=${cache_key} createdAt=${cache_created_at} ref=${cache_ref}"
+          echo "cold-start cache provenance: id=${cache_id} key=${restored_cache_key} createdAt=${cache_created_at} ref=${cache_ref}"
 
       - name: Run tier-4 human cold-start gate
         run: |

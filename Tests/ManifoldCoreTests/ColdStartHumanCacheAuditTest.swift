@@ -86,7 +86,7 @@ final class ColdStartHumanCacheAuditTest: XCTestCase {
         )
 
         let withoutCacheKeyExtraction = workflow.replacingOccurrences(
-            of: "          cache_key=\"$(printf '%s' \"${cache_metadata}\" | jq -er '.actions_caches[0].key')\"\n",
+            of: "          restored_cache_key=\"$(printf '%s' \"${cache_metadata}\" | jq -er '.actions_caches[0].key')\"\n",
             with: ""
         )
         let keyExtractionViolations = Self.cachePolicyViolations(workflow: withoutCacheKeyExtraction)
@@ -96,7 +96,7 @@ final class ColdStartHumanCacheAuditTest: XCTestCase {
         )
 
         let withoutCacheKeyEquality = workflow.replacingOccurrences(
-            of: "          if [[ \"${cache_key}\" != \"${CACHE_KEY}\" ]]; then\n",
+            of: "          if [[ \"${restored_cache_key}\" != \"${CACHE_KEY}\" ]]; then\n",
             with: ""
         )
         let keyEqualityViolations = Self.cachePolicyViolations(workflow: withoutCacheKeyEquality)
@@ -106,8 +106,8 @@ final class ColdStartHumanCacheAuditTest: XCTestCase {
         )
 
         let equalityGuardWithoutExit = workflow.replacingOccurrences(
-            of: "            exit 1\n          fi\n\n          echo \"cold-start cache provenance: id=${cache_id} key=${cache_key} createdAt=${cache_created_at} ref=${cache_ref}\"",
-            with: "          fi\n\n          echo \"cold-start cache provenance: id=${cache_id} key=${cache_key} createdAt=${cache_created_at} ref=${cache_ref}\""
+            of: "            exit 1\n          fi\n\n          echo \"cold-start cache provenance: id=${cache_id} key=${restored_cache_key} createdAt=${cache_created_at} ref=${cache_ref}\"",
+            with: "          fi\n\n          echo \"cold-start cache provenance: id=${cache_id} key=${restored_cache_key} createdAt=${cache_created_at} ref=${cache_ref}\""
         )
         let guardExitViolations = Self.cachePolicyViolations(workflow: equalityGuardWithoutExit)
         XCTAssertTrue(
@@ -209,11 +209,11 @@ final class ColdStartHumanCacheAuditTest: XCTestCase {
                 violations.append("The default-branch fallback may run only after the current-ref lookup returns zero cache records.")
             }
 
-            let cacheKeyExtraction = "cache_key=\"$(printf '%s' \"${cache_metadata}\" | jq -er '.actions_caches[0].key')\""
+            let cacheKeyExtraction = "restored_cache_key=\"$(printf '%s' \"${cache_metadata}\" | jq -er '.actions_caches[0].key')\""
             if !provenanceStep.contains(cacheKeyExtraction) {
                 violations.append("The provenance step is missing cache_key extraction from Actions metadata.")
             }
-            let cacheKeyEqualityGuard = "if [[ \"${cache_key}\" != \"${CACHE_KEY}\" ]]; then"
+            let cacheKeyEqualityGuard = "if [[ \"${restored_cache_key}\" != \"${CACHE_KEY}\" ]]; then"
             let cacheKeyGuardBody = provenanceStep.range(of: cacheKeyEqualityGuard).flatMap { guardStart in
                 let suffix = provenanceStep[guardStart.upperBound...]
                 return suffix.range(of: "\n          fi").map { guardEnd in
@@ -221,7 +221,7 @@ final class ColdStartHumanCacheAuditTest: XCTestCase {
                 }
             }
             if !provenanceStep.contains(cacheKeyEqualityGuard) ||
-                cacheKeyGuardBody?.contains("Cache metadata key ${cache_key} does not match current key ${CACHE_KEY}") != true ||
+                cacheKeyGuardBody?.contains("Cache metadata key ${restored_cache_key} does not match current key ${CACHE_KEY}") != true ||
                 cacheKeyGuardBody?.contains("exit 1") != true {
                 violations.append("The provenance step needs a fail-closed cache-key equality guard.")
             }
