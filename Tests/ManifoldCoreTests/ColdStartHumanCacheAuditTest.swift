@@ -105,14 +105,54 @@ final class ColdStartHumanCacheAuditTest: XCTestCase {
             "A provenance record must fail closed when the restored key differs; got \(keyEqualityViolations)"
         )
 
+        let withoutRefQuery = workflow.replacingOccurrences(
+            of: "              --data-urlencode \"ref=$1\" \\\n",
+            with: ""
+        )
+        let refQueryViolations = Self.cachePolicyViolations(workflow: withoutRefQuery)
+        XCTAssertTrue(
+            refQueryViolations.contains { $0.contains("requested cache ref") },
+            "The metadata request must be constrained to the selected ref; got \(refQueryViolations)"
+        )
+
+        let withoutCacheRefExtraction = workflow.replacingOccurrences(
+            of: "          restored_cache_ref=\"$(printf '%s' \"${cache_metadata}\" | jq -er '.actions_caches[0].ref')\"\n",
+            with: ""
+        )
+        let refExtractionViolations = Self.cachePolicyViolations(workflow: withoutCacheRefExtraction)
+        XCTAssertTrue(
+            refExtractionViolations.contains { $0.contains("cache_ref extraction") },
+            "A provenance record must extract the restored cache ref; got \(refExtractionViolations)"
+        )
+
+        let withoutCacheRefEquality = workflow.replacingOccurrences(
+            of: "          if [[ \"${restored_cache_ref}\" != \"${cache_ref}\" ]]; then\n",
+            with: ""
+        )
+        let refEqualityViolations = Self.cachePolicyViolations(workflow: withoutCacheRefEquality)
+        XCTAssertTrue(
+            refEqualityViolations.contains { $0.contains("cache-ref equality guard") },
+            "A provenance record must fail closed when the restored ref differs; got \(refEqualityViolations)"
+        )
+
         let equalityGuardWithoutExit = workflow.replacingOccurrences(
-            of: "            exit 1\n          fi\n\n          echo \"cold-start cache provenance: id=${cache_id} key=${restored_cache_key} createdAt=${cache_created_at} ref=${cache_ref}\"",
-            with: "          fi\n\n          echo \"cold-start cache provenance: id=${cache_id} key=${restored_cache_key} createdAt=${cache_created_at} ref=${cache_ref}\""
+            of: "            exit 1\n          fi\n          if [[ \"${restored_cache_ref}\" != \"${cache_ref}\" ]]; then",
+            with: "          fi\n          if [[ \"${restored_cache_ref}\" != \"${cache_ref}\" ]]; then"
         )
         let guardExitViolations = Self.cachePolicyViolations(workflow: equalityGuardWithoutExit)
         XCTAssertTrue(
             guardExitViolations.contains { $0.contains("equality guard") },
             "A cache-key mismatch guard without a failing exit must be rejected; got \(guardExitViolations)"
+        )
+
+        let refGuardWithoutExit = workflow.replacingOccurrences(
+            of: "            exit 1\n          fi\n\n          echo \"cold-start cache provenance: id=${cache_id} key=${restored_cache_key} createdAt=${cache_created_at} ref=${restored_cache_ref}\"",
+            with: "          fi\n\n          echo \"cold-start cache provenance: id=${cache_id} key=${restored_cache_key} createdAt=${cache_created_at} ref=${restored_cache_ref}\""
+        )
+        let refGuardExitViolations = Self.cachePolicyViolations(workflow: refGuardWithoutExit)
+        XCTAssertTrue(
+            refGuardExitViolations.contains { $0.contains("cache-ref equality guard") },
+            "A cache-ref mismatch guard without a failing exit must be rejected; got \(refGuardExitViolations)"
         )
 
         let withoutProvenance = workflow.replacingOccurrences(
@@ -176,11 +216,15 @@ final class ColdStartHumanCacheAuditTest: XCTestCase {
                 "cache_created_at=",
                 "created_at",
                 "createdAt=${cache_created_at}",
-                "ref=${cache_ref}",
+                "ref=${restored_cache_ref}",
                 "${cache_count}\" != \"1\"",
             ]
             for fragment in requiredFragments where !provenanceStep.contains(fragment) {
                 violations.append("The provenance step is missing required evidence: `\(fragment)`.")
+            }
+
+            if !provenanceStep.contains("--data-urlencode \"ref=$1\"") {
+                violations.append("The metadata request must include the requested cache ref as a query constraint.")
             }
 
             let currentRefSelection = "cache_ref=\"${GITHUB_REF}\""
@@ -224,6 +268,23 @@ final class ColdStartHumanCacheAuditTest: XCTestCase {
                 cacheKeyGuardBody?.contains("Cache metadata key ${restored_cache_key} does not match current key ${CACHE_KEY}") != true ||
                 cacheKeyGuardBody?.contains("exit 1") != true {
                 violations.append("The provenance step needs a fail-closed cache-key equality guard.")
+            }
+
+            let cacheRefExtraction = "restored_cache_ref=\"$(printf '%s' \"${cache_metadata}\" | jq -er '.actions_caches[0].ref')\""
+            if !provenanceStep.contains(cacheRefExtraction) {
+                violations.append("The provenance step is missing cache_ref extraction from Actions metadata.")
+            }
+            let cacheRefEqualityGuard = "if [[ \"${restored_cache_ref}\" != \"${cache_ref}\" ]]; then"
+            let cacheRefGuardBody = provenanceStep.range(of: cacheRefEqualityGuard).flatMap { guardStart in
+                let suffix = provenanceStep[guardStart.upperBound...]
+                return suffix.range(of: "\n          fi").map { guardEnd in
+                    String(provenanceStep[guardStart.lowerBound..<guardEnd.lowerBound])
+                }
+            }
+            if !provenanceStep.contains(cacheRefEqualityGuard) ||
+                cacheRefGuardBody?.contains("Cache metadata ref ${restored_cache_ref} does not match requested ref ${cache_ref}") != true ||
+                cacheRefGuardBody?.contains("exit 1") != true {
+                violations.append("The provenance step needs a fail-closed cache-ref equality guard.")
             }
         }
 
