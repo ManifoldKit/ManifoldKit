@@ -398,9 +398,14 @@ struct RootView: View {
 }
 ```
 
+Set `.environment(\.endpointStore, bootstrap.endpointStore)` on `ChatView` or
+an ancestor. `ChatView` explicitly carries that custom environment value into
+the API-configuration sheet/popover content, so `APIConfigurationView` can
+read and write the bootstrap store.
+
 Hosts that don't use `ManifoldUIModelManagement` (e.g. cloud-only builds or apps with their own settings UI) can use `ChatView(showModelManagement:)` with no `.chatAPIConfiguration(_:)` modifier; `ChatView` supplies an empty API sheet for them.
 
-**LAST-WINS:** applying `.chatAPIConfiguration(_:)` more than once replaces the previous closure entirely — there is no merging. The closure is invoked at sheet/popover presentation time, not when the modifier is applied, so any `@Environment` or `@Bindable` lookups inside `APIConfigurationView` resolve against the live view tree rather than the value captured at construction.
+**LAST-WINS:** applying `.chatAPIConfiguration(_:)` more than once replaces the previous closure entirely — there is no merging. The closure is invoked at sheet/popover presentation time, not when the modifier is applied, so any `@Environment` or `@Bindable` lookups inside `APIConfigurationView` resolve against the live view tree rather than the value captured at construction. `ChatView` forwards its `endpointStore` value explicitly because custom environment keys do not reliably inherit across this presentation boundary.
 
 ## Next Steps
 

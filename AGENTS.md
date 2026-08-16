@@ -201,8 +201,8 @@ struct MyChatApp: App {
                     .environment(chatViewModel)
                     .environment(sessionManager)
                     .environment(modelManagement)
-                    // endpointStore env key lives in ManifoldUIModelManagement
-                    // (imported above) — not on the ManifoldKit umbrella alone.
+                    // ChatView re-injects this custom environment value into
+                    // its API-configuration sheet/popover content.
                     .environment(\.endpointStore, bootstrap.endpointStore)
                     .modelContainer(bootstrap.modelContainer)
             } else if let startupError {
@@ -252,9 +252,16 @@ struct MyChatApp: App {
             if let restored = await sessions.selectInitialSession() {
                 sessions.activeSession = restored
                 await vm.switchToSession(restored)
-            } else if let fresh = try? await sessions.createSession() {
-                sessions.activeSession = fresh
-                await vm.switchToSession(fresh)
+            } else {
+                do {
+                    let fresh = try await sessions.createSession()
+                    sessions.activeSession = fresh
+                    await vm.switchToSession(fresh)
+                } catch {
+                    // Do not leave a recipe user with an inert, sessionless chat.
+                    self.startupError = error
+                    return
+                }
             }
 
             // Sessions restore above; a *model* does not. Manual bootstrap does
