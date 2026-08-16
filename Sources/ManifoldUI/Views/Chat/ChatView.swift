@@ -45,6 +45,7 @@ import ManifoldInference
 public struct ChatView<APIConfig: View>: View {
 
     @Environment(ChatViewModel.self) private var viewModel
+    @Environment(\.endpointStore) private var endpointStore
     @Environment(\.manifoldTheme) private var theme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -59,6 +60,8 @@ public struct ChatView<APIConfig: View>: View {
     @State private var isExportPresented: Bool = false
     @State private var showClearConfirmation: Bool = false
     @State private var showAPIConfiguration: Bool = false
+    @Binding private var apiConfigurationPresentationTestingBinding: Bool
+    private var usesAPIConfigurationPresentationTestingBinding = false
     @State private var showModelSwitcher: Bool = false
     #if DEBUG
     @State private var showArchitectView: Bool = false
@@ -117,6 +120,7 @@ public struct ChatView<APIConfig: View>: View {
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
         self._showModelManagement = showModelManagement
+        self._apiConfigurationPresentationTestingBinding = .constant(false)
         self.linkPreviewProvider = linkPreviewProvider
         self.apiConfigurationBuilder = apiConfiguration
     }
@@ -180,6 +184,19 @@ public struct ChatView<APIConfig: View>: View {
         copy.contextMenuItemsBuilder = contextMenuItemsBuilder
         copy.customKindRenderer = customKindRenderer
         copy.modelSwitcherBuilder = modelSwitcherBuilder
+        return copy
+    }
+
+    /// Test-only state driver for the concrete sheet/popover owned by this
+    /// view. Kept internal so consumers do not gain a second configuration
+    /// presentation API; production enters the state through its recovery,
+    /// first-run, and settings actions.
+    func presentingAPIConfigurationForTesting(
+        _ isPresented: Binding<Bool>
+    ) -> ChatView<APIConfig> {
+        var copy = self
+        copy._apiConfigurationPresentationTestingBinding = isPresented
+        copy.usesAPIConfigurationPresentationTestingBinding = true
         return copy
     }
 
@@ -277,7 +294,24 @@ public struct ChatView<APIConfig: View>: View {
     // MARK: - Body
 
     public var body: some View {
-        chromeBody
+        let apiConfiguration = {
+            chatAPIConfigurationContent(
+                apiConfigurationBuilder,
+                endpointStore: endpointStore
+            )
+        }
+
+        chromeBody(apiConfiguration: apiConfiguration)
+        .onAppear {
+            if usesAPIConfigurationPresentationTestingBinding {
+                showAPIConfiguration = apiConfigurationPresentationTestingBinding
+            }
+        }
+        .onChange(of: apiConfigurationPresentationTestingBinding) { _, isPresented in
+            if usesAPIConfigurationPresentationTestingBinding {
+                showAPIConfiguration = isPresented
+            }
+        }
         // Cmd+Shift+M opens Model Management from anywhere in the chat view.
         // The button must be in the view hierarchy (not toolbar) to be always active.
         .background {
@@ -320,7 +354,7 @@ public struct ChatView<APIConfig: View>: View {
                 isSettingsPresented: $isSettingsPresented,
                 isExportPresented: $isExportPresented,
                 showClearConfirmation: $showClearConfirmation,
-                apiConfiguration: apiConfigurationBuilder
+                apiConfiguration: apiConfiguration
             )
             #if DEBUG
             ToolbarItem(placement: .primaryAction) {
@@ -339,14 +373,14 @@ public struct ChatView<APIConfig: View>: View {
             showClearConfirmation: $showClearConfirmation,
             isSettingsPresented: $isSettingsPresented,
             isExportPresented: $isExportPresented,
-            apiConfiguration: apiConfigurationBuilder
+            apiConfiguration: apiConfiguration
         )
         // API configuration: on compact size class (iPhone) or macOS, use a full sheet
         // because there is no stable toolbar anchor. On regular size class (iPad) the
         // presentation is anchored to the recovery button's popover.
         .chatAPIConfigurationPresentation(
             isPresented: $showAPIConfiguration,
-            apiConfiguration: apiConfigurationBuilder
+            apiConfiguration: apiConfiguration
         )
         // Model-switcher presentation lives on the stable content hierarchy,
         // NOT on the toolbar chip button — a chip collapsed into the "More"
@@ -390,13 +424,13 @@ public struct ChatView<APIConfig: View>: View {
 
     /// The banner/loading/message-list/upgrade-hint stack shared by both
     /// chrome shapes below — everything above the composer seam.
-    private var mainContent: some View {
+    private func mainContent(apiConfiguration: @escaping () -> AnyView) -> some View {
         VStack(spacing: 0) {
             ChatErrorRecoveryBanner(
                 viewModel: viewModel,
                 showAPIConfiguration: $showAPIConfiguration,
                 showModelManagement: $showModelManagement,
-                apiConfiguration: apiConfigurationBuilder
+                apiConfiguration: apiConfiguration
             )
 
             if viewModel.isLoading {
@@ -432,19 +466,19 @@ public struct ChatView<APIConfig: View>: View {
     /// (`ChatComposerSection` itself lives outside this tranche's owned
     /// files), and macOS chrome must stay system-toolbar-owned regardless.
     @ViewBuilder
-    private var chromeBody: some View {
+    private func chromeBody(apiConfiguration: @escaping () -> AnyView) -> some View {
         #if os(iOS)
-        edgeToEdgeGlassChromeBody
+        edgeToEdgeGlassChromeBody(apiConfiguration: apiConfiguration)
         #else
-        classicChromeBody
+        classicChromeBody(apiConfiguration: apiConfiguration)
         #endif
     }
 
     /// Pre-refresh shape: an opaque `Divider()` seam between the transcript
     /// and the composer, stacked in a plain `VStack`. Still used on macOS.
-    private var classicChromeBody: some View {
+    private func classicChromeBody(apiConfiguration: @escaping () -> AnyView) -> some View {
         VStack(spacing: 0) {
-            mainContent
+            mainContent(apiConfiguration: apiConfiguration)
             Divider()
                 .accessibilityHidden(true)
             ChatComposerSection(accessoryBuilder: composerAccessoryBuilder)
@@ -460,8 +494,8 @@ public struct ChatView<APIConfig: View>: View {
     /// translucent ``manifoldGlass(_:in:)`` background is what lets content
     /// visibly slide beneath it while scrolling, same contract as a
     /// `List`/`ScrollView` floating toolbar.
-    private var edgeToEdgeGlassChromeBody: some View {
-        mainContent
+    private func edgeToEdgeGlassChromeBody(apiConfiguration: @escaping () -> AnyView) -> some View {
+        mainContent(apiConfiguration: apiConfiguration)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 ChatComposerSection(accessoryBuilder: composerAccessoryBuilder)
                     .manifoldGlass(theme, in: Rectangle())

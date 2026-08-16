@@ -262,6 +262,8 @@ struct DemoContentView: View {
                     EmptyView()
                     #endif
                 }
+                // The app injects runtime.endpointStore above this view;
+                // ChatView carries it across its sheet/popover boundary.
                 .chatAPIConfiguration { APIConfigurationView() }
                 // Theming, all three layers composed: Layer 1 tokens via
                 // `.chatTheme(_:)`, Layer 2 bubble chrome via

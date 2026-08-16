@@ -54,7 +54,6 @@ DocumentLibraryViewModel.refresh() Func
 EnvironmentValues Struct
 EnvironmentValues attrs: Available
 EnvironmentValues conformances: Copyable,CustomStringConvertible,Escapable,Sendable,SendableMetatype
-EnvironmentValues.endpointStore Var
 ImageModelInstallView Struct
 ImageModelInstallView attrs: Custom
 ImageModelInstallView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
