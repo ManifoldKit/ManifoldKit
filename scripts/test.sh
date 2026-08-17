@@ -456,6 +456,15 @@ run_gate_lock_selftest() {
     local scenario_b_lock="$selftest_root/scenario-b.lock"
     mkdir -p "$selftest_root"
     local failures=0
+    # CI (and `scripts/test.sh --profile local`) wrap this process in
+    # ci-test-with-watchdog.sh, which exports MANIFOLD_WATCHDOG_ACTIVE=1.
+    # H and I exist to prove the wrap / fail-closed paths; if we inherit
+    # the sentinel they hit the already-watched passthrough instead and
+    # stay green when the wrap is deleted. Unset it here so those
+    # scenarios drive the real wrap. Each nested invocation still
+    # overrides MANIFOLD_TEST_OUTPUT_FILE, so this does not re-open #2464
+    # against the enclosing run's log (scenario G).
+    unset MANIFOLD_WATCHDOG_ACTIVE
     # Bounds every subprocess spawned below to a fast, loud failure instead
     # of the production 10800s (3h) default. Without this, a genuinely
     # broken reclaim/acquire path (exactly the thing scenario D exists to
@@ -1710,10 +1719,19 @@ STUB
         cat "$scenario_k_log"
         local scenario_k_stub_lines
         scenario_k_stub_lines="$(grep -c '^\[stub-swift\]' "$scenario_k_log")" || scenario_k_stub_lines=0
-        if [[ $scenario_k_exit -eq 0 && $scenario_k_stub_lines -eq 1 ]]; then
-            echo "[lock-selftest] scenario K: PASS (outer wrap of --profile local --filter exited 0; stub progress reached the outer log)"
+        # The wrapper's stdout is not the watched file. If the inner wrap
+        # redirects MANIFOLD_TEST_OUTPUT_FILE, stub lines still appear on
+        # stdout (tee copies there) while outer-watchdog.log stays empty —
+        # that is the stolen-log defect. Demand progress in the watched file.
+        local scenario_k_outer_progress=0
+        if [[ -f "$scenario_k_root/outer-watchdog.log" ]] \
+            && grep -q '^\[stub-swift\]' "$scenario_k_root/outer-watchdog.log"; then
+            scenario_k_outer_progress=1
+        fi
+        if [[ $scenario_k_exit -eq 0 && $scenario_k_stub_lines -eq 1 && $scenario_k_outer_progress -eq 1 ]]; then
+            echo "[lock-selftest] scenario K: PASS (outer wrap of --profile local --filter exited 0; stub progress reached the outer watched log)"
         else
-            echo "[lock-selftest] scenario K: FAIL (exit=${scenario_k_exit} stub_invocations=${scenario_k_stub_lines}/1 — exit 124 means the inner wrap starved the outer watchdog)"
+            echo "[lock-selftest] scenario K: FAIL (exit=${scenario_k_exit} stub_invocations=${scenario_k_stub_lines}/1 outer_log_progress=${scenario_k_outer_progress} — empty outer log means the inner wrap starved the watchdog)"
             failures=$((failures + 1))
         fi
         rm -rf "$scenario_k_root"
@@ -2086,6 +2104,9 @@ run_leaf_with_local_watchdog() {
     # steal MANIFOLD_TEST_OUTPUT_FILE — the outer loop is watching that
     # file. Re-wrapping + per-label redirect is what made
     # `ci-test-with-watchdog.sh --profile local` SIGABRT a healthy run.
+    # Children must APPEND to that inherited file (`tee -a` at the fallthrough
+    # below): a truncating `tee` on invocation 2 of the three-invocation
+    # shape is #2464 again.
     if [[ "${MANIFOLD_WATCHDOG_ACTIVE:-0}" == "1" ]]; then
         set +e
         "$SCRIPT_PATH" "$@"
@@ -2406,7 +2427,16 @@ echo ""
 cd "$PACKAGE_DIR"
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 set +e
-swift test ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} 2>&1 | tee "$OUTPUT_FILE"
+# When an outer ci-test-with-watchdog.sh is already watching this file,
+# append — never truncate. The --profile local three-invocation shape
+# re-execs three children into the same inherited log; a bare `tee`
+# on invocation 2 wipes the high-water mark and the outer watchdog
+# SIGABRTs a healthy run (#2464).
+if [[ "${MANIFOLD_WATCHDOG_ACTIVE:-0}" == "1" ]]; then
+    swift test ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} 2>&1 | tee -a "$OUTPUT_FILE"
+else
+    swift test ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} 2>&1 | tee "$OUTPUT_FILE"
+fi
 SWIFT_EXIT=${PIPESTATUS[0]}
 set -e
 
