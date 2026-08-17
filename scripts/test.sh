@@ -1459,9 +1459,269 @@ STUB
     rm -rf "$scenario_f_root"
     fi  # end scenario F (skipped wholesale when the stub `swift` is not in effect)
 
+    # ── Scenario H ────────────────────────────────────────────────────────
+    # The stall wrap is actually live. Scenario E still PASSes if the three
+    # run_leaf_with_local_watchdog call sites exec "$SCRIPT_PATH" directly
+    # and only keep the wrapper file on disk — E asserts lock ownership, not
+    # that ci-test-with-watchdog.sh ran. This scenario drives the real
+    # narrow `--profile local --filter` path (one wrap) and asserts the
+    # wrapper wrote its diagnostics file. Delete the wrap, keep the lock
+    # acquire, and H goes red while E stays green.
+    echo "[lock-selftest] scenario H: --profile local --filter actually runs through ci-test-with-watchdog.sh (not just next to a copy of it)"
+    local scenario_h_root="$selftest_root/scenario-h"
+    local scenario_h_copy="$scenario_h_root/scripts/test.sh"
+    local scenario_h_watchdog="$scenario_h_root/scripts/ci-test-with-watchdog.sh"
+    local scenario_h_stub_dir="$scenario_h_root/stub-bin"
+    local scenario_h_lock="$scenario_h_root/lock"
+    mkdir -p "$scenario_h_root/scripts" "$scenario_h_stub_dir"
+    cp "$0" "$scenario_h_copy"
+    chmod +x "$scenario_h_copy"
+    local scenario_h_wrapper_ok=1
+    if ! cp "$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh" "$scenario_h_watchdog" 2>/dev/null \
+        || ! chmod +x "$scenario_h_watchdog" 2>/dev/null; then
+        scenario_h_wrapper_ok=0
+    fi
+    cat > "$scenario_h_stub_dir/swift" <<'STUB'
+#!/usr/bin/env bash
+echo "[stub-swift] $*"
+echo "Test Case '-[ManifoldCoreTests.StubTest testStub]' passed (0.001 seconds)."
+exit 0
+STUB
+    chmod +x "$scenario_h_stub_dir/swift"
+    local scenario_h_log="$selftest_root/scenario-h.log"
+    local scenario_h_stub_ok=1
+    if [[ $scenario_h_wrapper_ok -eq 1 ]]; then
+        assert_stub_swift_effective "$scenario_h_stub_dir" "H" || scenario_h_stub_ok=0
+    else
+        scenario_h_stub_ok=0
+    fi
+    if [[ $scenario_h_wrapper_ok -eq 0 ]]; then
+        echo "[lock-selftest] scenario H: FAIL (could not stage ci-test-with-watchdog.sh)"
+        failures=$((failures + 1))
+        rm -rf "$scenario_h_root"
+    elif [[ $scenario_h_stub_ok -eq 0 ]]; then
+        failures=$((failures + 1))
+        rm -rf "$scenario_h_root"
+    else
+        set +e
+        PATH="$scenario_h_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_h_lock" \
+            MANIFOLD_TEST_OUTPUT_FILE="$scenario_h_root/nested-test-output.log" \
+            "$scenario_h_copy" --profile local --filter ManifoldCoreTests > "$scenario_h_log" 2>&1
+        local scenario_h_exit=$?
+        set -e
+        cat "$scenario_h_log"
+        # Wrapper names this watchdog-${WATCHDOG_LOG_BASENAME%.log}.diagnostics.txt.
+        # Our per-label file is test_output_narrow.txt (no .log suffix), so the
+        # basename is kept whole — glob rather than hardcode that quirk.
+        local scenario_h_diag=""
+        local scenario_h_diag_candidate
+        for scenario_h_diag_candidate in "$scenario_h_root/test-diagnostics"/watchdog-*.diagnostics.txt; do
+            if [[ -f "$scenario_h_diag_candidate" ]]; then
+                scenario_h_diag="$scenario_h_diag_candidate"
+                break
+            fi
+        done
+        local scenario_h_wrapped=0
+        if [[ -n "$scenario_h_diag" ]] && grep -q 'ci-test-with-watchdog diagnostics' "$scenario_h_diag"; then
+            scenario_h_wrapped=1
+        fi
+        local scenario_h_stub_lines
+        scenario_h_stub_lines="$(grep -c '^\[stub-swift\]' "$scenario_h_log")" || scenario_h_stub_lines=0
+        if [[ $scenario_h_exit -eq 0 && $scenario_h_wrapped -eq 1 && $scenario_h_stub_lines -eq 1 ]]; then
+            echo "[lock-selftest] scenario H: PASS (narrow --profile local --filter ran the wrapper; diagnostics at $scenario_h_diag)"
+        else
+            echo "[lock-selftest] scenario H: FAIL (exit=${scenario_h_exit} wrapped=${scenario_h_wrapped} stub_invocations=${scenario_h_stub_lines}/1 diag='$scenario_h_diag')"
+            failures=$((failures + 1))
+        fi
+        rm -rf "$scenario_h_root"
+    fi
+
+    # ── Scenario I ────────────────────────────────────────────────────────
+    # Fail-closed: a missing wrapper must refuse the --profile local --filter
+    # path with 127, not fall through to an unprotected swift test. This is
+    # the other half of H — H proves the wrap ran; I proves deleting it is
+    # loud. A wrap that is "optional if the file is gone" is fail-open.
+    echo "[lock-selftest] scenario I: --profile local --filter refuses to run when ci-test-with-watchdog.sh is missing (exit 127)"
+    local scenario_i_root="$selftest_root/scenario-i"
+    local scenario_i_copy="$scenario_i_root/scripts/test.sh"
+    local scenario_i_stub_dir="$scenario_i_root/stub-bin"
+    local scenario_i_lock="$scenario_i_root/lock"
+    mkdir -p "$scenario_i_root/scripts" "$scenario_i_stub_dir"
+    cp "$0" "$scenario_i_copy"
+    chmod +x "$scenario_i_copy"
+    cat > "$scenario_i_stub_dir/swift" <<'STUB'
+#!/usr/bin/env bash
+echo "[stub-swift] $*"
+echo "Test Case '-[ManifoldCoreTests.StubTest testStub]' passed (0.001 seconds)."
+exit 0
+STUB
+    chmod +x "$scenario_i_stub_dir/swift"
+    local scenario_i_log="$selftest_root/scenario-i.log"
+    local scenario_i_stub_ok=1
+    assert_stub_swift_effective "$scenario_i_stub_dir" "I" || scenario_i_stub_ok=0
+    if [[ $scenario_i_stub_ok -eq 0 ]]; then
+        failures=$((failures + 1))
+        rm -rf "$scenario_i_root"
+    else
+        set +e
+        PATH="$scenario_i_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_i_lock" \
+            MANIFOLD_TEST_OUTPUT_FILE="$scenario_i_root/nested-test-output.log" \
+            "$scenario_i_copy" --profile local --filter ManifoldCoreTests > "$scenario_i_log" 2>&1
+        local scenario_i_exit=$?
+        set -e
+        cat "$scenario_i_log"
+        local scenario_i_stub_lines
+        scenario_i_stub_lines="$(grep -c '^\[stub-swift\]' "$scenario_i_log")" || scenario_i_stub_lines=0
+        if [[ $scenario_i_exit -eq 127 && $scenario_i_stub_lines -eq 0 ]]; then
+            echo "[lock-selftest] scenario I: PASS (missing wrapper → exit 127, stub never ran)"
+        else
+            echo "[lock-selftest] scenario I: FAIL (exit=${scenario_i_exit} expected 127, stub_invocations=${scenario_i_stub_lines}/0)"
+            failures=$((failures + 1))
+        fi
+        rm -rf "$scenario_i_root"
+    fi
+
+    # ── Scenario J ────────────────────────────────────────────────────────
+    # Narrow-path acquire_gate_lock happens BEFORE the watchdog. Scenario F
+    # no longer covers this path: a narrow --filter now acquires in the
+    # parent and exit()s; F only drives a bare invocation. Delete only the
+    # narrow acquire and A–I stay green while a queued
+    # `--profile local --filter` waits inside the watchdog and gets SIGABRT
+    # at STALL_SECONDS. Hold the real lock, run the real narrow path with
+    # STALL_SECONDS well under the hold, and demand exit 0.
+    echo "[lock-selftest] scenario J: narrow --profile local --filter waits for the gate lock OUTSIDE the watchdog"
+    local scenario_j_root="$selftest_root/scenario-j"
+    local scenario_j_copy="$scenario_j_root/scripts/test.sh"
+    local scenario_j_watchdog="$scenario_j_root/scripts/ci-test-with-watchdog.sh"
+    local scenario_j_stub_dir="$scenario_j_root/stub-bin"
+    local scenario_j_lock="$scenario_j_root/lock"
+    mkdir -p "$scenario_j_root/scripts" "$scenario_j_stub_dir"
+    cp "$0" "$scenario_j_copy"
+    chmod +x "$scenario_j_copy"
+    local scenario_j_wrapper_ok=1
+    if ! cp "$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh" "$scenario_j_watchdog" 2>/dev/null \
+        || ! chmod +x "$scenario_j_watchdog" 2>/dev/null; then
+        scenario_j_wrapper_ok=0
+    fi
+    cat > "$scenario_j_stub_dir/swift" <<'STUB'
+#!/usr/bin/env bash
+echo "[stub-swift] $*"
+echo "Test Case '-[ManifoldCoreTests.StubTest testStub]' passed (0.001 seconds)."
+exit 0
+STUB
+    chmod +x "$scenario_j_stub_dir/swift"
+    local scenario_j_log="$selftest_root/scenario-j.log"
+    local scenario_j_stub_ok=1
+    if [[ $scenario_j_wrapper_ok -eq 1 ]]; then
+        assert_stub_swift_effective "$scenario_j_stub_dir" "J" || scenario_j_stub_ok=0
+    else
+        scenario_j_stub_ok=0
+    fi
+    if [[ $scenario_j_wrapper_ok -eq 0 ]]; then
+        echo "[lock-selftest] scenario J: FAIL (could not stage ci-test-with-watchdog.sh)"
+        failures=$((failures + 1))
+        rm -rf "$scenario_j_root"
+    elif [[ $scenario_j_stub_ok -eq 0 ]]; then
+        failures=$((failures + 1))
+        rm -rf "$scenario_j_root"
+    else
+        MANIFOLD_GATE_LOCK_FILE="$scenario_j_lock" \
+            "$0" --lock-selftest-hold 8 > "$selftest_root/scenario-j-holder.log" 2>&1 &
+        local scenario_j_holder=$!
+        local scenario_j_hold_i=0
+        while [[ ! -s "$scenario_j_lock" && $scenario_j_hold_i -lt 100 ]]; do
+            sleep 0.05
+            scenario_j_hold_i=$((scenario_j_hold_i + 1))
+        done
+        set +e
+        PATH="$scenario_j_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_j_lock" \
+            MANIFOLD_TEST_OUTPUT_FILE="$scenario_j_root/nested-test-output.log" \
+            STALL_SECONDS=3 WATCHDOG_POLL_INTERVAL=1 \
+            "$scenario_j_copy" --profile local --filter ManifoldCoreTests > "$scenario_j_log" 2>&1
+        local scenario_j_exit=$?
+        set -e
+        set +e
+        wait "$scenario_j_holder" 2>/dev/null
+        set -e
+        cat "$scenario_j_log"
+        local scenario_j_waited=0
+        grep -q 'waiting for gate lock held by PID' "$scenario_j_log" && scenario_j_waited=1
+        local scenario_j_stub_lines
+        scenario_j_stub_lines="$(grep -c '^\[stub-swift\]' "$scenario_j_log")" || scenario_j_stub_lines=0
+        if [[ $scenario_j_exit -eq 0 && $scenario_j_waited -eq 1 && $scenario_j_stub_lines -eq 1 ]]; then
+            echo "[lock-selftest] scenario J: PASS (narrow path waited for the holder outside the watchdog; STALL_SECONDS=3 did not SIGABRT; stub ran)"
+        else
+            echo "[lock-selftest] scenario J: FAIL (exit=${scenario_j_exit} waited=${scenario_j_waited} stub_invocations=${scenario_j_stub_lines}/1 — exit 124 means the lock wait sat inside the watchdog)"
+            failures=$((failures + 1))
+        fi
+        rm -rf "$scenario_j_root"
+    fi
+
+    # ── Scenario K ────────────────────────────────────────────────────────
+    # An outer ci-test-with-watchdog.sh wrapping `--profile local --filter`
+    # must not SIGABRT a healthy stub run. Before MANIFOLD_WATCHDOG_ACTIVE,
+    # the inner wrap redirected MANIFOLD_TEST_OUTPUT_FILE and the outer
+    # loop saw silence. Drive the real composition: temp wrapper → temp
+    # test.sh --profile local --filter, STALL_SECONDS well above the stub
+    # but short enough that a silent outer log still trips.
+    echo "[lock-selftest] scenario K: outer ci-test-with-watchdog.sh --profile local --filter does not SIGABRT a healthy nested wrap"
+    local scenario_k_root="$selftest_root/scenario-k"
+    local scenario_k_copy="$scenario_k_root/scripts/test.sh"
+    local scenario_k_watchdog="$scenario_k_root/scripts/ci-test-with-watchdog.sh"
+    local scenario_k_stub_dir="$scenario_k_root/stub-bin"
+    local scenario_k_lock="$scenario_k_root/lock"
+    mkdir -p "$scenario_k_root/scripts" "$scenario_k_stub_dir"
+    cp "$0" "$scenario_k_copy"
+    chmod +x "$scenario_k_copy"
+    local scenario_k_wrapper_ok=1
+    if ! cp "$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh" "$scenario_k_watchdog" 2>/dev/null \
+        || ! chmod +x "$scenario_k_watchdog" 2>/dev/null; then
+        scenario_k_wrapper_ok=0
+    fi
+    cat > "$scenario_k_stub_dir/swift" <<'STUB'
+#!/usr/bin/env bash
+echo "[stub-swift] $*"
+echo "Test Case '-[ManifoldCoreTests.StubTest testStub]' passed (0.001 seconds)."
+exit 0
+STUB
+    chmod +x "$scenario_k_stub_dir/swift"
+    local scenario_k_log="$selftest_root/scenario-k.log"
+    local scenario_k_stub_ok=1
+    if [[ $scenario_k_wrapper_ok -eq 1 ]]; then
+        assert_stub_swift_effective "$scenario_k_stub_dir" "K" || scenario_k_stub_ok=0
+    else
+        scenario_k_stub_ok=0
+    fi
+    if [[ $scenario_k_wrapper_ok -eq 0 ]]; then
+        echo "[lock-selftest] scenario K: FAIL (could not stage ci-test-with-watchdog.sh)"
+        failures=$((failures + 1))
+        rm -rf "$scenario_k_root"
+    elif [[ $scenario_k_stub_ok -eq 0 ]]; then
+        failures=$((failures + 1))
+        rm -rf "$scenario_k_root"
+    else
+        set +e
+        PATH="$scenario_k_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_k_lock" \
+            MANIFOLD_TEST_OUTPUT_FILE="$scenario_k_root/outer-watchdog.log" \
+            STALL_SECONDS=6 WATCHDOG_POLL_INTERVAL=1 \
+            "$scenario_k_watchdog" --profile local --filter ManifoldCoreTests > "$scenario_k_log" 2>&1
+        local scenario_k_exit=$?
+        set -e
+        cat "$scenario_k_log"
+        local scenario_k_stub_lines
+        scenario_k_stub_lines="$(grep -c '^\[stub-swift\]' "$scenario_k_log")" || scenario_k_stub_lines=0
+        if [[ $scenario_k_exit -eq 0 && $scenario_k_stub_lines -eq 1 ]]; then
+            echo "[lock-selftest] scenario K: PASS (outer wrap of --profile local --filter exited 0; stub progress reached the outer log)"
+        else
+            echo "[lock-selftest] scenario K: FAIL (exit=${scenario_k_exit} stub_invocations=${scenario_k_stub_lines}/1 — exit 124 means the inner wrap starved the outer watchdog)"
+            failures=$((failures + 1))
+        fi
+        rm -rf "$scenario_k_root"
+    fi
+
     # ── Scenario G ────────────────────────────────────────────────────────
     # The self-test must leave the ENCLOSING run's artifacts alone. Scenarios
-    # E and F are the only ones that reach `scripts/test.sh`'s main path (and
+    # E, F, H, I, J, and K reach `scripts/test.sh`'s main path (and
     # therefore its `tee "$OUTPUT_FILE"`), and MANIFOLD_TEST_OUTPUT_FILE is
     # inherited by default — so without the per-invocation override each of
     # them truncates whatever log the outer run is writing to. In CI that log
@@ -1820,6 +2080,19 @@ run_leaf_with_local_watchdog() {
     local default_stall="$2"
     shift 2
     local rc
+
+    # Already inside ci-test-with-watchdog.sh (CI, or an outer wrap of
+    # `scripts/test.sh --profile local|ci`). Do not re-wrap and do not
+    # steal MANIFOLD_TEST_OUTPUT_FILE — the outer loop is watching that
+    # file. Re-wrapping + per-label redirect is what made
+    # `ci-test-with-watchdog.sh --profile local` SIGABRT a healthy run.
+    if [[ "${MANIFOLD_WATCHDOG_ACTIVE:-0}" == "1" ]]; then
+        set +e
+        "$SCRIPT_PATH" "$@"
+        rc=$?
+        set -e
+        return $rc
+    fi
 
     if [[ "${MANIFOLD_DISABLE_LOCAL_WATCHDOG:-0}" == "1" ]]; then
         echo "⚠️⚠️⚠️  MANIFOLD_DISABLE_LOCAL_WATCHDOG=1 — running '${label}' WITHOUT the stall watchdog. ⚠️⚠️⚠️" >&2

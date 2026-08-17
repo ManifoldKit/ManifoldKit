@@ -81,6 +81,15 @@
 #                       lunch, and a caller lowering this further than
 #                       scripts/test.sh's local-gate driver does should size
 #                       it against their own log growth rate.
+#   MANIFOLD_WATCHDOG_ACTIVE
+#                       Set to 1 by this wrapper before it launches
+#                       scripts/test.sh. test.sh's --profile local|ci driver
+#                       reads it and refuses to re-wrap / steal
+#                       MANIFOLD_TEST_OUTPUT_FILE. Without this sentinel,
+#                       `ci-test-with-watchdog.sh --profile local` (an outer
+#                       wrap of the documented local gate) redirected every
+#                       leaf log and the outer watchdog SIGABRT'd a healthy
+#                       run at STALL_SECONDS. Not a user knob.
 #
 # Exit codes
 # ----------
@@ -120,6 +129,11 @@ mkdir -p "$(dirname "$WATCHDOG_LOG")" "$WATCHDOG_DIAGNOSTICS_DIR"
 
 # Background-launch scripts/test.sh. We use the same shell-quoting shape the
 # CI step uses so the wrapper is a drop-in replacement.
+#
+# MANIFOLD_WATCHDOG_ACTIVE tells a nested `--profile local|ci` driver it is
+# already being watched: do not wrap again, and do not point
+# MANIFOLD_TEST_OUTPUT_FILE at a per-label file this loop cannot see.
+export MANIFOLD_WATCHDOG_ACTIVE=1
 "$PACKAGE_DIR/scripts/test.sh" "$@" &
 TEST_PID=$!
 
