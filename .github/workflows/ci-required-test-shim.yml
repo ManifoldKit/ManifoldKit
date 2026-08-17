@@ -55,6 +55,7 @@ on:
       - "Package.resolved"
       - ".github/workflows/ci.yml"
       - ".github/workflows/companion-compat.yml"
+      - ".github/workflows/lint.yml"
       - "scripts/test.sh"
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/example-ui-tests.sh"

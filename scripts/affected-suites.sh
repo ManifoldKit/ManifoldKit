@@ -300,6 +300,15 @@ for p in "${CHANGED[@]}"; do
       log "changed: $p → target ManifoldCoreTests (DemoCoverageGateAuditTest runs scripts/demo-coverage.sh --check against these)"
       continue
       ;;
+    # ReleaseReadinessWorkflowAuditTest reads this file at runtime. Without
+    # this case a lint.yml-only diff is ignored by the Sources/Tests filter
+    # below and resolves to NONE — the audit first reds in the merge queue.
+    # NOT inert: ci.yml's paths: and the shim paths-ignore both list it.
+    .github/workflows/lint.yml)
+      changed_targets_add "ManifoldCoreTests"
+      log "changed: $p → target ManifoldCoreTests (ReleaseReadinessWorkflowAuditTest reads lint.yml)"
+      continue
+      ;;
   esac
   # Only Sources/ and Tests/ paths can map to a target. Anything else (docs,
   # READMEs, …) cannot affect compiled test outcomes and is ignored.

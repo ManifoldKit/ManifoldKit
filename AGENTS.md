@@ -1115,9 +1115,12 @@ on the release branch:
 **The `pull_request` step is the blocking one, and that is sufficient.** `lint` is a required status
 check, so the release PR cannot be queued until that run is green, and `--dispatch` makes its
 evidence genuinely fresh at that moment. What is *not* covered is main moving between that check and
-the merge — a real residual gap, accepted knowingly, and the same exposure every other pre-merge
-check in this repo carries. Do not "fix" it by adding a `merge_group` canary step; that is the race
-above.
+the merge. That is **not** the same exposure every other pre-merge check carries: those validate
+this PR's own content and the queue re-validates the merged tree. This gate's subject is external
+repos versus `main` — a target that moves independently of the PR — so after dropping the queue
+re-read it is the only release-relevant gate with no merged-tree validation. The window is
+narrowed from ~24h (nightly) to the PR-check-to-merge gap; it is not closed. Do not "fix" it by
+adding a `merge_group` canary step; that is the race above.
 
 **If the `pull_request` check reds on staleness**, the usual cause is that nobody has force-pushed
 the changelog rewrite yet — only the CI-dark bot regenerations have touched the branch, so the

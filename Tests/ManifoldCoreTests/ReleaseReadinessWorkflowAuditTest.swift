@@ -53,6 +53,10 @@ final class ReleaseReadinessWorkflowAuditTest: XCTestCase {
             violations.contains(where: { $0.contains("migration-index-gate") && $0.contains("merge_group") }),
             "dropping merge_group from the --release if: must be flagged: \(violations)"
         )
+        XCTAssertTrue(
+            violations.contains(where: { $0.contains("release_context") }),
+            "a workflow with no release_context step must be flagged: \(violations)"
+        )
     }
 
     // MARK: - Detection
@@ -77,6 +81,22 @@ final class ReleaseReadinessWorkflowAuditTest: XCTestCase {
         }
 
         violations.append(contentsOf: Self.releaseAndCompletenessViolations(in: workflow))
+        violations.append(contentsOf: Self.releaseContextViolations(in: workflow))
+        return violations
+    }
+
+    /// The `if:` predicates are inert if nothing writes `is_release`.
+    private static func releaseContextViolations(in workflow: String) -> [String] {
+        var violations: [String] = []
+        if !workflow.contains("id: release_context") {
+            violations.append("missing release_context step id — is_release would be always empty and both gates would skip")
+        }
+        if !workflow.contains("is_release=true") {
+            violations.append("release_context never writes is_release=true")
+        }
+        if !workflow.contains("is_release=false") {
+            violations.append("release_context never writes is_release=false")
+        }
         return violations
     }
 
