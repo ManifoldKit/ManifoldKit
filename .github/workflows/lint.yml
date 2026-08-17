@@ -876,9 +876,11 @@ jobs:
       # to prevent (AGENTS.md § "Release workflow"). So: dispatch fresh runs
       # on the one bot-independent PR-event moment (Rory's changelog-rewrite
       # force-push — the only `pull_request` run on the release-please branch
-      # that actually executes; see the `release-context` step above), and
-      # only READ the by-then-fresh result on `merge_group`, which is the run
-      # that actually blocks.
+      # that actually executes; see the `release-context` step above). There
+      # is deliberately no merge_group canary step — see the long comment
+      # below the dispatch step. The PR-event dispatch is the blocking one
+      # (`lint` is required); a queue-side re-read grades a moving main tip
+      # and ejects the batch.
       #
       # TIP-COMMIT DERIVATION UNDER merge_group (applies to both steps below):
       # the script never reads the runner's checked-out HEAD (which, under
@@ -931,11 +933,16 @@ jobs:
           # landing-relative check for the coarse estimate precisely when the
           # gate is being relied on. Prove the token can read this repo first,
           # so that degradation can never happen quietly.
-          if ! gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" --jq 'length' >/dev/null 2>&1; then
+          # Use the PR head SHA, not github.sha. On pull_request github.sha is
+          # the merge-ref commit, and GET /commits/{merge-sha}/pulls can 422
+          # "No commit found for SHA" — which would red every release even
+          # after the PAT is scoped correctly.
+          if ! gh api "repos/${{ github.repository }}/commits/${{ github.event.pull_request.head.sha }}/pulls" --jq 'length' >/dev/null 2>&1; then
             echo "::error::COMPANION_DISPATCH_TOKEN cannot read repos/${{ github.repository }}. The canary"
             echo "::error::script needs that read to resolve when the main tip actually merged; without it"
             echo "::error::it silently falls back to a +60min margin and can grade a stale canary as fresh."
-            echo "::error::Grant the PAT read access to this repository as well as the companion repos."
+            echo "::error::Grant the PAT contents:read on THIS repository as well as Actions:read+write"
+            echo "::error::(and contents:read+write) on manifold-mlx / manifold-llama."
             exit 1
           fi
 
@@ -989,38 +996,25 @@ jobs:
       # and this is a deliberate trade, not an oversight.
 
       # ── migration-index-gate ──────────────────────────────────────────────
-      - name: migration-index-gate — skip (not a release, or not the pull_request run)
-        if: always() && (github.event_name != 'pull_request' || steps.release_context.outputs.is_release == 'false')
+      - name: migration-index-gate — skip (not a release)
+        if: always() && steps.release_context.outputs.is_release != 'true'
         run: |
-          if [ "${{ github.event_name }}" = "merge_group" ] && [ "${{ steps.release_context.outputs.is_release }}" = "true" ]; then
-            echo "Release detected, but the migration-index gate runs only on the pull_request event."
-            echo "The release PR's own rows were already checked there; rows contributed by OTHER PRs in"
-            echo "this batch are legitimately \"next\" and are not this release's to flip."
-          else
-            echo "Not a release in this run (or release-context does not apply to this event)."
-            echo "The migration-index gate does not apply here — no check was performed."
-          fi
+          echo "Not a release in this run (or release-context does not apply to this event)."
+          echo "The migration-index --release gate does not apply here — no check was performed."
 
       # Release-only, hard-blocking: fails if any docs/MIGRATION-INDEX.md row
       # still says "next" in the Release column while a version is shipping —
       # RELEASE.md's changelog-rewrite step is supposed to flip these by hand;
       # this is what stops a forgotten row from shipping silently.
       #
-      # pull_request ONLY, for the same reason the canary gate is (see above),
-      # and the argument is worth stating because the two were originally
-      # inconsistent. Ask what unique TRUE positive a merge_group run could
-      # produce that the pull_request run cannot: none. The release PR's own
-      # rows were already checked at PR time. The only rows a queue candidate
-      # adds are those contributed by OTHER PRs in the batch — and a new note
-      # carrying `| next |` is the normal, documented way to add one, so those
-      # rows are legitimate and are not this release's to flip. A merge_group
-      # invocation is therefore capable ONLY of false positives: it would fail
-      # the gate and eject an entire batch of up to 5 PRs for a row nobody did
-      # anything wrong with, and the release author could not pre-satisfy it.
-      # Restricting to pull_request removes that failure mode at zero cost to
-      # coverage. Do not "restore" the merge_group run for symmetry.
+      # Runs on pull_request AND merge_group. Unlike the canary, leftover
+      # `next` rows in the tree about to be tagged are true positives: a note
+      # that landed on main after the rewrite, or rode in the same queue
+      # batch, ships in this version. The canary's STALE-vs-moving-tip
+      # argument does not transfer. Do not restrict this back to
+      # pull_request for symmetry with the canary.
       - name: migration-index-gate — no migration-note row may still say "next"
-        if: always() && github.event_name == 'pull_request' && steps.release_context.outputs.is_release == 'true'
+        if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && steps.release_context.outputs.is_release == 'true'
         run: bash scripts/migration-index-check.sh --release
 
       # ── migration-index-completeness (EVERY run, not release-only) ────────

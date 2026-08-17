@@ -1084,15 +1084,15 @@ the release via `.github/workflows/lint.yml`'s `lint` job, with deliberately no 
 shipping past a red canary requires landing the companions' adaptation PRs in lockstep first (§
 "Companion pin-bump releases" below), not a judgment call made in the moment of merging.
 
-**Why the CI step is split by event (`pull_request` dispatches, `merge_group` reads) — a second
+**Why the canary CI step is `pull_request` only (no `merge_group` re-read) — a second
 finding, distinct from the CI-dark one below, and just as easy to "simplify" away wrongly.** The
 script's primary check is landing-relative freshness: a canary that started before `origin/main`'s
 current tip merged is STALE regardless of age. Each companion canaries nightly plus on-demand, so
 at release time `main` has almost always moved since the last nightly — a naive gate that only ever
 reads the last-known result would read STALE on nearly every release, not just on real breakage,
 and a gate that's red every time is a gate operators route around (exactly the failure this whole
-change exists to prevent). So the `lint` job runs two different steps keyed off which event is
-firing:
+change exists to prevent). So the `lint` job dispatches on the one event that actually executes
+on the release branch:
 - **On `pull_request`** (in practice, Rory's changelog-rewrite force-push — the one bot-independent
   moment on the release-please branch that actually executes; see the CI-dark writeup below) it runs
   `scripts/companion-canary-check.sh --dispatch`, which triggers fresh canary runs on both
@@ -1199,26 +1199,20 @@ inside the merge queue and poison the batch — the #2306 shape. Do not make the
 release-conditional to "save time"; it costs one shell invocation and it is the only thing that runs
 it on the PRs that break it.
 
-**Both release-only gates run on `pull_request` only, never on `merge_group`** — and the reason is
-the same for each, so do not "restore" either one for symmetry. Ask what unique *true* positive a
-`merge_group` run could produce that the `pull_request` run cannot:
+**The two release-only gates are split by event, and the reason is not the same for each.** Do not
+collapse them back to "both PR-only" for symmetry.
 
-- *Companion canary*: it could catch main moving between the PR check and the merge — a real signal,
-  but one swamped by false positives, because freshness is graded against a main tip that changes
-  with every unrelated merge (worked timeline above).
-- *Migration index*: none at all. The release PR's own rows were already checked at PR time, and the
-  only rows a queue candidate adds are those contributed by *other* PRs in the batch — where a new
-  note carrying `| next |` is the normal, documented way to add one. Those rows are legitimate and
-  are not this release's to flip. So a `merge_group` invocation there is capable *only* of false
-  positives: it would eject a batch of up to 5 PRs over a row nobody did anything wrong with, and
-  the release author could not pre-satisfy it.
-
-An earlier revision ran the migration-index check on `merge_group` and documented that batch
-ejection as an accepted limitation, while the canary next door had already been restricted for the
-identical reason. Restricting it too removed the limitation outright at no cost to coverage. The
-general lesson, worth keeping: when a gate's subject is something the merge queue does not
-re-validate, the queue run adds no signal — and a check that can only produce false positives is
-worse than no check.
+- *Companion canary* stays `pull_request` only. A `merge_group` re-check could catch main moving
+  between the PR check and the merge — a real signal, but one swamped by false positives, because
+  freshness is graded against a main tip that changes with every unrelated merge (worked timeline
+  above). Do not add a `merge_group` canary step.
+- *Migration index `--release` also runs on `merge_group`.* Any `next` row in the tree about to be
+  tagged is a true positive: that note ships in this version. A note that lands on `main` after the
+  changelog rewrite, or rides in the same merge-queue batch as the release PR, is included in the
+  tagged commit and will still say `next` unless the queue re-checks. The canary's
+  STALE-vs-moving-tip argument does not transfer. If a new note is in the same batch as a release,
+  flip its row in that batch (it is shipping) — do not treat `| next |` as legitimate inside a
+  release candidate.
 
 `README.md` install-pin examples (`from: "x.y.z"`) are bumped automatically by Release Please via the `extra-files` entry in `release-please-config.json` — do not update them manually between releases.
 

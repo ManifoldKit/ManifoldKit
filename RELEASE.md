@@ -160,9 +160,12 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    **It runs on the `pull_request` event only** — in practice, when you push
    the changelog rewrite in step 3 — using `--dispatch`, which triggers fresh
    canary runs on both companions and waits for them. It needs the
-   `COMPANION_DISPATCH_TOKEN` repo secret; if that is missing, or present but
-   lacking **Actions: read+write** on the companion repos, the step fails
-   loudly rather than grading a stale previous run.
+   `COMPANION_DISPATCH_TOKEN` repo secret. That PAT needs **Actions: read+write**
+   (and contents:read+write) on manifold-mlx / manifold-llama **and
+   contents:read on this repository** — the script reads
+   `GET /repos/ManifoldKit/ManifoldKit/commits/{sha}/pulls` to resolve when
+   `main`'s tip actually landed, and a companion-only PAT fails that preflight
+   closed rather than silently falling back to a +60min freshness margin.
 
    That single run is what blocks: `lint` is a required status check, so the
    release PR cannot be queued until it is green. There is deliberately no
@@ -266,10 +269,14 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    gh pr view <N> --json state -q .state   # poll until: MERGED
    ```
 
-   The `lint` job's `companion-canary-gate` and `migration-index-gate` steps
-   (added above) run again here, on the `merge_group` validation — this is
-   the run that actually blocks the queue, since the release branch itself
-   is CI-dark for bot-triggered runs (AGENTS.md § "Release workflow").
+   The queue's `lint` job still runs, but the two release gates do **not**
+   both re-fire there. `companion-canary-gate` is `pull_request` only (a
+   `merge_group` re-check grades freshness against a moving `main` tip and
+   ejects the batch). `migration-index-gate --release` **does** run on
+   `merge_group`: any `next` row in the tree about to be tagged is a true
+   positive, including a note that landed on `main` after the rewrite or
+   rode in the same batch. The release PR's own `lint` run is still the
+   one that first blocks enqueue (AGENTS.md § "Release workflow").
 
 5. **Verify the tag and post-merge jobs.** Once merged, Release Please pushes
    the version tag and cuts the GitHub release:
