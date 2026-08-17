@@ -503,3 +503,4 @@ API breakage: constructor DocumentLibrarySheet.init(ragService:hasEmbeddingBacke
 API breakage: constructor DownloadableModelRow.init(model:showFitGuidance:rationale:) has been removed
 API breakage: enum ChatExporter has been removed
 API breakage: enum ChatExporterError has been removed
+API breakage: var EnvironmentValues.endpointStore has been removed

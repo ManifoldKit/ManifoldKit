@@ -608,6 +608,15 @@ private struct ChatAPIConfigurationPresentationModifier<APIConfig: View>: ViewMo
     }
 }
 
+/// Applies the custom environment values that SwiftUI does not reliably carry
+/// from the host hierarchy into ChatView's sheet/popover content.
+func chatAPIConfigurationContent<Content: View>(
+    _ builder: @escaping () -> Content,
+    endpointStore: (any EndpointStore)?
+) -> AnyView {
+    AnyView(builder().environment(\.endpointStore, endpointStore))
+}
+
 extension View {
     func chatShellPresentations<APIConfig: View>(
         viewModel: ChatViewModel,

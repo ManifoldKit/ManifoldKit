@@ -388,6 +388,7 @@ EnvironmentValues.chatMessagePartRenderer Var
 EnvironmentValues.chatMessageRenderer Var
 EnvironmentValues.chatTheme Var
 EnvironmentValues.composerStyle Var
+EnvironmentValues.endpointStore Var
 EnvironmentValues.manifoldTheme Var
 EnvironmentValues.messageBubbleStyle Var
 EnvironmentValues.personaStore Var
