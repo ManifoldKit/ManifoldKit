@@ -1,8 +1,11 @@
 # Pre-1.0 API program — v1 rationalisation plan (2026-07-13, v4 — post adversarial + origin-app review)
 
-**Status:** Reviewed (3× adversarial personas + 1× origin-app-context review, all
-fix-first — findings folded, see Review record). C-D1, C-D2, B-D1 decided; B-D2
-recommended. Ready to execute on merge.
+**Status:** Active — roadmap reset 2026-08-16. Earlier demotion and
+experimental-tier decisions are historical context; the remaining stable-tier
+seal (C.2) is future work and cannot be represented as settled while the
+Tier 1/2 release-health blockers in
+[`docs/RELEASE-1.0.md`](../RELEASE-1.0.md#release-health--qualification-ledger)
+remain open. C-D1, C-D2, B-D1 are decided; B-D2 remains recommended.
 
 **Terminology:** several findings come from **the origin app** — the private
 first-party app ManifoldKit was spun out of, its heaviest consumer (176
@@ -308,7 +311,12 @@ alongside this plan):
   (drift stays visible); the C.2 freeze discipline applies only to stable-tier
   modules.
 
-### C.2 Seal (from #2156, updated)
+### C.2 Seal (from #2156, updated — future work)
+
+**Prerequisite.** First clear, or explicitly demote the affected
+current-release claim for, every Tier 1/2 blocker in the
+[release-health ledger](../RELEASE-1.0.md#release-health--qualification-ledger).
+A decided #2211 policy or a tier table is not C.2 evidence.
 
 1. Freeze the surface baseline at the post-Phase-A/B surface for **stable-tier**
    modules. Honest framing: the baseline is a drift-gate — growth forces an

@@ -3,7 +3,9 @@
 **Audience:** consumer, contributor
 **Status:** living
 
-Normative — states what is true today, dated 2026-08-09.
+Normative compatibility-tier assignment — dated 2026-08-16. Current release
+qualification is separately recorded in
+[`docs/RELEASE-1.0.md`'s release-health ledger](RELEASE-1.0.md#release-health--qualification-ledger).
 
 This page is the single source of truth for ManifoldKit's maturity signal.
 Every published SwiftPM product — every `.library` and every executable in
@@ -35,14 +37,18 @@ demonstrated-red evidence and update procedure.
 ## The four tiers
 
 1. **Core guarantees** — inference contract, conversation runtime,
-   persistence abstractions, model lifecycle. Full release-gated
-   verification (cold-start gates, doc-snippet compile gate, demo-app build
-   gate, the per-PR and nightly API-digester baseline); a stability promise
-   that becomes contractual at 1.0 ([`docs/RELEASE-1.0.md`](RELEASE-1.0.md)).
+   persistence abstractions, model lifecycle. This is the Core compatibility
+   commitment, including the full release-gated verification bar; whether the
+   required current-release evidence is presently satisfied is recorded in
+   the [release-health ledger](RELEASE-1.0.md#release-health--qualification-ledger).
+   Its stability promise becomes contractual at 1.0
+   ([`docs/RELEASE-1.0.md`](RELEASE-1.0.md)).
 2. **Supported first-party integrations** — backends and first-party
-   surfaces receiving the same full release-gated verification as Core, but
-   scoped to one integration (a backend family, a UI accessory, a companion
-   entry point) rather than the shared kernel.
+   surfaces carrying the same release-gated compatibility bar as Core, scoped to one
+   integration (a backend family, a UI accessory, a companion entry point)
+   rather than the shared kernel. Their current-release qualification is also
+   in the [release-health ledger](RELEASE-1.0.md#release-health--qualification-ledger),
+   not inferred from this tier label.
 3. **Experimental** — available, no stable compatibility promise; may break
    in any minor release, always with a migration note. This is the existing
    `¹` semantics from `AGENTS.md`/`API-DESIGN.md` § 7b, plus the four
@@ -52,11 +58,16 @@ demonstrated-red evidence and update procedure.
    note. See [Tier 4](#tier-4--labs) — this tier is currently empty, and the
    page says why rather than force-fitting a product into it.
 
-A product's tier describes the **compatibility promise an adopter can rely
-on**, not its code quality or how well-tested it is internally — an
+A product's tier describes the **compatibility commitment** assigned to its
+public surface, not its code quality or how well-tested it is internally — an
 Experimental product can be extensively unit-tested and still carry no
 stability promise, because "no real adopter has been built against it yet"
 (§ 7b's bar) is a fact about the ecosystem, not the code.
+
+**Qualification is a second signal.** An unresolved Tier 1/2 health row
+withholds the affected release promise; it does not silently rewrite the
+product's compatibility tier. This distinction prevents a stale or missing CI
+run from making the tier tables falsely read as a current release approval.
 
 ## Demonstration signal (R1/R2/R3)
 
@@ -130,7 +141,7 @@ question.
 | `ManifoldHardware` | Device-capability probing, GGUF parsing, load-plan logic; also the physical home of the tool-calling value types and `BackendCapabilities` (re-exported through `ManifoldContract`). | Zero-dependency leaf the Contract kernel and model lifecycle are built on — a break here breaks Core transitively. |
 | `ManifoldNetworking` | `NetworkActivity` observability funnel, `PrivateIPClassifier`. | Zero-dependency leaf underpinning the cloud/runtime stack. |
 | `ManifoldSecrets` | `KeychainService`, `SecureEnclaveKeyManager`, `SecureBytes`. | Zero-dependency leaf underpinning credential storage across persistence and cloud integrations. |
-| `ManifoldUI` | SwiftUI chat-runtime views/view models (`ChatView`, `ChatViewModel`) — "chat-only consumer stops here." | Not literally named in the tier-1 description, but carries the same full-gate bar: cold-start gates, the doc-snippet compile gate, and the release-time demo-app build gate all exercise it directly, and Principle 8's one-turn-loop guarantee is only complete once its UI half (`ChatViewModel`) is included. Extending the tier-1 definition to cover it, rather than stretching "backend integration" to fit, is the more honest read — flagged for confirmation in [Open questions](#open-questions) since it's this page's one definitional extension. |
+| `ManifoldUI` | SwiftUI chat-runtime views/view models (`ChatView`, `ChatViewModel`) — "chat-only consumer stops here." | Not literally named in the tier-1 description, but belongs to the same compatibility commitment: Principle 8's one-turn-loop guarantee is only complete once its UI half (`ChatViewModel`) is included. Actual release-gate health, including the endpoint-configuration path, is in the [release-health ledger](RELEASE-1.0.md#release-health--qualification-ledger); tier membership is not a claim that every gate is currently green. |
 
 ## Tier 2 — Supported first-party integrations
 
@@ -150,15 +161,15 @@ question.
 | Product | Role | Why Supported |
 |---|---|---|
 | `ManifoldFoundation` | Apple Foundation Models bridge (iOS 26 / macOS 26+, OS-availability-gated, no trait). | Backend family; covered by `ManifoldBackendsTests` and the release-time demo-app gate. |
-| `ManifoldOllama` | Ollama (self-hosted/LAN) backend family. | Backend family; covered by `ManifoldBackendsTests`, the Ollama E2E suite, and the demo-app gate. |
+| `ManifoldOllama` | Ollama (self-hosted/LAN) backend family. | Backend family. Its tool-continuation terminal-state qualification is currently blocked in the [release-health ledger](RELEASE-1.0.md#release-health--qualification-ledger) (#2376), so this tier assignment is not current release approval for that path. |
 | `ManifoldCloudSaaS` | Claude / OpenAI Chat Completions / OpenAI Responses / LM Studio / custom-OpenAI-compatible backend family. | Backend family; covered by `ManifoldBackendsTests` and the demo-app gate. |
 | `ManifoldCloudCore` | Shared SSE / TLS-pinning / DNS-rebind / URLSession infra behind both cloud families, plus `DefaultWebSearchRuntime`. Always linked. | The substrate both cloud backend families are built on; same gating bar even though it is not itself a named backend. |
 | `ManifoldUIModelManagement` | Model browser/download/storage UI + cloud API endpoint editors. | Linked and exercised by the Advanced example app (release-time demo-app gate); real production surface, not experimental. |
 | `ManifoldHuggingFace` | Hub search/browse/background downloads. Compiles unconditionally. | Feeds the model-management UI and the `quickStart` seed path; demo-app-gated. |
 | `ManifoldVoice` | Speech I/O adapters, voice composer accessory. | Explicitly confirmed stable-tier in `API-DESIGN.md` § 7b: "a shipping first-party app pins and imports it, verified 2026-07-13" — the one product whose Tier 2 status is externally verified by the same adopter bar that keeps its siblings in Tier 3. |
 | `ManifoldFuzz` | Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic. | Not on `API-DESIGN.md` § 7's five-product semver-exemption roster, even though it looks like adjacent developer tooling — that roster is a curated, named list, not a blanket rule for anything test/fuzz-shaped. Its `Package.swift` product comment explains why it was published as a real `.library` in the first place: `manifold-mlx`'s `fuzz-mlx` driver needs to `import ManifoldFuzz` cross-package (a load-bearing dependency, not a test-target-only import), and doing so "re-widens the api-digester gate's product surface" — i.e. it is tracked by the same public-surface baseline as every other non-exempt product, the same gating `ManifoldFoundation`/`ManifoldOllama`/`ManifoldCloudSaaS` get. |
-| `ManifoldServerKit` (module `ManifoldServer`) | Embeddable OpenAI-compatible server library — `ManifoldServer.serve(configuration:backendProvider:)`. | A real public seam shipped in #2242, not test/dev tooling; absent from § 7's exemption list. **Caveat:** its api-digester coverage is structurally broken by a SwiftPM tooling limitation (traits don't reach the scratch-checkout build the digester dumps), not a scoping choice — see [Open questions](#open-questions). |
-| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. | Graduated from Tier 3a on the first-real-adopter rule (`AGENTS.md`; `API-DESIGN.md` § 7b) — the same adopter bar that keeps `ManifoldVoice` at this tier. Two real adopters: fireside declares the product for Sources+Tests (`Packages/FiresideEval/Package.swift`) and drives `GoldenTaskRunner` via `FiresideGoldenTaskAdapter`/`FiresideGraphCheckpointScorer`, exercised per-PR by fireside's `macos-ci.yml`; idlewick is a second adopter (its `iwk` CLI target imports the product from non-test code, with `AppEvalReportBuilderTests` CI-executed). See the `app-eval` row in `scripts/demo-coverage-manifest.tsv` for the full evidence chain. **Caveat:** unlike this tier's other members, `ManifoldAppEval` does not yet receive the full release-gated verification Tier 2's definition names (no demo-app link, no api-digester coverage) — the same gap the page's own [Open questions](#open-questions) already records for `ManifoldFuzz` and `ManifoldServerKit`; in-repo demonstration of the capability itself is still `vehicle: none` pending an example-app wire-up. |
+| `ManifoldServerKit` (module `ManifoldServer`) | Embeddable OpenAI-compatible server library — `ManifoldServer.serve(configuration:backendProvider:)`. | A real public seam shipped in #2242, not test/dev tooling; absent from § 7's exemption list. **Caveat:** its api-digester coverage is structurally broken by a SwiftPM tooling limitation (traits don't reach the scratch-checkout build the digester dumps), not a scoping choice — see [Qualification gaps](#qualification-gaps). |
+| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. | Graduated from Tier 3a on the first-real-adopter rule (`AGENTS.md`; `API-DESIGN.md` § 7b) — the same adopter bar that keeps `ManifoldVoice` at this tier. Two real adopters: fireside declares the product for Sources+Tests (`Packages/FiresideEval/Package.swift`) and drives `GoldenTaskRunner` via `FiresideGoldenTaskAdapter`/`FiresideGraphCheckpointScorer`, exercised per-PR by fireside's `macos-ci.yml`; idlewick is a second adopter (its `iwk` CLI target imports the product from non-test code, with `AppEvalReportBuilderTests` CI-executed). See the `app-eval` row in `scripts/demo-coverage-manifest.tsv` for the full evidence chain. **Caveat:** it has no in-repo demo-app vehicle yet (`vehicle: none` pending an example-app wire-up), and its core-main release evidence remains a pending registry-derived canary in the [release-health ledger](RELEASE-1.0.md#release-health--qualification-ledger). |
 
 **Executables in this tier:** `ManifoldServer` (the `Server`-trait-gated
 OpenAI-compatible HTTP server CLI — pairs with `ManifoldServerKit` above) and
@@ -238,10 +249,15 @@ Experimental tier's migration-note guarantee. A future prototype that
 explicitly opts out of that guarantee (e.g. a throwaway spike product tagged
 `Labs` from day one) would land here; none exists as of this writing.
 
-## Open questions
+## Qualification gaps
 
-Two placements in this page are judgment calls this audit doesn't fully
-settle — flagged rather than silently resolved:
+Tier membership is deliberately not used to hide evidence gaps. The
+current release-blocking set and its evidence-to-clear live in the
+[release-health ledger](RELEASE-1.0.md#release-health--qualification-ledger).
+Two product-scoped questions remain here because they concern compatibility
+classification as well as a particular release's health. They do not reorder
+the immediate remediation lanes, but their affected promises remain withheld
+in the ledger:
 
 1. **`ManifoldServerKit`'s Tier 2 placement is not fully machine-verified.**
    Its public seam (`ServerBackendProvider`, `ManifoldServer.serve`) is
@@ -253,25 +269,14 @@ settle — flagged rather than silently resolved:
    but that placement will keep resting on documentation rather than a gate
    until the tooling limitation is fixed or the module is restructured so
    its seam compiles unconditionally.
-2. **Tier 2's stated criterion isn't met by every Tier 2 member.** The tier
-   is defined above as receiving "the same full release-gated verification
-   as Core," but three of its members don't, today: `ManifoldServerKit` has no
-   api-digester coverage at all (see item 2 above), `ManifoldFuzz` is
-   exercised by neither the cold-start gates nor the release-time demo-app
-   build gate — nothing in the gate suite links or imports it the way the
-   demo app links `ManifoldUIModelManagement`/`ManifoldHuggingFace`/`ManifoldVoice`
-   — and `ManifoldAppEval` has no in-repo demo-app vehicle at all yet
-   (`vehicle: none` on the `app-eval` row of `scripts/demo-coverage-manifest.tsv`;
-   its adopter evidence is entirely external, in fireside's and idlewick's own
-   CI). The property `ManifoldFuzz`'s row cites (tracked in the public-surface
-   baseline, not on the § 7 exemption roster) is real, but it doesn't
-   discriminate Tier 2 from Tier 3b — every Tier 3b product is tracked in
-   that same baseline too (§ 7 says so explicitly). So in practice, the
-   operative test this page actually applies for these three products is
-   **roster membership and absence from an exemption list**, not gate
-   coverage — the tier's own stated bar. This is a gap in what the tier
-   promises versus what's verified, not a reason to move any of the three;
-   recorded here rather than silently glossed over.
+2. **Several Tier 2 products need more direct release evidence.**
+   `ManifoldServerKit` has no api-digester coverage (item 1), `ManifoldFuzz`
+   is not linked by the cold-start or release-time demo-app gates, and
+   `ManifoldAppEval` has no in-repo demo-app vehicle (`vehicle: none` in
+   `scripts/demo-coverage-manifest.tsv`). Their tier placement rests on their
+   stated compatibility scope and non-exempt roster status; the release-health
+   ledger is where missing evidence becomes a release decision rather than a
+   silent contradiction in the tier definition.
 
 ## Derivation & governance
 

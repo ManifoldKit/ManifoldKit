@@ -12,7 +12,8 @@
 > Each retains the alternative that was considered and why it was rejected, so
 > the reasoning survives the decision.
 >
-> **Both things that were open are now settled.**
+> **The two policy decisions that were open are now settled; release
+> qualification is not.**
 > [Appendix A](#appendix-a--api-digester-isolation-change-blind-spot)'s
 > isolation-change blind spot was closed at type level 2026-07-21: the
 > normalizer now emits conformance and filtered-attribute signal, so an
@@ -23,7 +24,15 @@
 > critical fix" on 2026-07-16 (narrow: security + data-loss/corruption only),
 > and "how a fix reaches the 1.x line" on 2026-07-21, via
 > [Appendix B](#appendix-b--1x-maintenance-branch-runbook)'s runbook. See each
-> section for the resolution.
+> section for the resolution. Those decisions do **not** establish that the
+> C.2 stable-tier seal or a current release is qualified. Read
+> [Release health](#release-health--qualification-ledger) for dated blockers
+> and the exact evidence required before making a Tier 1/2 release claim.
+>
+> **Issue #2211 remains open.** Policies 1–5 below are decided. The later
+> proposal for a sixth policy — separate stable and continuous qualification
+> channels — has not been adopted. The operational ledger below records
+> current evidence without silently deciding that policy.
 
 ManifoldKit is built for sustained development — apps operated over months and
 years, not a demo that compiles once. `1.0.0` is the point where that promise
@@ -118,7 +127,10 @@ on this package's `ManifoldInference` from their own repos, pin it with
 `.upToNextMinor`, and run a compat canary ([`COMPANION-BACKENDS.md`
 § 4](COMPANION-BACKENDS.md)). Per **Policy 4** below, core and companions
 version **independently**: core 1.0 neither waits for nor drags a companion to
-1.0.
+1.0. Independent versioning does not waive release evidence: every registered
+companion, eval, or apps consumer still needs a real canary before its
+integration is claimed as qualified; the current blockers are in
+[Release health](#release-health--qualification-ledger).
 
 ### 6. Performance
 
@@ -155,9 +167,72 @@ not enumerate what doesn't** — [`docs/PRODUCTION-READINESS.md`](PRODUCTION-REA
 is the complete tier assignment (audit-enforced for every `.library`
 product) for every published product, this section's two exempt groups
 included, and is the page to check before
-assuming a product is covered by the 1.0 promise.
+assuming a product is covered by the 1.0 promise. A tier assignment is not a
+current-release approval: qualification blockers can withhold a scoped Tier
+1/2 claim without changing the compatibility roster.
 
 ---
+
+## Release health — qualification ledger
+
+**Dated:** 2026-08-16. This is the current-release qualification ledger for
+Tier 1 and Tier 2 promises. It is deliberately separate from
+[`PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md), which assigns a product's
+**compatibility tier**. A tier says what compatibility commitment the project
+assigns to the surface; it does not certify that every release gate for that
+commitment is presently evidenced.
+
+**Release rule.** A release may describe a Tier 1/2 capability as qualified
+only when its row below is clear with the stated evidence. An open row is an
+operational demotion of the affected promise for the current release: either
+fix it and record the evidence, or explicitly remove that promise from the
+release claim. A passing unit suite, declared CI route, or old green run is not
+a substitute for the evidence named here. This ledger does not produce a
+blanket “all Tier 2 qualified” result: claims remain scoped to the products and
+paths whose evidence is actually clear.
+
+### Tier 1/2 blockers
+
+| Order | Scope affected | Blocker | Evidence required to clear |
+|---:|---|---|---|
+| 1 | Tier 1 bootstrap recipe and Tier 2 `ManifoldUIModelManagement` endpoint configuration | [#2476](https://github.com/ManifoldKit/ManifoldKit/issues/2476) is **blocked**: the canonical ancestor `endpointStore` injection yields `nil` in `ChatView`'s configuration sheet. | An Example/integration test presents the real configuration content and proves it receives a usable store; the canonical recipe and runnable example use that verified wiring; and CI executes the test. A compile-only snippet is insufficient. |
+| 2 | Tier 1 cold-start release gate | [#2423](https://github.com/ManifoldKit/ManifoldKit/issues/2423) is **blocked**: `cold-start-human` can restore a stale main-scoped cache and report diagnostics not reproducible from source. | A PR run records either a current-generation cache hit or intentional cold miss, including cache `createdAt`/key provenance; no multi-week-old restored build directory is accepted; and the `llama`/`ManifoldLlama` diagnostic divergence is rechecked from the corrected run. |
+| 3 | Tier 1 `ManifoldContract`; every Tier 2 backend | [#2409](https://github.com/ManifoldKit/ManifoldKit/issues/2409) is **blocked**: cancellation and immediate reuse have no shared, non-vacuous contract tripwire. | `BackendContractChecks` proves a generation is in flight before cancelling, then asserts synchronous `isGenerating == false` and successful immediate reuse; its test demonstrably fails on a known violating backend; and every in-tree backend passes or publishes a deliberate deviation. |
+| 4 | Tier 2 `ManifoldOllama`; terminal-turn behaviour in Tier 1 Runtime/UI | [#2376](https://github.com/ManifoldKit/ManifoldKit/issues/2376) remains **unqualified**: bounded production mitigations now include a five-minute stream-idle timeout, terminal drain, and visible diagnostics, but the reported live iOS Ollama tool-continuation path has no terminal-state evidence. | A regression test drives an Ollama tool round-trip to a terminal state, and a real iOS-simulator/Ollama CI or release-gate run records either a completed continuation or the explicit bounded error. If request shape is causal, pin it with a request-body test; a runner timeout is failure. |
+
+The rows are in the approved remediation sequence, not severity: rows 1–2 are
+the first parallel lane, followed by rows 3–4. A release cannot skip an
+unresolved blocker by calling a later canary green.
+
+### Additional product-scoped qualification gaps
+
+These gaps do not reorder the immediate remediation sequence above, but they
+prevent an aggregate claim that every Tier 2 product is fully release-qualified.
+Each affected promise stays withheld until its own evidence is clear.
+
+| Product | Promise withheld | Evidence required to clear |
+|---|---|---|
+| `ManifoldServerKit` | Public-API compatibility qualification. | Bring its trait-gated public seam under api-digester coverage, or add an equivalent enforced surface-diff gate with demonstrated-red evidence. |
+| `ManifoldFuzz` | Live first-party integration qualification. | Add a release canary or demonstration vehicle that imports and exercises `ManifoldFuzz`; public-surface baseline coverage alone is insufficient. |
+| `ManifoldAppEval` | Full release qualification. | Clear the registry-derived core-main canary in row 7 **and** add the in-repo demonstration vehicle tracked by #2453 M3. The canary alone qualifies core compatibility, not the missing demonstration path. |
+
+### Release-context gates after the blockers
+
+| Order | Gate | Current state and evidence required to clear |
+|---:|---|---|
+| 5 | [PR #2462](https://github.com/ManifoldKit/ManifoldKit/pull/2462), migration-index and companion-canary gates | **Not qualified.** Its local/demonstrated-red evidence does not cover either release-context gate. A legitimate Release Please candidate — never a synthetic version bump — must run both gates in CI. Retain links to successful migration-index and dispatched-companion logs, including the release-context decision and checked head. |
+| 6 | [#2477](https://github.com/ManifoldKit/ManifoldKit/issues/2477), companion/eval/apps registry | **Blocked.** Dispatch, pre-release gating, and prose use different hard-coded lists; eval is dispatched but not pre-release-gated. One checked-in registry must source dispatch, canary enumeration, pin/freshness checks, and generated or validated documentation. An audit must fail when a consumer is omitted or duplicated. |
+| 7 | Eval core-main canary | **Pending after #2477.** `manifold-eval` must not count merely because it receives a dispatch. Its registry-derived entry must run against core main/release candidate, return a terminal CI conclusion, and be consumed by the release gate. |
+| 8 | Bespoke apps canary | **Pending after eval.** The apps integration cannot use the SwiftPM-only companion workflow unchanged. A real apps-specific workflow must exercise the supported integration against core main/release candidate, return a terminal CI conclusion, and be registry-derived and release-gated. |
+
+### Demonstration program remains future work
+
+Issue [#2453](https://github.com/ManifoldKit/ManifoldKit/issues/2453) is not
+closed by this ledger or by the two canaries. Its M1–M5 remain future work: M1
+shrink, M2 local inference, M3 headless/long-tail vehicles, M4 deliberate
+macOS coverage, and M5 a blocking freshness/staleness ratchet. M0 is the
+shipped instrument only. The canaries can contribute evidence; they do not
+replace the milestone gates.
 
 ## Part 2 — Post-1.0 policies (decided)
 
@@ -302,10 +377,12 @@ until the companions do, or vice versa.
 **Policy.** **Independent versioning.** Core 1.0 neither waits for nor
 drags `manifold-mlx` / `manifold-llama` to 1.0. Each companion versions on its
 own cadence and declares a **supported-core range** (the existing
-`.upToNextMinor` pin plus the compat canary already express and enforce this).
+`.upToNextMinor` pin plus a qualifying compat canary express and enforce this).
 A companion may sit at `0.x` against a `1.x` core, or reach `1.0` before core
-does; the only contract between them is the declared core range and a green
-canary. Rationale: the packages were split precisely so a heavy GPU/native
+does; the only contract between core and those companions is the declared core
+range and a verified green companion canary. Current evidence is recorded in
+the release-health ledger rather than assumed by this policy. Rationale: the
+packages were split precisely so a heavy GPU/native
 dependency evolves on its own clock; re-coupling their version numbers would
 re-import the coupling the split removed.
 
