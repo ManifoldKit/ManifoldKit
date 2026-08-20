@@ -52,6 +52,14 @@ from *outside* the monorepo. See [`docs/QA-PRACTICES.md`](../docs/QA-PRACTICES.m
 | `cold-start-specialised-uimodelmanagement.sh` | Import gate — `ManifoldUIModelManagement` as a standalone product dependency (`ModelManagementViewModel`, `ModelImportError`, `DocumentLibraryViewModel`). | CI-only (`ci.yml`, `nightly-slow-tests.yml`) |
 | `cold-start-human.sh` | Tier 4 — the "human path": asserts README.md's first H2 is `## Hello World` and compiles its first ```` ```swift ```` block against the current package. Structurally different from tiers 1-3 (Markdown parsing, no `swift run`); reuses only `cs_swift_build` from the shared lib. | CI-only (`nightly-slow-tests.yml`, `cold-start-human.yml`) |
 
+`cold-start-human.yml` restores its persistent build path by exact key only,
+with a UTC-day key generation. PR-scoped cache entries are not visible to other
+PRs, so a broad fallback can silently select a stale `main` build directory;
+an unchanged exact key can do so after weeks as well. A clean miss is
+intentional; the workflow logs the current key and either `provenance: none` or
+the restored cache's ID, `createdAt`, and ref before compiling the README
+snippet. At the next UTC day, an old build directory is ineligible.
+
 ## Test running & CI gating
 
 | Script | Purpose | Invocation context |

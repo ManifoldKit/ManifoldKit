@@ -56,6 +56,9 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  # The provenance step reads the Actions cache metadata after an exact hit.
+  # It fails rather than claiming a cache is current without that evidence.
+  actions: read
   contents: read
 
 jobs:
@@ -78,6 +81,21 @@ jobs:
       - name: Setup Swift CI environment
         uses: ./.github/actions/setup-swift-ci
 
+      # Bound an exact-key hit to one UTC day. PR cache entries are scoped, so
+      # an otherwise unchanged content key can remain main-scoped for weeks;
+      # accepting it would make this diagnostic depend on old build output.
+      - name: Calculate cold-start cache generation
+        id: cold-start-cache-generation
+        run: |
+          set -euo pipefail
+          generation="$(date -u +%Y-%m-%d)"
+          if ! [[ "${generation}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "::error::Could not calculate UTC-day cold-start cache generation: ${generation}"
+            exit 1
+          fi
+          echo "value=${generation}" >> "${GITHUB_OUTPUT}"
+          echo "cold-start cache generation: ${generation} (UTC day; exact cache hits expire at the next generation)"
+
       # Cache the cold-start consumer's own build path across runs. The script
       # honors MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR by passing it as SwiftPM's
       # --build-path; the consumer target itself rebuilds each run (mktemp
@@ -85,24 +103,85 @@ jobs:
       # dependency closure (artifacts + checkouts + transitive object files) is
       # reused. Local measurement: cold 90s → warm 12s (7.5× speed-up), with
       # 1545 → 359 build steps (dep graph re-used, only consumer target
-      # recompiled). Restore-keys fall back to a partial-prefix hit so a
-      # Package.resolved bump warms from the previous resolved set instead of
-      # paying the full cold cost. Memory `feedback_ci_build_debug_cache`
-      # warned off caching `.build/debug` for the main test job because path
-      # fingerprints invalidate restored objects; that risk is real here too,
-      # but the cache path is owned by THIS workflow only and the consumer
-      # target is the only piece that recompiles per run — the dep graph
-      # restore is the dominant win. Keyed on Package.resolved AND the script
-      # contents (a script change can shift the consumer's Package.swift
-      # shape, which would invalidate cached dep object files).
+      # recompiled). This is deliberately EXACT-KEY-ONLY: a PR can see its
+      # own cache and main's cache, but never another PR's cache. A broad
+      # restore prefix would therefore repeatedly select an old main-scoped
+      # build directory when the exact key exists only on PR refs (#2423).
+      # A clean miss is correct evidence; stale build output is not a speed-up.
+      # Memory `feedback_ci_build_debug_cache` warned off caching `.build/debug`
+      # for the main test job because path fingerprints invalidate restored
+      # objects; that risk is real here too, so the report step below records
+      # the exact key and cache provenance whenever one is restored.
       - name: Cache cold-start consumer build path
+        id: cold-start-human-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        # Bump v3 when the cache layout or acceptance policy changes. The
+        # UTC-day bucket makes every cache older than a day ineligible;
+        # `hashFiles` is only available in a step context.
+        env:
+          COLD_START_HUMAN_CACHE_KEY: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-cs-human-v3-d${{ steps.cold-start-cache-generation.outputs.value }}-${{ hashFiles('Package.resolved', 'scripts/cold-start-human.sh') }}
         with:
           path: |
             ~/.cache/manifoldkit-cold-start-human
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-cs-human-${{ hashFiles('Package.resolved', 'scripts/cold-start-human.sh') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-cs-human-
+          key: ${{ env.COLD_START_HUMAN_CACHE_KEY }}
+
+      # A miss is intentional: without a broad restore prefix, no unrelated
+      # main-scoped build output can be admitted. On an exact hit, look up the
+      # only eligible refs (this PR, then the default branch) and fail closed
+      # if GitHub's metadata cannot prove which cache generation was restored.
+      - name: Report cold-start cache provenance
+        env:
+          CACHE_HIT: ${{ steps.cold-start-human-cache.outputs.cache-hit }}
+          CACHE_KEY: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-cs-human-v3-d${{ steps.cold-start-cache-generation.outputs.value }}-${{ hashFiles('Package.resolved', 'scripts/cold-start-human.sh') }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "cold-start cache key: ${CACHE_KEY}"
+
+          if [[ "${CACHE_HIT}" != "true" ]]; then
+            echo "::notice title=Cold-start cache::Intentional clean miss; no exact cache key was restored."
+            echo "cold-start cache provenance: none (exact-key-only restore policy)"
+            exit 0
+          fi
+
+          fetch_cache_metadata() {
+            curl --fail --silent --show-error --retry 3 --get \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --data-urlencode "key=${CACHE_KEY}" \
+              --data-urlencode "ref=$1" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/caches"
+          }
+
+          cache_ref="${GITHUB_REF}"
+          cache_metadata="$(fetch_cache_metadata "${cache_ref}")"
+          cache_count="$(printf '%s' "${cache_metadata}" | jq -er '.total_count')"
+          if [[ "${cache_count}" == "0" ]]; then
+            cache_ref="refs/heads/${DEFAULT_BRANCH}"
+            cache_metadata="$(fetch_cache_metadata "${cache_ref}")"
+            cache_count="$(printf '%s' "${cache_metadata}" | jq -er '.total_count')"
+          fi
+
+          if [[ "${cache_count}" != "1" ]]; then
+            echo "::error::Exact cache hit for ${CACHE_KEY}, but cache metadata on eligible ref ${cache_ref} was ambiguous (count=${cache_count})."
+            exit 1
+          fi
+
+          cache_id="$(printf '%s' "${cache_metadata}" | jq -er '.actions_caches[0].id')"
+          cache_created_at="$(printf '%s' "${cache_metadata}" | jq -er '.actions_caches[0].created_at')"
+          restored_cache_key="$(printf '%s' "${cache_metadata}" | jq -er '.actions_caches[0].key')"
+          restored_cache_ref="$(printf '%s' "${cache_metadata}" | jq -er '.actions_caches[0].ref')"
+          if [[ "${restored_cache_key}" != "${CACHE_KEY}" ]]; then
+            echo "::error::Cache metadata key ${restored_cache_key} does not match current key ${CACHE_KEY}."
+            exit 1
+          fi
+          if [[ "${restored_cache_ref}" != "${cache_ref}" ]]; then
+            echo "::error::Cache metadata ref ${restored_cache_ref} does not match requested ref ${cache_ref}."
+            exit 1
+          fi
+
+          echo "cold-start cache provenance: id=${cache_id} key=${restored_cache_key} createdAt=${cache_created_at} ref=${restored_cache_ref}"
 
       - name: Run tier-4 human cold-start gate
         run: |
