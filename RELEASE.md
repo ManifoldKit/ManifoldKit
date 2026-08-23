@@ -129,8 +129,12 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    Xcode build and select the beta runtime explicitly; the demo script's normal
    destination discovery may otherwise exercise only a stable simulator:
 
+   Set `DEVELOPER_DIR` to the current installed Xcode 27 beta's
+   `Contents/Developer` directory, then record the selected toolchain before
+   running the gates. Do not reuse evidence from an older beta.
+
    ```bash
-   export DEVELOPER_DIR=/Applications/Xcode-27.0.0-Beta.4.app/Contents/Developer
+   test -x "$DEVELOPER_DIR/usr/bin/xcodebuild"
    xcodebuild -version
    swift --version
    xcrun simctl list runtimes

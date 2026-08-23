@@ -139,8 +139,8 @@ watchOS 27.0, *)`, `tvOS` unavailable. That is **above** ManifoldKit's n-1 floor
 (macOS 15 / iOS 18), so any real adoption needs `#available(macOS 27, iOS 27, *)`
 guards and cannot ship unguarded until GA (~Sept 2026, when the floor bumps).
 
-**Do not** bump `swift-tools-version` to chase the beta: CI runs Xcode 26.5 /
-Swift 6.3.2; bumping breaks `resolve-check` and `fuzz`. Probe the beta SDK
+**Do not** bump `swift-tools-version` to chase the beta: core CI is pinned to
+Xcode 26.3 / Swift 6.3; bumping breaks `resolve-check` and `fuzz`. Probe the beta SDK
 compile-only (as this investigation did) until GA.
 
 ## Status summary
