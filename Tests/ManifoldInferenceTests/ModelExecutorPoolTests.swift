@@ -67,6 +67,84 @@ final class ModelExecutorPoolTests: XCTestCase {
         }
     }
 
+    /// Suspends until cancellation and then returns, matching
+    /// ``RealWedgeWatchdog``'s cancelled-sleep behaviour without a timer.
+    private final class CancellationReturningWatchdog: WedgeWatchdog, @unchecked Sendable {
+        private let lock = NSLock()
+        private var budgetContinuation: CheckedContinuation<Void, Never>?
+        private var armedContinuations: [CheckedContinuation<Void, Never>] = []
+        private var returnedContinuations: [CheckedContinuation<Void, Never>] = []
+        private var isArmed = false
+        private var didReturn = false
+
+        func awaitWedgeBudget() async {
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { continuation in
+                    var resumeImmediately = false
+                    var armed: [CheckedContinuation<Void, Never>] = []
+                    lock.lock()
+                    if Task.isCancelled {
+                        resumeImmediately = true
+                    } else {
+                        budgetContinuation = continuation
+                        isArmed = true
+                        armed = armedContinuations
+                        armedContinuations.removeAll()
+                    }
+                    lock.unlock()
+                    armed.forEach { $0.resume() }
+                    if resumeImmediately { continuation.resume() }
+                }
+            } onCancel: {
+                self.resumeBudget()
+            }
+            signalReturned()
+        }
+
+        func waitUntilArmed() async {
+            await withCheckedContinuation { continuation in
+                lock.lock()
+                if isArmed {
+                    lock.unlock()
+                    continuation.resume()
+                } else {
+                    armedContinuations.append(continuation)
+                    lock.unlock()
+                }
+            }
+        }
+
+        func waitUntilReturned() async {
+            await withCheckedContinuation { continuation in
+                lock.lock()
+                if didReturn {
+                    lock.unlock()
+                    continuation.resume()
+                } else {
+                    returnedContinuations.append(continuation)
+                    lock.unlock()
+                }
+            }
+        }
+
+        private func resumeBudget() {
+            lock.lock()
+            let continuation = budgetContinuation
+            budgetContinuation = nil
+            lock.unlock()
+            continuation?.resume()
+        }
+
+        private func signalReturned() {
+            lock.lock()
+            didReturn = true
+            let continuations = returnedContinuations
+            returnedContinuations.removeAll()
+            lock.unlock()
+            continuations.forEach { $0.resume() }
+        }
+    }
+
     // MARK: - Helpers
 
     private func makeConfig() -> GenerationConfig { GenerationConfig() }
@@ -254,7 +332,9 @@ final class ModelExecutorPoolTests: XCTestCase {
         modelB.shouldThrowOnLoad = InferenceError.modelLoadFailed(underlying: InferenceError.inferenceFailure("boom"))
 
         let pool = ModelExecutorPool(loaderProvider: loaderProvider(["A": modelA, "B": modelB]))
-        _ = try await pool.generate(on: ModelExecutorKey("A"), prompt: "p", systemPrompt: nil, config: makeConfig())
+        _ = try await consume(
+            try await pool.generate(on: ModelExecutorKey("A"), prompt: "p", systemPrompt: nil, config: makeConfig())
+        )
 
         // Attempt the swap; it must throw (B can't load).
         do {
@@ -276,6 +356,51 @@ final class ModelExecutorPoolTests: XCTestCase {
         let stream = try await pool.generate(prompt: "p", systemPrompt: nil, config: makeConfig())
         let result = try await consume(stream)
         XCTAssertEqual(result, "A")
+    }
+
+    func testCancelledWatchdogReturnDoesNotWedgeExecutor() async throws {
+        let backend = MockInferenceBackend()
+        let gate = TokenEmissionGate()
+        backend.tokenEmissionGate = gate
+        backend.tokensToYield = ["blocked"]
+        let watchdog = CancellationReturningWatchdog()
+        let executor = ModelExecutor(
+            key: ModelExecutorKey("cancelled"),
+            backendName: "Mock",
+            loader: {
+                try await backend.loadModel(
+                    from: URL(fileURLWithPath: "/tmp/cancelled"),
+                    plan: ModelLoadPlan.testStub()
+                )
+                return backend
+            },
+            makeWatchdog: { watchdog }
+        )
+        try await executor.load()
+
+        let stream = try await executor.generate(
+            prompt: "p",
+            systemPrompt: nil,
+            config: makeConfig(),
+            hints: GenerationRuntimeHints()
+        )
+        let consumer = Task { try await self.consume(stream) }
+        await watchdog.waitUntilArmed()
+
+        consumer.cancel()
+        await watchdog.waitUntilReturned()
+        _ = await consumer.result
+
+        for _ in 0..<1_000 {
+            if await executor.state == .ready {
+                XCTAssertEqual(backend.stopCallCount, 1, "Cancellation must stop the backend before reuse")
+                await gate.release()
+                return
+            }
+            await Task.yield()
+        }
+        await gate.release()
+        XCTFail("Cancelling a watchdog must return the executor to ready, never mark it wedged")
     }
 
     // MARK: - 4. Single-executor pool preserves single-model semantics
