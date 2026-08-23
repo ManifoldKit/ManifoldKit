@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.76.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.76.0...v0.76.1) (2026-08-23)
+
+
+ManifoldKit 0.76.1 qualifies the package and its runnable examples against the Xcode 27 beta SDK
+while preserving Xcode 26 compatibility. It also fixes cancelled-stream executor reuse and closes
+two fail-open or nondeterministic holes in the release assurance machinery.
+
+### Highlights
+
+#### Build cleanly with the Xcode 27 SDK
+
+The macro implementation now accepts SwiftSyntax's Xcode 27 member-macro signature, and the
+Foundation Models backend selects greedy sampling using the spelling supplied by each supported
+SDK. The Advanced example also compares the canonical Foundation backend identity, keeping the
+runnable app aligned with the extensible `BackendName` API. No consumer API migration is needed;
+Xcode 26 remains supported.
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode-27.app/Contents/Developer \
+  swift build --build-tests --traits Server,Macros
+```
+
+See [#2487](https://github.com/ManifoldKit/ManifoldKit/pull/2487) and
+[`docs/HARDWARE-TOOLCHAIN.md`](docs/HARDWARE-TOOLCHAIN.md).
+
+### Fixes
+
+- Prevent cancellation of a returned generation stream from falsely wedging its executor, stop
+  the backend before reuse, and fence delayed cleanup from newer turns
+  ([#2489](https://github.com/ManifoldKit/ManifoldKit/pull/2489)).
+- Make the cold-start dependency cache fail closed instead of accepting an incomplete restore
+  ([#2482](https://github.com/ManifoldKit/ManifoldKit/pull/2482)).
+- Make the gate-lock fallthrough self-test deterministic with an explicit readiness handshake
+  ([#2481](https://github.com/ManifoldKit/ManifoldKit/pull/2481)).
+
+### Documentation
+
+- Reset the release-qualification roadmap around current open work and completed evidence
+  ([#2480](https://github.com/ManifoldKit/ManifoldKit/pull/2480)).
+
 ## [0.76.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.75.0...v0.76.0) (2026-08-14)
 
 ManifoldKit 0.76 makes the companion-package architecture tangible with runnable MLX and llama.cpp

@@ -61,7 +61,7 @@ resolves them. The build modes map to product graphs (see
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.76.0" // x-release-please-version
+    from: "0.76.1" // x-release-please-version
 )
 // For local inference add the companion package(s) and registrars:
 // .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.1.0")
@@ -91,7 +91,7 @@ and the import-graph rule in the same audit):
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.76.0" // x-release-please-version
+    from: "0.76.1" // x-release-please-version
 )
 // Cloud backends always compile since v0.48; depend on the ManifoldOllama
 // product (and not ManifoldCloudSaaS) for the ollama-mode link surface.
@@ -118,7 +118,7 @@ Same `offline` guarantees, plus:
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.76.0" // x-release-please-version
+    from: "0.76.1" // x-release-please-version
 )
 // Cloud backends always compile since v0.48; depend on the ManifoldCloudSaaS
 // product for the SaaS link surface.
@@ -134,7 +134,7 @@ transport-security boundary.
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.76.0" // x-release-please-version
+    from: "0.76.1" // x-release-please-version
 )
 // All cloud backends are compiled in. Add the manifold-mlx / manifold-llama
 // companion packages for the maximum-surface build.

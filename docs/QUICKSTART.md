@@ -21,7 +21,7 @@ Add ManifoldKit to your `Package.swift` (or Xcode's *Package Dependencies*):
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.76.0" // x-release-please-version
+    from: "0.76.1" // x-release-please-version
 )
 ```
 
@@ -335,7 +335,7 @@ If you don't want the full model-management UI (e.g. cloud-only apps that seed a
 // Package.swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.76.0" // x-release-please-version
+    from: "0.76.1" // x-release-please-version
 ),
 .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),  // GGUF / llama.cpp
 .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"),    // MLX (+ image gen)
