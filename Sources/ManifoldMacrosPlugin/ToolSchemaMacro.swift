@@ -43,8 +43,13 @@ public struct ToolSchemaMacro: MemberMacro {
     public static func expansion(
         of node: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
+        conformingTo protocols: [TypeSyntax],
         in context: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
+
+        // `@ToolSchema` only synthesises members. Protocol conformances are
+        // deliberately owned by the declaration the host app writes.
+        _ = protocols
 
         // Support applying to an enum (to synthesise `{type: string, enum: [...]}`
         // from a String-raw-type CaseIterable enum).

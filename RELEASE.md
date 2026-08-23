@@ -125,6 +125,24 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    pulled in via the umbrella, so this is the only gate that catches package
    drift before it ships.
 
+   For a release that claims compatibility with an Apple beta, record the
+   Xcode build and select the beta runtime explicitly; the demo script's normal
+   destination discovery may otherwise exercise only a stable simulator:
+
+   ```bash
+   export DEVELOPER_DIR=/Applications/Xcode-27.0.0-Beta.4.app/Contents/Developer
+   xcodebuild -version
+   swift --version
+   xcrun simctl list runtimes
+   xcrun simctl list devices available
+   swift build --build-tests --traits Server,Macros
+   scripts/demo-apps-build.sh
+   ```
+
+   Record the exact Xcode build, SDK, and iOS 27 simulator UDID in the release
+   PR. A macOS 27 SDK compile on a macOS 26 host is compile evidence only; a
+   macOS 27 runtime claim requires the same build on a macOS 27 host or VM.
+
 2. **Rewrite the changelog (CHANGELOG.md only).** Check out the release
    branch in its worktree (`release-please--branches--main`). CI's
    `changelog-parser-check` (any push, any actor) already re-runs Release

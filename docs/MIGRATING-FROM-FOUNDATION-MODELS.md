@@ -1,14 +1,14 @@
-# Migrating from Apple Foundation Models / AnyLanguageModel
+# Migrating from Apple Foundation Models
 
 **Audience:** consumer
 **Status:** living
 
-If you already think in Apple's `LanguageModelSession` / `@Generable` idioms — or
-in HuggingFace **AnyLanguageModel**'s provider abstraction — this guide maps that
-mental model onto ManifoldKit's surface. The translation is mostly a level-up:
-ManifoldKit operates one altitude *above* a model-access library, so the session,
-tool, and structured-output concepts you know become the turn loop, the tool
-registry, and `GenerationConfig`.
+If you already think in Apple's `LanguageModelSession` / `@Generable` idioms,
+this guide maps that mental model onto ManifoldKit's surface. ManifoldKit
+operates one altitude *above* model access: the session, tool, and
+structured-output concepts you know sit inside a persisted turn loop, approval
+policy, and app UI. Structured output is the important exception — ManifoldKit
+does not yet offer Apple's decoded-instance ergonomics.
 
 > **TL;DR.** A `LanguageModelSession` becomes a `ChatViewModel` (or a
 > `ConversationRuntime` if you want headless control). `session.respond(to:)`
@@ -22,13 +22,18 @@ registry, and `GenerationConfig`.
 
 ## Why migrate (and why not)
 
-Apple's `FoundationModels` framework is a single on-device system model with a
-clean session API. ManifoldKit **wraps that exact model** as one backend
-(`FoundationBackend`, iOS 26 / macOS 26+) and adds: many other backends behind
-one protocol, a persisted multi-session turn loop, drop-in SwiftUI, tool
-approval, RAG, and cloud providers. You migrate when you outgrow "one model, one
-session" and want a product surface; you stay on raw `FoundationModels` if you
-only ever need the system model and no persistence/UI.
+Apple's `FoundationModels` framework provides a clean session API and, on iOS
+27/macOS 27, a public `LanguageModel` / `LanguageModelExecutor` provider seam.
+Apple also publishes first-party integrations for MLX and Core AI plus cloud
+chat-completions utilities. ManifoldKit does not claim to be the only provider
+abstraction on Apple platforms.
+
+ManifoldKit **wraps Apple's system model** as one backend (`FoundationBackend`,
+iOS 26 / macOS 26+) and adds the product layer: one persisted multi-session turn
+loop across local and cloud engines, drop-in SwiftUI, tool approval, RAG, model
+management, and backend-independent operations. Use ManifoldKit when you need
+that sustained app surface; stay on raw `FoundationModels` when its session and
+provider ecosystem are sufficient.
 
 ManifoldKit no longer wraps AnyLanguageModel as a dependency — the bridge
 product (`ManifoldAnyLanguageModel`) was retired in #2435 for zero adoption.
@@ -50,7 +55,8 @@ for the full recipe and the pinning step every one of these hosts also needs.
 |---|---|---|
 | `LanguageModelSession` | `ChatViewModel` (UI) or `ConversationRuntime` (headless) | Persisted, multi-turn, multi-backend |
 | `session.respond(to:)` / `streamResponse(to:)` | `chatVM.sendMessage(_:)` | Streaming is built into the turn loop |
-| `SystemLanguageModel` (the model) | `InferenceBackend` (the protocol) + `FoundationBackend` (that model) | One of many backends |
+| `SystemLanguageModel` (the model) | `FoundationBackend` | One backend inside the shared runtime |
+| `LanguageModel` / `LanguageModelExecutor` (iOS 27 / macOS 27 provider seam) | `InferenceBackend` | Different ownership boundaries: Apple's session owns its loop; ManifoldKit's `ConversationRuntime` owns the app turn loop |
 | AnyLanguageModel `LanguageModel` (provider abstraction) | `InferenceBackend` + `OpenAIBackend` via `APIProvider.custom` | Not a wrapped dependency — a native client pointed at the provider's OpenAI-compatible endpoint |
 | `Tool` protocol / tool calling | `ToolDefinition` + `ToolRegistry` + `ToolExecutor` | Local **and** cloud, with approval gating |
 | `@Generable` / guided generation | `GenerationRuntimeHints.structuredOutput` (`.gbnf` / `.jsonSchema` / `.guided` / `.jsonPrompting`) | **No `@Generable` macro** — see below. (Pre-v0.69 this lived on `GenerationConfig`; that placement is retired.) |

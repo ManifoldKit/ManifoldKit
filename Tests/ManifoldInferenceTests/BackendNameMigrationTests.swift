@@ -18,6 +18,24 @@ final class BackendNameMigrationTests: XCTestCase {
                        "0.19 canonical raw value flipped from \"Apple\" to \"foundation\".")
     }
 
+    func test_advancedDemoUsesCanonicalFoundationIdentity() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let demoURL = repositoryRoot.appendingPathComponent("Example/Advanced/DemoContentView.swift")
+        let source = try String(contentsOf: demoURL, encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("activeBackendName == BackendName.foundation.rawValue"),
+            "The runnable demo must compare backend identity through BackendName.foundation."
+        )
+        XCTAssertFalse(
+            source.contains("activeBackendName == \"Apple\""),
+            "The legacy display value does not match the canonical active backend identity."
+        )
+    }
+
     func test_canonicalRawValues_ollama() {
         XCTAssertEqual(BackendName.ollama.rawValue, "ollama")
     }

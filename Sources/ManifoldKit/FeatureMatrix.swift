@@ -115,9 +115,9 @@ public enum FeatureMatrix {
         ),
         ManifoldTrait(
             name: "CoreAI",
-            description: "Stub: Apple's CoreAI tensor runtime — confirmed a DEAD END for ManifoldKit. It consumes a proprietary .aimodel format (AIModel/InferenceFunction/NDArray) with no LanguageModel/ModelExecutor protocol and no GGUF/MLX path, so it is not a backend seam. Name is misleading; rename/retire in a later real-code PR. Pure no-op stub.",
+            description: "No-op stub: the bare CoreAI tensor runtime is not a backend seam, while apple/coreai-models exposes CoreAILanguageModel through FoundationModels.LanguageModelExecutor. A future integration would consume that package rather than this trait.",
             unlocks: []
-            // Dead end (see docs/wwdc-2026-trait-stubs.md). Stays in
+            // Resolved shape documented in docs/wwdc-2026-trait-stubs.md. Stays in
             // pendingMapping while unlocks is empty; do NOT remove until a real
             // capability lands. Trait rename is out of scope for the docs PR.
         ),
