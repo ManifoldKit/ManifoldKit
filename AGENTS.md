@@ -840,7 +840,7 @@ ManifoldKit targets **n-1**: the current Apple OS release and the one immediatel
 
 When Apple ships a new major OS each September, bump both minimums and remove `#available` guards added for the previous floor. Do not use `Atomic`, `OSAllocatedUnfairLock`, or other APIs that post-date the minimum without checking their availability.
 
-**`swift-tools-version` ceiling = installed Xcode toolchain.** Xcode 26.x ships Swift 6.2.x, not 6.3 — bumping the tools version above what CI runners have breaks `resolve-check` and `fuzz`.
+**`swift-tools-version` ceiling = installed Xcode toolchain.** Core CI currently selects Xcode 26.3 / Swift 6.3; bumping the tools version above the toolchain CI actually selects breaks `resolve-check` and `fuzz`.
 
 ## Hardware constraints (simulator / CI)
 

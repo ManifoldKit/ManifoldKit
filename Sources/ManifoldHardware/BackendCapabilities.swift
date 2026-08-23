@@ -207,7 +207,8 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// describe *how* this (model × backend × renderer) emits tool calls on the
     /// wire. `nil` when unknown or unsupported.
     ///
-    /// This is the capability seam from `docs/plans/tool-call-conformance.md`.
+    /// This is the capability seam described in
+    /// `docs/plans/tool-calling-architecture.md`.
     /// **Producers live in the companion backends**: manifold-mlx and
     /// manifold-llama set it from the loaded model's family (their renderers
     /// already pick a per-family dialect internally). **Core defines the seam

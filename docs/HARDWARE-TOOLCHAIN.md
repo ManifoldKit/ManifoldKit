@@ -75,10 +75,10 @@ split in its own CI, not a single `swift test` call.
 
 **The `swift-tools-version` ceiling is whatever Xcode version CI actually
 runs.** Core's manifest declares `swift-tools-version: 6.1`
-(`Package.swift:1`) deliberately below the newest available toolchain — Xcode
-26.x on the macOS runners ships Swift 6.2.x, not 6.3, and bumping the tools
-version above what CI has installed breaks `resolve-check` and the fuzz
-harness. `companion-compat.yml` (core's pre-release companion canary) is
+(`Package.swift:1`) deliberately below the newest available toolchain. The
+current core CI pin is Xcode 26.3 / Swift 6.3; bumping the tools version above
+the selected CI toolchain breaks `resolve-check` and the fuzz harness.
+`companion-compat.yml` (core's pre-release companion canary) is
 explicit about the companions needing a *newer* selected toolchain than the
 image default: it force-selects "the newest Xcode 26 toolchain" via
 `xcode-select` because the companions' own CI needs Swift 6.3 to prune

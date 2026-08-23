@@ -284,7 +284,7 @@ This is what makes each phase safe and directly dissolves the review's top objec
 
 **MK code (this repo unless marked companion):** `Sources/ManifoldHardware/PromptTemplate.swift`, `…/ToolCallDialect.swift`, `…/ThinkingMarkers.swift`; `Sources/ManifoldModelCatalog/` `ChatTemplateToolDescriptor`; `Sources/ManifoldContract/ToolCallTransform.swift`; `Sources/ManifoldInference/Services/{JinjaPromptRenderer,PromptRenderer,ToolGrammarBuilder,RenderConsistencyChecker,GenerationQueue}.swift`; `Sources/ManifoldRuntime/Services/ToolCallConformance.swift`; `Sources/ManifoldOllama/OllamaBackend.swift`. **(companion)** manifold-mlx `MLXChatMessageEncoder.swift`, `MLXBackend.swift`, `TransformersTokenizerLoader.swift`, `MLXToolMarkers.swift`; manifold-llama `LlamaToolMarkers.swift`.
 
-**Prior MK work:** matrix `docs/plans/archive/runs/20260622-232839/MATRIX.md`; `docs/plans/tool-call-conformance.md`; PRs #2009 (template claim), #2022 (render-consistency), #2029 (dialect on caps), #2030 (conformance port+cache), #2032/#2035 (Mistral alternation fold), #2034 (SwiftData adapter), #1992/#2025 (JSON-Schema→GBNF).
+**Prior MK work:** matrix `docs/plans/archive/runs/20260622-232839/MATRIX.md`; issue #2005; PRs #2009 (template claim), #2022 (render-consistency), #2029 (dialect on caps), #2030 (conformance port+cache), #2032/#2035 (Mistral alternation fold), #2034 (SwiftData adapter), #1992/#2025 (JSON-Schema→GBNF).
 
 **External:**
 - llama.cpp: [`common/chat.cpp`](https://github.com/ggml-org/llama.cpp/blob/master/common/chat.cpp), [function-calling.md](https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md), PR [#17136](https://github.com/ggml-org/llama.cpp/pull/17136)

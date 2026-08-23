@@ -159,12 +159,10 @@ let package = Package(
         // build-cost levers on leaf edges (Hummingbird, swift-syntax).
         .trait(name: "Server", description: "Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
         .trait(name: "Macros", description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph."),
-        // WWDC 2026 pre-emptive stubs. No associated targets or source files —
-        // these traits exist solely so `#if SystemAIProviderExtension` and
-        // `#if CoreAI` conditional blocks can be written today and flip live on
-        // June 8 without a Package.swift change. See docs/wwdc-2026-trait-stubs.md.
-        .trait(name: "SystemAIProviderExtension", description: "Stubs for the iOS 27 system AI provider extension surface (Siri/Writing Tools backend slot). No-op until WWDC 2026 ships the API."),
-        .trait(name: "CoreAI", description: "Placeholder for Apple's rumoured Core AI framework (Core ML successor). No-op until WWDC 2026 confirms the surface."),
+        // WWDC 2026 stubs resolved against the Xcode 27 beta SDK. Neither has
+        // associated targets or source files; see docs/wwdc-2026-trait-stubs.md.
+        .trait(name: "SystemAIProviderExtension", description: "No-op stub: the anticipated Siri/Writing Tools provider slot is not present in the Xcode 27 beta SDK."),
+        .trait(name: "CoreAI", description: "No-op stub: Core AI integration is provided by apple/coreai-models through FoundationModels.LanguageModelExecutor, not this trait."),
     ],
     dependencies: [
         // mlx-swift / mlx-swift-lm / mattt/llama.swift / swift-transformers /

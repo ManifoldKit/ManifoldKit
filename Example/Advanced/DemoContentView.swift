@@ -94,12 +94,11 @@ struct DemoContentView: View {
                 .environment(viewModel)
         }
         .sheet(isPresented: $isConnectedServicesPresented) {
-            // Probe the active backend by name. ``ModelLifecycleCoordinator``
-            // labels the Foundation Models backend "Apple"; matching that
-            // string keeps the demo independent of `import ManifoldBackends`.
             ConnectedServicesView(
                 toolRegistry: toolRegistry,
-                isFoundationModelsActive: { viewModel.activeBackendName == "Apple" }
+                isFoundationModelsActive: {
+                    viewModel.activeBackendName == BackendName.foundation.rawValue
+                }
             )
         }
         .sheet(isPresented: $isDocumentLibraryPresented) {
@@ -350,7 +349,9 @@ struct DemoContentView: View {
                         // the engine is running and "No Model Selected" would be wrong.
                         let modelLabel: String = {
                             if let name = viewModel.selectedModel?.name { return name }
-                            if viewModel.activeBackendName == "Apple" { return "Apple Intelligence" }
+                            if viewModel.activeBackendName == BackendName.foundation.rawValue {
+                                return "Apple Intelligence"
+                            }
                             return "No Model Selected"
                         }()
                         Text(modelLabel)

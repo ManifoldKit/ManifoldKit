@@ -25,8 +25,8 @@ import ManifoldInference
 /// ManifoldKit surfaces reasoning tokens from capable models via
 /// ``GenerationEvent/thinkingToken(_:)`` and ``GenerationEvent/thinkingCompleted``.
 /// The Ollama and Llama backends emit these events today. **FoundationBackend
-/// does not**, because Apple's public FoundationModels SDK (Xcode 26.4,
-/// module version 1.4.34) exposes no reasoning/thinking surface at all:
+/// does not.** In the Xcode 26 SDK used by the backend's minimum supported
+/// runtime, FoundationModels exposes no reasoning/thinking surface:
 ///
 /// - `LanguageModelSession.ResponseStream<String>.Snapshot` carries only
 ///   `content: String.PartiallyGenerated` and `rawContent: GeneratedContent`.
@@ -45,26 +45,20 @@ import ManifoldInference
 ///   returns zero hits outside `Availability.UnavailableReason` and
 ///   `GenerationError.failureReason` (both unrelated to model reasoning).
 ///
-/// In other words: whatever chain-of-thought Apple's on-device model performs
-/// happens opaquely inside the generator. The SDK returns only the final
-/// user-visible answer. There is nothing for this backend to map onto
-/// `.thinkingToken` or `.thinkingCompleted`, and synthesising fake thinking
-/// events from the visible content would be misleading.
-///
-/// When Apple ships a reasoning surface (e.g. a `reasoning` case on
-/// `Transcript.Segment`, a `reasoningContent` field on `ResponseStream.Snapshot`,
-/// or a reasoning-enabled `UseCase`), this backend should be updated to emit
-/// `.thinkingToken` while reasoning is in flight and `.thinkingCompleted`
-/// exactly once at the transition to visible content, matching the pattern
-/// already used by ``OllamaBackend``.
+/// Xcode 27 adds reasoning transcript entries and a reasoning-level option.
+/// Those APIs are not bridged yet: the backend retains its Xcode 26 behavior
+/// and does not claim ``BackendCapabilities/supportsThinking``. A future bridge
+/// must map the SDK 27 stream into `.thinkingToken` / `.thinkingCompleted`
+/// without changing the iOS 26 / macOS 26 path or exposing private reasoning
+/// as ordinary visible content.
 ///
 /// ## Multimodal / vision support
 ///
 /// ManifoldKit surfaces image attachments via ``MessagePart/image(data:mimeType:)``
 /// and gates UI affordances on ``BackendCapabilities/supportsVision``. The
 /// MLX, Claude, and OpenAI backends accept image input today; **FoundationBackend
-/// does not**, because Apple's public FoundationModels SDK (Xcode 26.4,
-/// module version 1.4.34) exposes no image-input surface:
+/// does not.** The Xcode 26 FoundationModels API used by the minimum supported
+/// runtime has no image-input surface:
 ///
 /// - `Transcript.Segment` is `text(TextSegment) | structure(StructuredSegment)`.
 ///   There is no `image` / `attachment` / `media` case, and `TextSegment` /
@@ -81,19 +75,11 @@ import ManifoldInference
 ///   returns zero hits outside `LanguageModelFeedback.logFeedbackAttachment`,
 ///   which is a telemetry helper unrelated to model input.
 ///
-/// In other words: the SDK has no Data/CGImage/PixelBuffer ingress for the
-/// model. The on-device model itself may be multimodal-capable internally, but
-/// host apps cannot pass images through the public API. The backend therefore
-/// advertises ``BackendCapabilities/supportsVision`` as `false`; the runtime's
-/// pre-flight in ``GenerationQueue`` rejects image-bearing turns with a clear
-/// local error before any request is built. Tracked by issue #20.
-///
-/// When Apple ships an image-input surface (e.g. an `image` case on
-/// `Transcript.Segment`, a `Data`-accepting `Prompt` initialiser, or a
-/// `PromptRepresentable` extension on `CGImage` / `UIImage`), this backend
-/// should be updated to flip the capability flag and translate
-/// ``MessagePart/image(data:mimeType:)`` parts into the new SDK type, matching
-/// the pattern already used by ``ClaudeBackend`` and ``OpenAIBackend``.
+/// Xcode 27 adds attachment/image prompt APIs and runtime vision capability
+/// reporting. They are not bridged yet, so the backend intentionally continues
+/// to advertise ``BackendCapabilities/supportsVision`` as `false`; the runtime
+/// rejects image-bearing turns before building a request. Issue #1710 tracks a
+/// guarded SDK 27 translation while preserving the Xcode 26 implementation.
 @available(iOS 26, macOS 26, *)
 public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
 
@@ -135,25 +121,9 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         maxOutputTokens: 4096,
         supportsStreaming: true,
         isRemote: false,
-        // Apple's FoundationModels SDK (Xcode 26.4, module 1.4.34) exposes no
-        // image-input surface — `Transcript.Segment` is text/structure only,
-        // `Prompt` carries only segments, and there is no `Data`/`CGImage`
-        // ingress anywhere in the public API. See the type-level doc comment
-        // above for the full audit.
-        //
-        // OUTSTANDING (#1710 — multimodal image input, blocked on post-WWDC
-        // Xcode beta): WWDC 2026 announced multimodal AFM 3; a later SDK should
-        // ship `Attachment(UIImage(...))` inside the `respond {}`/`streamResponse`
-        // result builder. When it lands:
-        //   1. Probe the installed SDK first — grep FoundationModels.swiftinterface
-        //      for image/attachment/pixelbuffer ingress; if absent, this stays false.
-        //   2. Make this RUNTIME-conditional, not a static `false`: the backend
-        //      exists on iOS/macOS 26, but vision needs 26.4+, e.g.
-        //        supportsVision: { if #available(iOS 26.4, macOS 26.4, *) { return true }; return false }()
-        //   3. In generate(), map each `MessagePart.image(data:mimeType:)` to an
-        //      `Attachment` and build the multimodal prompt under the same guard.
-        //   4. Confirm whether image requests route to Private Cloud Compute before
-        //      advertising on-device for image inputs (`isRemote`/doc-comment impact).
+        // Xcode 27 ships attachment/image prompt APIs, but this backend still
+        // supports Xcode and runtimes 26. Keep the claim false until #1710 adds
+        // a compiler- and runtime-guarded translation plus live device proof.
         // Flipping this flag auto-enables the composer's PhotoAttachmentButton /
         // VisionInputButton (they gate on BackendCapabilities.supportsVision).
         supportsVision: false,
@@ -647,7 +617,11 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
             do {
                 var options = GenerationOptions()
                 if config.temperature == 0 {
+                    #if compiler(>=6.4)
+                    options.samplingMode = .greedy
+                    #else
                     options.sampling = .greedy
+                    #endif
                 } else {
                     options.temperature = Double(config.temperature)
                 }

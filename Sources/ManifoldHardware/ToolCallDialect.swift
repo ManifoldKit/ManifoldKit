@@ -3,7 +3,8 @@ import Foundation
 /// The known tool-call dialect families a model/backend may emit.
 ///
 /// Each family names a distinct on-the-wire shape for tool calls, derived from
-/// the cross-family chat-template study in `docs/plans/tool-call-conformance.md`.
+/// the cross-family chat-template study in
+/// `docs/plans/tool-calling-architecture.md`.
 /// A family says *how* a call is delimited and encoded — not whether the weights
 /// can actually tool-call.
 public enum ToolCallDialectFamily: String, Codable, Sendable, CaseIterable {
@@ -39,7 +40,7 @@ public enum ToolCallArgEncoding: String, Codable, Sendable {
 /// A predictive signal: `buried` calls (no opening delimiter, prose-embedded)
 /// are the configuration most prone to parse failure — soak first, expect
 /// salvage burden. See the `extractability` column in
-/// `docs/plans/tool-call-conformance.md`.
+/// `docs/plans/tool-calling-architecture.md`.
 public enum ToolCallExtractability: String, Codable, Sendable {
     /// Delimited and unambiguous (Hermes, Qwen, gemma, Mistral).
     case clean
@@ -57,7 +58,7 @@ public enum ToolCallExtractability: String, Codable, Sendable {
 /// verdict ("does it genuinely tool-call"). A backend that already picks a
 /// dialect internally (e.g. llama.cpp's per-family markers) can surface it here
 /// instead of discarding it at the capability boundary. See
-/// `docs/plans/tool-call-conformance.md` for the cross-family descriptor table.
+/// `docs/plans/tool-calling-architecture.md` for the cross-family descriptor table.
 public struct ToolCallDialect: Sendable, Codable, Equatable, Hashable {
     /// The dialect family this call belongs to.
     public let family: ToolCallDialectFamily
