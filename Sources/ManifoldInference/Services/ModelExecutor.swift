@@ -33,10 +33,11 @@ public struct RealWedgeWatchdog: WedgeWatchdog {
     public init(budget: Duration) { self.budget = budget }
 
     public func awaitWedgeBudget() async {
-        // Cooperative: cancellation makes the sleep return early. The caller
-        // must distinguish that return from an elapsed budget before it reports
-        // a wedge. `try? await Task.sleep` is the codebase's sanctioned idiom
-        // for this best-effort suspension (SilentCatchAudit).
+        // Cooperative: cancellation makes the sleep return early. The caller's
+        // synchronous liveness arbiter distinguishes that return from an
+        // elapsed budget before it reports a wedge. `try? await Task.sleep` is
+        // the codebase's sanctioned idiom for this best-effort suspension
+        // (SilentCatchAudit).
         try? await Task.sleep(for: budget)
     }
 }
@@ -95,6 +96,7 @@ public actor ModelExecutor {
 
     private var backend: (any InferenceBackend)?
     private var _state: ExecutorState = .unloaded
+    private var activeTurnID: UUID?
 
     /// When the model finished loading, for residency/idle accounting.
     private(set) var loadedAt: Date?
@@ -151,6 +153,7 @@ public actor ModelExecutor {
         backend?.stopGeneration()
         backend?.unloadModel()
         backend = nil
+        activeTurnID = nil
         loadedAt = nil
         _state = .unloaded
     }
@@ -191,6 +194,8 @@ public actor ModelExecutor {
         )
 
         _state = .generating
+        let turnID = UUID()
+        activeTurnID = turnID
         lastActivityAt = Date()
 
         let watchdog = makeWatchdog()
@@ -200,36 +205,38 @@ public actor ModelExecutor {
             let liveness = LivenessSignal()
             let watchdogTask = Task { [weak self] in
                 await watchdog.awaitWedgeBudget()
-                guard !Task.isCancelled else { return }
-                if await liveness.isAlive { return }   // event already arrived
-                guard !Task.isCancelled else { return }
+                guard liveness.claimWedge() else { return }
                 // No event within budget → wedge this executor.
-                await self?.markWedged()
+                await self?.markWedged(turnID: turnID)
                 continuation.finish(throwing: InferenceError.idleTimeout(.seconds(0)))
             }
 
             let pumpTask = Task { [weak self] in
                 do {
                     for try await event in upstream.events {
-                        await liveness.markAlive()
+                        guard liveness.markAlive() else { return }
                         watchdogTask.cancel()
                         continuation.yield(event)
                     }
-                    await liveness.markAlive()
+                    guard liveness.markAlive() else { return }
                     watchdogTask.cancel()
-                    await self?.markTurnComplete()
+                    await self?.markTurnComplete(turnID: turnID)
                     continuation.finish()
                 } catch {
-                    await liveness.markAlive()
+                    guard liveness.markAlive() else { return }
                     watchdogTask.cancel()
-                    await self?.markTurnComplete()
+                    await self?.markTurnComplete(turnID: turnID)
                     continuation.finish(throwing: error)
                 }
             }
 
             continuation.onTermination = { _ in
+                let shouldComplete = liveness.markTerminated()
                 watchdogTask.cancel()
                 pumpTask.cancel()
+                if shouldComplete {
+                    Task { [weak self] in await self?.cancelTurn(turnID: turnID) }
+                }
             }
         }
 
@@ -241,6 +248,7 @@ public actor ModelExecutor {
     public func stopGeneration() {
         backend?.stopGeneration()
         if _state == .generating {
+            activeTurnID = nil
             _state = .ready
             lastActivityAt = Date()
         }
@@ -269,16 +277,18 @@ public actor ModelExecutor {
         backend?.stopGeneration()
         backend?.unloadModel()
         backend = nil
+        activeTurnID = nil
         _state = .unloaded
         try await load()
     }
 
     // MARK: - Private state transitions
 
-    private func markWedged() {
+    private func markWedged(turnID: UUID) {
         // Only a generating turn can wedge; a turn that completed first wins
         // the race and we must not stomp `.ready`.
-        if _state == .generating {
+        if _state == .generating, activeTurnID == turnID {
+            activeTurnID = nil
             _state = .wedged
             Log.inference.warning(
                 "executor \(self.key.rawValue, privacy: .public) wedged — no generation event within budget"
@@ -286,18 +296,76 @@ public actor ModelExecutor {
         }
     }
 
-    private func markTurnComplete() {
+    private func markTurnComplete(turnID: UUID) {
+        guard activeTurnID == turnID else { return }
+        activeTurnID = nil
         lastActivityAt = Date()
         if _state == .generating {
             _state = .ready
         }
     }
+
+    /// Cancels only the turn whose returned stream terminated. The identity
+    /// guard prevents delayed cleanup from resetting a newer generation.
+    private func cancelTurn(turnID: UUID) {
+        guard _state == .generating, activeTurnID == turnID else { return }
+        backend?.stopGeneration()
+        activeTurnID = nil
+        lastActivityAt = Date()
+        _state = .ready
+    }
 }
 
-/// Cross-task liveness flag for the wedge race. An `actor` rather than an
-/// `@unchecked Sendable` box because the pump task and watchdog task read/write
-/// it from different tasks (gotcha #2: a mutable box is not a race fix).
-private actor LivenessSignal {
-    private(set) var isAlive = false
-    func markAlive() { isAlive = true }
+/// Synchronous arbiter for the first-event / termination / watchdog race.
+///
+/// The lock is essential: checking task cancellation and later hopping to the
+/// executor actor leaves a gap where termination can lose after arriving first.
+/// Here the three contenders claim one outcome before any actor hop.
+private final class LivenessSignal: @unchecked Sendable {
+    private enum Outcome {
+        case pending
+        case alive
+        case terminated
+        case wedged
+    }
+
+    private let lock = NSLock()
+    private var outcome: Outcome = .pending
+
+    /// Returns `true` while the pump owns the turn and may publish/complete it.
+    func markAlive() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        switch outcome {
+        case .pending:
+            outcome = .alive
+            return true
+        case .alive:
+            return true
+        case .terminated, .wedged:
+            return false
+        }
+    }
+
+    /// Returns `true` when termination won and should restore `.ready`.
+    func markTerminated() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        switch outcome {
+        case .pending, .alive:
+            outcome = .terminated
+            return true
+        case .terminated, .wedged:
+            return false
+        }
+    }
+
+    /// Returns `true` only when watchdog expiry won before liveness/termination.
+    func claimWedge() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard case .pending = outcome else { return false }
+        outcome = .wedged
+        return true
+    }
 }

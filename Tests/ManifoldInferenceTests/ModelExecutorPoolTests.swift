@@ -73,7 +73,9 @@ final class ModelExecutorPoolTests: XCTestCase {
         private let lock = NSLock()
         private var budgetContinuation: CheckedContinuation<Void, Never>?
         private var armedContinuations: [CheckedContinuation<Void, Never>] = []
+        private var returnedContinuations: [CheckedContinuation<Void, Never>] = []
         private var isArmed = false
+        private var didReturn = false
 
         func awaitWedgeBudget() async {
             await withTaskCancellationHandler {
@@ -96,6 +98,7 @@ final class ModelExecutorPoolTests: XCTestCase {
             } onCancel: {
                 self.resumeBudget()
             }
+            signalReturned()
         }
 
         func waitUntilArmed() async {
@@ -111,12 +114,34 @@ final class ModelExecutorPoolTests: XCTestCase {
             }
         }
 
+        func waitUntilReturned() async {
+            await withCheckedContinuation { continuation in
+                lock.lock()
+                if didReturn {
+                    lock.unlock()
+                    continuation.resume()
+                } else {
+                    returnedContinuations.append(continuation)
+                    lock.unlock()
+                }
+            }
+        }
+
         private func resumeBudget() {
             lock.lock()
             let continuation = budgetContinuation
             budgetContinuation = nil
             lock.unlock()
             continuation?.resume()
+        }
+
+        private func signalReturned() {
+            lock.lock()
+            didReturn = true
+            let continuations = returnedContinuations
+            returnedContinuations.removeAll()
+            lock.unlock()
+            continuations.forEach { $0.resume() }
         }
     }
 
@@ -363,13 +388,18 @@ final class ModelExecutorPoolTests: XCTestCase {
         await watchdog.waitUntilArmed()
 
         consumer.cancel()
-        await gate.release()
+        await watchdog.waitUntilReturned()
         _ = await consumer.result
 
         for _ in 0..<1_000 {
-            if await executor.state == .ready { return }
+            if await executor.state == .ready {
+                XCTAssertEqual(backend.stopCallCount, 1, "Cancellation must stop the backend before reuse")
+                await gate.release()
+                return
+            }
             await Task.yield()
         }
+        await gate.release()
         XCTFail("Cancelling a watchdog must return the executor to ready, never mark it wedged")
     }
 
