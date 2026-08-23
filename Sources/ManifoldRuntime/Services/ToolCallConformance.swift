@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Tool-call conformance is a property of the **weights × packaging × backend**,
 /// not of a device — so the key is `(model × quant × backend)`, mirroring the
-/// plan's matrix (`docs/plans/tool-call-conformance.md`). Two artifacts that
+/// architecture's matrix (`docs/plans/tool-calling-architecture.md`). Two artifacts that
 /// differ only in quantization can land on opposite sides of the
 /// supported/unsupported line, and the backend's renderer/parser moves the rate
 /// too, so all three coordinates are load-bearing.
