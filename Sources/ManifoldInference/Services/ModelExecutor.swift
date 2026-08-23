@@ -33,10 +33,10 @@ public struct RealWedgeWatchdog: WedgeWatchdog {
     public init(budget: Duration) { self.budget = budget }
 
     public func awaitWedgeBudget() async {
-        // Cooperative: if the executor cancels us (an event arrived first),
-        // the sleep throws CancellationError — a cancelled watchdog simply
-        // never reports a wedge. `try? await Task.sleep` is the codebase's
-        // sanctioned idiom for this best-effort suspension (SilentCatchAudit).
+        // Cooperative: cancellation makes the sleep return early. The caller
+        // must distinguish that return from an elapsed budget before it reports
+        // a wedge. `try? await Task.sleep` is the codebase's sanctioned idiom
+        // for this best-effort suspension (SilentCatchAudit).
         try? await Task.sleep(for: budget)
     }
 }
@@ -200,7 +200,9 @@ public actor ModelExecutor {
             let liveness = LivenessSignal()
             let watchdogTask = Task { [weak self] in
                 await watchdog.awaitWedgeBudget()
+                guard !Task.isCancelled else { return }
                 if await liveness.isAlive { return }   // event already arrived
+                guard !Task.isCancelled else { return }
                 // No event within budget → wedge this executor.
                 await self?.markWedged()
                 continuation.finish(throwing: InferenceError.idleTimeout(.seconds(0)))
