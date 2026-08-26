@@ -16,6 +16,12 @@ on:
       # audit first reds inside a merge_group batch — the #2306 shape, and
       # the guard would be inert on exactly its own subject matter (#2446).
       - ".github/workflows/companion-compat.yml"
+      # ReleaseReadinessWorkflowAuditTest (ManifoldCoreTests) reads lint.yml
+      # at runtime to check the release-gate `if:` shapes. Without this
+      # entry a workflow-only edit never triggers ci.yml, the shim reports
+      # `test` green in ~4s, and the audit first reds inside a merge_group
+      # batch — the #2306 / #2446 shape.
+      - ".github/workflows/lint.yml"
       - "scripts/test.sh"
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/example-ui-tests.sh"
@@ -93,6 +99,12 @@ on:
       # audit first reds inside a merge_group batch — the #2306 shape, and
       # the guard would be inert on exactly its own subject matter (#2446).
       - ".github/workflows/companion-compat.yml"
+      # ReleaseReadinessWorkflowAuditTest (ManifoldCoreTests) reads lint.yml
+      # at runtime to check the release-gate `if:` shapes. Without this
+      # entry a workflow-only edit never triggers ci.yml, the shim reports
+      # `test` green in ~4s, and the audit first reds inside a merge_group
+      # batch — the #2306 / #2446 shape.
+      - ".github/workflows/lint.yml"
       - "scripts/test.sh"
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/example-ui-tests.sh"

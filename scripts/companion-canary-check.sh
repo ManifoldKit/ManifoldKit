@@ -124,19 +124,51 @@ if [ "$DISPATCH" -eq 1 ]; then
     # one. Waiting for the id to CHANGE is what makes --dispatch mean anything.
     prior_ids=""
     dispatched=""
+    dispatch_failed=""
     for repo in $COMPANIONS; do
         prior_ids="${prior_ids}${repo}=$(latest_run_id "$repo") "
-        if gh workflow run "$WORKFLOW" --repo "ManifoldKit/$repo" >/dev/null 2>&1; then
+        # Capture stderr: the usual cause of failure here is an under-scoped
+        # token, and `gh`'s own message ("HTTP 403") is the only thing that
+        # distinguishes that from the repo/workflow being missing.
+        if dispatch_err="$(gh workflow run "$WORKFLOW" --repo "ManifoldKit/$repo" 2>&1 >/dev/null)"; then
             echo "  dispatched: $repo"
             dispatched="${dispatched}${repo} "
         else
-            echo "  WARNING: could not dispatch $repo (checking last known result instead)" >&2
+            echo "  ERROR: could not dispatch $repo: ${dispatch_err:-<no output>}" >&2
+            dispatch_failed="${dispatch_failed}${repo} "
         fi
     done
 
+    # A failed dispatch used to warn and fall through to grading the PREVIOUS
+    # run. That is a fail-open: on a quiet main the stale run can still satisfy
+    # freshness, so --dispatch would exit 0 having dispatched nothing and
+    # verified nothing — while both AGENTS.md and RELEASE.md promise the
+    # opposite ("fails loudly rather than silently downgrading to a read that
+    # could pass on stale evidence"). Callers asked for fresh evidence; if we
+    # cannot produce it, say so instead of quietly answering a weaker question.
+    #
+    # The most likely cause is token scope: `gh workflow run` needs Actions
+    # read+write on the target repo, which is a DIFFERENT permission from the
+    # `contents: read+write` that repository_dispatch needs (see
+    # release-please.yml's notify-companions job). A PAT minted only for that
+    # job will 403 here.
+    if [ -n "$dispatch_failed" ]; then
+        echo "" >&2
+        echo "ERROR: --dispatch could not trigger: ${dispatch_failed}" >&2
+        echo "Refusing to grade the previous runs instead — you asked for fresh evidence." >&2
+        echo "If this is HTTP 403, the token needs Actions: read+write on the companion repos" >&2
+        echo "(distinct from the contents scope repository_dispatch uses)." >&2
+        exit 2
+    fi
+
     for repo in $COMPANIONS; do
-        # Don't wait on a repo whose dispatch failed — no new run can appear,
-        # so the poll would burn its full ceiling (20m each) for nothing.
+        # Belt-and-braces: any dispatch failure now exits 2 above, so by this
+        # point every repo is in $dispatched and this guard cannot fire. Kept
+        # deliberately rather than deleted — it is the thing that stops a poll
+        # burning its full 20-minute ceiling waiting for a run that can never
+        # appear, and if the exit above is ever softened (e.g. to tolerate one
+        # companion being temporarily unreachable) this becomes load-bearing
+        # again immediately.
         case " $dispatched " in
             *" $repo "*) ;;
             *) echo "  skipping wait for $repo (dispatch failed)"; continue ;;

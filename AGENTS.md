@@ -1066,24 +1066,157 @@ the release PR sits open for a while, re-check that your prose is still on the b
 
 **Pre-bump demo-app gate (mandatory before merging the release PR):** run `scripts/demo-apps-build.sh` — it builds both example apps (Advanced iOS, Minimal iOS + macOS) and must be green. The demos consume ManifoldKit by local path, so package drift (retired traits, renamed modules, iOS-unavailable symbols pulled in via the `ManifoldKit` umbrella) breaks them while `swift test` stays green — `swift test` builds for macOS only, so iOS-only API unavailability is invisible to it. This gate is **release-time, not per-PR**: demo breakage is rare and the xcodebuild runs are slow, so paying for them once per release (not per PR) is the right trade. Do not bump the version if it fails.
 
-**Pre-bump companion-canary gate (mandatory to RUN before merging the release PR; a red is a
-stop until examined):** run `scripts/companion-canary-check.sh` — it reports whether manifold-mlx
-and manifold-llama still build against core `main`, and fails on a red canary *or* one that
-didn't cover the commits being released (`--dispatch` triggers fresh runs and waits). Staleness
-is **commit-relative, not wall-clock**: a canary that started before `origin/main`'s tip commit
-never tested it, however recent it is — a pure age window would have passed the very incident
-below, since the last green ran 21 minutes *before* the seam-moving commit landed.
-Principle 9 requires known consumers to be built against a change before it ships;
+**Pre-bump companion-canary gate — CI-ENFORCED, hard-blocking, no override flag.**
+`scripts/companion-canary-check.sh` reports whether manifold-mlx and manifold-llama still build
+against core `main`, and fails on a red canary *or* one that didn't cover the commits being
+released (`--dispatch` triggers fresh runs and waits; see the event split below for when CI uses
+which mode). Staleness is **commit-relative, not wall-clock**: a canary that started before
+`origin/main`'s tip commit never tested it, however recent it is — a pure age window would have
+passed the very incident below, since the last green ran 21 minutes *before* the seam-moving
+commit landed. Principle 9 requires known consumers to be built against a change before it ships;
 the demo gate covers the example apps, and this covers the companion packages. Each companion
 already runs a `Canary (core main)` workflow (nightly + on `core-release` + on demand) — the
 signal existed long before this gate did, which is the point: on 2026-07-20 that canary went red
 at 07:29 with `cannot find type 'StructuredHistoryReceiver'`, v0.73.0 merged at 09:14:33Z and
 published 10s later anyway, and both companions were stranded a minor behind until their
-adaptation PRs landed. The gate proves coverage as of the moment it runs, so anything merged to
-`main` between running it and merging the release PR is still uncovered — run it late. A red canary
-does not automatically block the release — the usual response is to land the companions'
-adaptation PRs in lockstep (below) — but shipping past one must be a **deliberate** decision,
-not a surprise discovered by the post-release fan-out.
+adaptation PRs landed. As of the `feat/release-readiness-gate` change, a red canary **hard-blocks**
+the release via `.github/workflows/lint.yml`'s `lint` job, with deliberately no override flag:
+shipping past a red canary requires landing the companions' adaptation PRs in lockstep first (§
+"Companion pin-bump releases" below), not a judgment call made in the moment of merging.
+
+**Why the canary CI step is `pull_request` only (no `merge_group` re-read) — a second
+finding, distinct from the CI-dark one below, and just as easy to "simplify" away wrongly.** The
+script's primary check is landing-relative freshness: a canary that started before `origin/main`'s
+current tip merged is STALE regardless of age. Each companion canaries nightly plus on-demand, so
+at release time `main` has almost always moved since the last nightly — a naive gate that only ever
+reads the last-known result would read STALE on nearly every release, not just on real breakage,
+and a gate that's red every time is a gate operators route around (exactly the failure this whole
+change exists to prevent). So the `lint` job dispatches on the one event that actually executes
+on the release branch:
+- **On `pull_request`** (in practice, Rory's changelog-rewrite force-push — the one bot-independent
+  moment on the release-please branch that actually executes; see the CI-dark writeup below) it runs
+  `scripts/companion-canary-check.sh --dispatch`, which triggers fresh canary runs on both
+  companions and waits for them. This needs the `COMPANION_DISPATCH_TOKEN` repo secret (the same
+  fine-grained PAT `notify-companions` in `release-please.yml` uses — the default `GITHUB_TOKEN`
+  cannot fire a cross-repo `workflow_dispatch` any more than it can a cross-repo
+  `repository_dispatch`); if that secret is unset the step **fails outright** rather than silently
+  falling back to a read-only check that would then pass on stale evidence.
+- **On `merge_group` it deliberately does not run at all.** An earlier revision put a read-only
+  check here on the theory that `merge_group` is "the run that actually blocks". Review showed that
+  gate cannot work. Freshness is graded against `origin/main`'s tip *at the moment the script runs*,
+  and in a `merge_group` run that tip is main **without** the release PR — a value that changes every
+  time anything else merges. Concretely: force-push at 09:45 dispatches canaries at ~09:50; an
+  unrelated batch merges at 10:25; the release batch validates at 10:30; the 09:50 canary now
+  predates the 10:25 tip, reads STALE, and the batch is ejected — and re-dispatching restarts the
+  identical race. Main's median inter-commit gap is ~95 minutes with 44% of gaps under an hour, so
+  that is a routine outcome, not a corner case. It would have re-created the always-red gate this
+  design exists to avoid.
+
+**The `pull_request` step is the blocking one, and that is sufficient.** `lint` is a required status
+check, so the release PR cannot be queued until that run is green, and `--dispatch` makes its
+evidence genuinely fresh at that moment. What is *not* covered is main moving between that check and
+the merge. That is **not** the same exposure every other pre-merge check carries: those validate
+this PR's own content and the queue re-validates the merged tree. This gate's subject is external
+repos versus `main` — a target that moves independently of the PR — so after dropping the queue
+re-read it is the only release-relevant gate with no merged-tree validation. The window is
+narrowed from ~24h (nightly) to the PR-check-to-merge gap; it is not closed. Do not "fix" it by
+adding a `merge_group` canary step; that is the race above.
+
+**If the `pull_request` check reds on staleness**, the usual cause is that nobody has force-pushed
+the changelog rewrite yet — only the CI-dark bot regenerations have touched the branch, so the
+dispatch step never ran. Two other causes are now distinguishable rather than presenting as the same
+"STALE" message: the `COMPANION_DISPATCH_TOKEN` secret being unset (the step fails outright), and the
+token being present but under-scoped, which the script now reports as a named dispatch failure and
+exits non-zero on instead of quietly grading the previous run. `gh workflow run` needs **Actions:
+read+write** on the companion repos, which is a *different* permission from the `contents` scope
+`repository_dispatch` needs — a PAT minted only for `notify-companions` will 403 here.
+
+**Why this lives in `lint`'s `pull_request`/`merge_group` triggers, not a dedicated release
+workflow — a finding worth preserving, because the next reader will otherwise "simplify" this into
+something that never runs.** The release-please branch
+(`release-please--branches--main`) is empirically CI-dark:
+- **Zero `push`-event workflow runs have ever fired on it.** Nothing in this repo's workflow
+  triggers on `push` to that branch, so a check gated on `push` would never execute.
+- **Every `github-actions[bot]`-actor `pull_request` run on it sits at conclusion
+  `action_required` and never executes.** Measured 2026-08-09 over the 500 most recent workflow
+  runs on that branch (2026-07-12 → 2026-08-09, `gh api 'repos/ManifoldKit/ManifoldKit/actions/runs?
+  branch=release-please--branches--main&per_page=100&page=N'`): 450 bot-actor runs sat at
+  `action_required`, only 5 bot-actor runs ever completed, and all 45 completed runs were
+  `roryford`-actor — i.e. the manual changelog-rewrite force-push is the only thing that has ever
+  made CI run there. (A narrower "94 runs total over the 0.73.0/0.74.0 cycles" figure appears
+  elsewhere in this doc, from an earlier, differently-scoped count across a fixed 6-workflow list —
+  both stand; this bullet's figure is the current, reproducible one.) A check gated to fire only on
+  a bot regeneration would silently never run under this repo's Actions settings.
+- **`merge_group` runs always execute to completion** (actor `roryford`, every recent run
+  succeeded), and `lint` (the job, not a specific step) is one of exactly three required status
+  contexts on `main` (`test`, `lint`, `api-digester-check`) under the merge queue's ALLGREEN
+  grouping strategy.
+
+Given those three facts, a step added inside the existing `lint` job's `pull_request`/`merge_group`
+triggers is the *only* placement that both (a) actually executes on the release PR and (b) blocks
+the merge — with no new required-context registration needed. Registering a brand-new required
+context is a known trap in this repo: `readme-snippets` has sat un-required for exactly that
+reason (see "Documentation gates" above).
+
+Detection of "is this run validating a release" is a `release-context` step in that job with **two
+necessary conditions**, not one — do not simplify this back to a bare version comparison, which
+reintroduces a real false-positive window (found in review):
+1. `version.txt` is valid SemVer and strictly newer than the latest published tag
+   (`gh api repos/.../releases/latest`); an older-but-unequal branch is not a release.
+2. The change actually under validation modifies `version.txt` itself — diffed against
+   `github.event.merge_group.base_sha`/`head_sha` on `merge_group`, or against
+   `origin/${{ github.base_ref }}` on `pull_request` (same idiom as the `dep-budget`/
+   `large-file-guard` steps in the same job).
+
+**Why condition 2 exists**: after the release PR merges, `main`'s `version.txt` already reads the
+new version, but `releases/latest` still returns the previous tag until `release-please.yml`'s
+push-triggered run creates the new tag — a window of minutes, longer if that job queues or fails.
+Any unrelated PR whose `merge_group` run lands inside that window would satisfy condition 1 alone
+and wrongly fire both release-only gates on a change that has nothing to do with the release —
+`migration-index-gate` in particular would red on `next` rows that are entirely legitimate on
+`main` right after a release (new notes land right around when old ones get flipped). That is the
+flaky-required-gate pattern this whole change exists to eliminate; requiring condition 2 too closes
+the window, since only the actual release PR (and the merge-queue candidate built from it) ever
+modifies `version.txt`.
+
+The whole step **fails closed** on either condition: an API error, empty/missing `version.txt`, or
+an unresolvable diff (unresolvable `base_sha`/`head_sha`, a failed base-ref fetch, a diff that
+lists zero changed files when a real diff was expected) fails the job rather than guessing — never
+defaulting to "not a release" (which would silently disable the gates) and never defaulting to
+"is a release" (which would red an unrelated PR). Both signals are logged independently in the
+step output so a future reader can see which one decided the outcome.
+
+**Migration-index gate — CI-ENFORCED, release-only.** The same `lint` job runs
+`scripts/migration-index-check.sh --release` whenever a release is detected, and fails if any row
+in `docs/MIGRATION-INDEX.md`'s Release column still says `next` — every migration note must have
+its `next` placeholder flipped to the real version before that version ships (RELEASE.md's
+changelog-rewrite step is where this happens by hand).
+
+The completeness half (no `--release`) runs on **every** `lint` run, not just releases. Its
+authoritative tripwire is `MigrationIndexAuditTest`, but that audit is markdown-driven, and this
+file's own rule — "a new markdown-driven audit ships with a `lint` mirror, or it does not block on
+the PRs that can break it" (see "Documentation gates" above) — applies to it exactly. A PR adding a
+migration note with no index row is typically docs-only: `ci.yml`'s `pull_request` paths carry no
+`docs/**` entry, so the required `test` job is satisfied by the shim in seconds and
+`affected-suites.sh` resolves the diff to `NONE`. Without the mirror the audit would first execute
+inside the merge queue and poison the batch — the #2306 shape. Do not make the completeness step
+release-conditional to "save time"; it costs one shell invocation and it is the only thing that runs
+it on the PRs that break it.
+
+**The two release-only gates are split by event, and the reason is not the same for each.** Do not
+collapse them back to "both PR-only" for symmetry.
+
+- *Companion canary* stays `pull_request` only. A `merge_group` re-check could catch main moving
+  between the PR check and the merge — a real signal, but one swamped by false positives, because
+  freshness is graded against a main tip that changes with every unrelated merge (worked timeline
+  above). Do not add a `merge_group` canary step.
+- *Migration index `--release` also runs on `merge_group`.* Any `next` row in the tree about to be
+  tagged is a true positive: that note ships in this version. A note that lands on `main` after the
+  changelog rewrite, or rides in the same merge-queue batch as the release PR, is included in the
+  tagged commit and will still say `next` unless the queue re-checks. The canary's
+  STALE-vs-moving-tip argument does not transfer. If a new note is in the same batch as a release,
+  flip its row in that batch (it is shipping) — do not treat `| next |` as legitimate inside a
+  release candidate.
 
 `README.md` install-pin examples (`from: "x.y.z"`) are bumped automatically by Release Please via the `extra-files` entry in `release-please-config.json` — do not update them manually between releases.
 
@@ -1104,7 +1237,7 @@ conflate them:
   cross-checks `CHANGELOG.md`'s newest section text against every non-hidden-type commit —
   useful only while that section still holds release-please's own generated bullets, never
   against the hand-rewritten Highlights (which is allowed to omit bullets editorially). Run it
-  by hand before starting the rewrite (RELEASE.md step 2); it is not a CI gate because it can't
+  by hand before starting the rewrite (RELEASE.md's changelog-rewrite step); it is not a CI gate because it can't
   reliably observe "still generated" state in CI on this branch — see the next paragraph.
 
 **Bot-triggered workflow runs on the release-please branch never execute** (found while building
