@@ -100,7 +100,9 @@ struct ImageGen {
         let modelDirectory = URL(fileURLWithPath: "/path/to/FLUX.1-schnell")
         try await backend.loadModel(from: modelDirectory)
 
-        // 3. Configure the run. FLUX Schnell is distilled to 1–4 steps;
+        // 3. Configure the run. `steps: nil` (the default — see below) would
+        //    let the backend resolve FLUX Schnell's own distilled preset;
+        //    here we pin it explicitly to demonstrate the override path.
         //    `guidanceScale: nil` lets the backend apply its own default.
         //    `outputDirectory` controls where the PNG is written; nil lets the
         //    backend pick its own temporary location.
@@ -164,9 +166,11 @@ struct ImageGen {
         let modelDirectory = URL(fileURLWithPath: "/path/to/sdxl-turbo")
         try await backend.loadModel(from: modelDirectory)
 
-        // SDXL Turbo is distilled to 1–4 steps.
+        // SDXL Turbo is distilled to 1–4 steps — leave `steps` unset (the
+        // default, `nil`) rather than guessing a number here. The backend
+        // resolves its own preset for the loaded model; see
+        // docs/MIGRATION-image-generation-steps-optional.md.
         let config = ImageGenerationConfig(
-            steps: 4,
             width: 1024,
             height: 1024,
             seed: 42,

@@ -31,8 +31,14 @@ public struct ImageGenerationProgress: Sendable, Equatable {
     /// ``ImageRuntimeEvent/progress(messageID:step:totalSteps:)`` event.
     public let step: Int
 
-    /// Total denoising steps the runtime is targeting (after backend clamp).
-    /// `0` until the first progress event arrives.
+    /// Total denoising steps the runtime is targeting (after backend clamp,
+    /// or the backend's own model-preset default when the caller left
+    /// ``ImageGenerationConfig/steps`` `nil`). `0` before the first progress
+    /// event arrives — and can legitimately stay `0` for the rest of the
+    /// run if a non-compliant backend never resolves a real count (see the
+    /// "Step-count resolution contract" on
+    /// ``ImageGenerationBackend/generate(prompt:config:)``); this is not
+    /// exclusively a "waiting for the first tick" state.
     public let totalSteps: Int
 
     /// `true` once a terminal event (completed / failed / cancelled) has been

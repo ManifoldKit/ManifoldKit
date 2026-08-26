@@ -74,6 +74,13 @@ final class ImageGenerationRuntimeTests: XCTestCase {
             var isGenerating = false
             var plan = Plan()
             var stopRequested = false
+            /// The exact `config` the most recent `generate(prompt:config:)`
+            /// call received — captured so tests can assert on what actually
+            /// reached the backend seam (through `ImageGenerationService`,
+            /// not just what the runtime snapshotted before the call), rather
+            /// than trusting that nothing between the caller and this mock
+            /// silently substituted a different value.
+            var receivedConfig: ImageGenerationConfig?
         }
 
         private let state = OSAllocatedUnfairLock(initialState: State())
@@ -81,6 +88,7 @@ final class ImageGenerationRuntimeTests: XCTestCase {
         var isLoaded: Bool { state.withLock { $0.isLoaded } }
         var isGenerating: Bool { state.withLock { $0.isGenerating } }
         var stopRequested: Bool { state.withLock { $0.stopRequested } }
+        var receivedConfig: ImageGenerationConfig? { state.withLock { $0.receivedConfig } }
 
         func setPlan(_ plan: Plan) {
             state.withLock { $0.plan = plan }
@@ -97,6 +105,7 @@ final class ImageGenerationRuntimeTests: XCTestCase {
             let plan: Plan = state.withLock { snapshot in
                 snapshot.isGenerating = true
                 snapshot.stopRequested = false
+                snapshot.receivedConfig = config
                 return snapshot.plan
             }
 
@@ -551,6 +560,125 @@ final class ImageGenerationRuntimeTests: XCTestCase {
         }
         XCTAssertEqual(payloadA.modelIdentifier, "model-a")
         XCTAssertEqual(payloadB.modelIdentifier, "model-b")
+    }
+
+    // MARK: - Test 4b: Bare config (nil steps) reaches the backend seam honestly
+
+    /// A bare `ImageGenerationConfig()` — the demo app's image-gen tool path,
+    /// and any other caller that doesn't set `steps` explicitly — must carry
+    /// `steps == nil` all the way to the backend rather than the runtime
+    /// silently substituting a guessed default. This is the #2453 M2 fix:
+    /// before it, `ImageGenerationConfig()` defaulted `steps` to a fixed
+    /// `20`, so a distilled model (SDXL Turbo, trained for ~2 steps) ran
+    /// ~10x the denoise work its preset called for.
+    func test_generate_bareConfig_carriesNilStepsToBackendSeam() async throws {
+        let outDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("image-runtime-nilsteps-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outDir) }
+
+        let imageURL = outDir.appendingPathComponent("out.png")
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: imageURL)
+
+        // Simulates a backend that resolved a distilled model's own preset
+        // (2 steps) since the caller left `config.steps` unset.
+        let backend = MockImageBackend()
+        backend.setPlan(.init(events: [
+            .progress(step: 1, total: 2),
+            .progress(step: 2, total: 2),
+            .completed(imageURL)
+        ]))
+
+        let (runtime, _, mockBackend, _) = try await makeRuntime(backend: backend)
+        let sessionID = UUID()
+        let config = ImageGenerationConfig(outputDirectory: outDir)
+        XCTAssertNil(config.steps, "bare ImageGenerationConfig() must leave steps nil, not default to 20")
+
+        let messageID = try await runtime.generate(prompt: "a cat", config: config, in: sessionID)
+
+        // The real seam check: what `ImageGenerationBackend.generate` actually
+        // received, through `ImageGenerationRuntime` -> `ImageGenerationService`
+        // -> the backend. Asserting only on the runtime's own pre-call
+        // snapshot (below) would pass even if something in that chain
+        // re-defaulted `steps` before the backend ever saw it — this line is
+        // what makes the test fail if that regresses.
+        //
+        // Assert non-nil first: `generate(prompt:config:in:)` calls the
+        // backend eagerly today, so `receivedConfig` is already populated by
+        // the time we get here, and the assertion below is non-vacuous. If
+        // stream construction ever went lazy (deferred until the first
+        // consumer pulls an element), `receivedConfig` would still be nil at
+        // this point and `XCTAssertNil(mockBackend.receivedConfig?.steps)`
+        // would pass vacuously through optional chaining — this line makes
+        // that failure mode loud instead of silently proving nothing.
+        XCTAssertNotNil(mockBackend.receivedConfig, "the backend must have received a config by this point")
+        XCTAssertNil(
+            mockBackend.receivedConfig?.steps,
+            "the backend must receive steps == nil, not a re-defaulted value, when the caller left it unset"
+        )
+
+        let events = try await collectEvents(from: runtime) { event in
+            if case .completed = event { return true }
+            if case .failed = event { return true }
+            return false
+        }
+
+        guard case .progress(let pid, let step, let total) = events[1] else {
+            return XCTFail("Expected second event to be the first .progress, got \(events[1])")
+        }
+        XCTAssertEqual(pid, messageID)
+        XCTAssertEqual(step, 1)
+        // The backend's reported total (2, the SDXL-Turbo-style preset) wins
+        // over the absent config value — never a guessed "20".
+        XCTAssertEqual(total, 2)
+
+        guard case .completed(_, let payload) = events.last else {
+            return XCTFail("Expected last event to be .completed, got \(events.last as Any)")
+        }
+        // The persisted snapshot is honest too: nil in, nil captured — a
+        // "regenerate with the same settings" replay re-resolves the preset
+        // rather than baking in whatever the backend happened to pick.
+        XCTAssertNil(payload.generationConfig.steps)
+    }
+
+    /// Degenerate case: `config.steps` is nil AND the backend's first tick
+    /// hasn't reported a real total yet (`total == 0`, e.g. a backend that
+    /// only knows its step count once denoising starts). The runtime must
+    /// fall back to the existing `0` "unknown until the first event"
+    /// sentinel documented on `ImageGenerationProgress` — not a guessed
+    /// default — since there is no source of truth to guess from.
+    func test_generate_nilStepsAndZeroBackendTotal_resolvesToZeroSentinel() async throws {
+        let outDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("image-runtime-zerosentinel-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outDir) }
+
+        let imageURL = outDir.appendingPathComponent("out.png")
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: imageURL)
+
+        let backend = MockImageBackend()
+        backend.setPlan(.init(events: [
+            .progress(step: 1, total: 0),
+            .completed(imageURL)
+        ]))
+
+        let (runtime, _, _, _) = try await makeRuntime(backend: backend)
+        let sessionID = UUID()
+        let config = ImageGenerationConfig(outputDirectory: outDir)
+
+        let messageID = try await runtime.generate(prompt: "a cat", config: config, in: sessionID)
+
+        let events = try await collectEvents(from: runtime) { event in
+            if case .completed = event { return true }
+            if case .failed = event { return true }
+            return false
+        }
+
+        guard case .progress(let pid, _, let total) = events[1] else {
+            return XCTFail("Expected second event to be the first .progress, got \(events[1])")
+        }
+        XCTAssertEqual(pid, messageID)
+        XCTAssertEqual(total, 0, "with no config value and no backend-reported total, the runtime must report the honest 0 sentinel, not a guess")
     }
 
     // MARK: - Test 5: ConversationEvent case discipline

@@ -51,6 +51,33 @@ final class ImageGenerationFoundationsTests: XCTestCase {
         XCTAssertEqual(decoded.steps, 4)
     }
 
+    /// `steps` defaults to `nil` — the caller defers to the backend's own
+    /// preset default (e.g. 2 for SDXL Turbo, 20+ for full diffusion) rather
+    /// than the type hard-coding a number tuned for one model shape. A
+    /// bare `ImageGenerationConfig()` must not smuggle an old fixed default
+    /// back onto the wire.
+    func test_imageGenerationConfig_steps_defaultsNilAndOmitsKeyOnEncode() throws {
+        let config = ImageGenerationConfig()
+        XCTAssertNil(config.steps)
+
+        let data = try JSONEncoder().encode(config)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertNotNil(object)
+        XCTAssertNil(object?["steps"], "encoding a nil `steps` must omit the key, not encode `null`")
+
+        let decoded = try JSONDecoder().decode(ImageGenerationConfig.self, from: data)
+        XCTAssertNil(decoded.steps, "round-tripping a nil `steps` must decode back to nil")
+    }
+
+    /// An older persisted/wire payload minted before `steps` went optional
+    /// still carries an explicit integer. It must keep decoding — not throw
+    /// — so existing rows survive the type change.
+    func test_imageGenerationConfig_steps_legacyPayloadWithExplicitStepsDecodes() throws {
+        let legacy = Data(#"{"steps":20,"width":1024,"height":1024}"#.utf8)
+        let decoded = try JSONDecoder().decode(ImageGenerationConfig.self, from: legacy)
+        XCTAssertEqual(decoded.steps, 20)
+    }
+
     func test_imageGenerationConfig_cgSizeInit() {
         let config = ImageGenerationConfig(
             steps: 8,
@@ -164,6 +191,29 @@ final class ImageGenerationFoundationsTests: XCTestCase {
         XCTAssertEqual(viaConfig.outputDirectory, dir)
     }
 
+    /// Mirrors ``test_imageGenerationConfig_steps_defaultsNilAndOmitsKeyOnEncode``
+    /// for the persistence-layer snapshot type.
+    func test_imageGenerationConfigSnapshot_steps_nilOmitsKeyOnEncodeAndRoundtrips() throws {
+        let snapshot = ImageGenerationConfigSnapshot(steps: nil, width: 512, height: 512)
+        XCTAssertNil(snapshot.steps)
+
+        let data = try JSONEncoder().encode(snapshot)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertNotNil(object)
+        XCTAssertNil(object?["steps"], "encoding a nil `steps` must omit the key, not encode `null`")
+
+        let decoded = try JSONDecoder().decode(ImageGenerationConfigSnapshot.self, from: data)
+        XCTAssertNil(decoded.steps)
+    }
+
+    /// An older persisted row minted before `steps` went optional still
+    /// carries an explicit integer. It must keep decoding.
+    func test_imageGenerationConfigSnapshot_steps_legacyPayloadWithExplicitStepsDecodes() throws {
+        let legacy = Data(#"{"steps":20,"width":1024,"height":1024}"#.utf8)
+        let decoded = try JSONDecoder().decode(ImageGenerationConfigSnapshot.self, from: legacy)
+        XCTAssertEqual(decoded.steps, 20)
+    }
+
     func test_imageGenerationConfigSnapshot_outputDirectoryAbsent_decodesAsNil() throws {
         let json = #"{"steps":4,"width":512,"height":512}"#.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(ImageGenerationConfigSnapshot.self, from: json)
@@ -237,7 +287,17 @@ final class ImageGenerationFoundationsTests: XCTestCase {
             config: ImageGenerationConfig
         ) throws -> AsyncThrowingStream<ImageGenerationEvent, Error> {
             AsyncThrowingStream { continuation in
-                continuation.yield(.progress(step: 1, total: config.steps))
+                // Real backends resolve their own preset default when
+                // `config.steps` is `nil`; this stub just needs a concrete
+                // `Int` to report on the wire, so it falls back to a fixed
+                // stand-in rather than guessing a "real" default. Deliberately
+                // NOT 4 — every test driving this stub passes an explicit
+                // `steps: 4` and asserts `total == 4`; a fallback that also
+                // equals 4 would make that assertion pass even if this line
+                // stopped reading `config.steps` at all (e.g. regressed to a
+                // hardcoded literal). 99 is unreachable by any real assertion
+                // in this file, so it only ever surfaces on an actual break.
+                continuation.yield(.progress(step: 1, total: config.steps ?? 99))
                 continuation.yield(.completed(URL(fileURLWithPath: "/tmp/stub.png")))
                 continuation.finish()
             }

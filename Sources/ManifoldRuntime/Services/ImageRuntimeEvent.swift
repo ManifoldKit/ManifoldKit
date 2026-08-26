@@ -32,9 +32,15 @@ public enum ImageRuntimeEvent: Sendable, Equatable {
     /// in place.
     case started(messageID: ChatMessage.ID, prompt: String)
 
-    /// Denoising progress. `step` is 1-indexed; `totalSteps` is the value
-    /// the caller passed in ``ImageGenerationConfig/steps`` (after any
-    /// backend-side clamping). Intermediate state is **not** persisted —
+    /// Denoising progress. `step` is 1-indexed; `totalSteps` is the
+    /// backend's actually-resolved step count — the caller's
+    /// ``ImageGenerationConfig/steps`` when it was set (after any
+    /// backend-side clamping), or the backend's own model-preset default
+    /// when the caller left `steps` `nil`. The runtime relays the compliant
+    /// backend's real count starting with the first tick; `0` only appears
+    /// if a backend violates the "Step-count resolution contract" on
+    /// ``ImageGenerationBackend/generate(prompt:config:)`` and reports an
+    /// unresolved `total`. Intermediate state is **not** persisted —
     /// adapters subscribe to events for progressive UI; persistence stays
     /// minimal until completion.
     case progress(messageID: ChatMessage.ID, step: Int, totalSteps: Int)

@@ -249,7 +249,7 @@ public final class ImageGenerationRuntime {
         prompt: String,
         placeholder: ChatMessage,
         snapshot: ImageGenerationConfigSnapshot,
-        totalSteps: Int
+        totalSteps: Int?
     ) async {
         defer {
             inFlight.removeValue(forKey: messageID)
@@ -263,16 +263,25 @@ public final class ImageGenerationRuntime {
                 }
                 switch event {
                 case .progress(let step, let total):
-                    // Use the backend-reported `total` when present; fall
-                    // back to the config value if a backend yields zero.
-                    let resolvedTotal = total > 0 ? total : totalSteps
+                    // Per ImageGenerationBackend's "Step-count resolution
+                    // contract", a compliant backend always reports the real
+                    // resolved count in `total` starting with its first
+                    // event — including when `config.steps` was `nil` and it
+                    // had to fall back to its own model preset. `total > 0`
+                    // is therefore the expected path even for a bare
+                    // `ImageGenerationConfig()`. The `totalSteps` (i.e.
+                    // `config.steps`) fallback only matters for a
+                    // non-compliant backend that yields `total: 0`; the
+                    // final `?? 0` is the honest "still unknown" sentinel
+                    // for that violation, not a guessed default.
+                    let resolvedTotal = total > 0 ? total : (totalSteps ?? 0)
                     emit(.progress(messageID: messageID, step: step, totalSteps: resolvedTotal))
 
                 case .preview(let step, let total, let image):
                     // Forward the in-memory preview without touching the
                     // store — previews are transient UI affordances; only
                     // the terminal `.completed` writes through `MessageStore`.
-                    let resolvedTotal = total > 0 ? total : totalSteps
+                    let resolvedTotal = total > 0 ? total : (totalSteps ?? 0)
                     emit(.preview(messageID: messageID, step: step, totalSteps: resolvedTotal, image: image))
 
                 case .completed(let url):

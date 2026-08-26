@@ -59,6 +59,25 @@ public protocol ImageGenerationBackend: AnyObject, Sendable {
     /// own location (typically `FileManager.default.temporaryDirectory`).
     /// Either way, the file at the emitted URL must be fully written and
     /// closed before the event is yielded.
+    ///
+    /// ## Step-count resolution contract
+    ///
+    /// When ``ImageGenerationConfig/steps`` is `nil` the backend MUST resolve
+    /// its own loaded model's preset default (e.g. ~2 for a distilled model
+    /// like SDXL Turbo, 20–50 for full-precision diffusion) rather than
+    /// substituting a fixed constant that fits no model in particular. When
+    /// `steps` is non-`nil` the backend uses that value, clamped to whatever
+    /// range it supports.
+    ///
+    /// Either way, every ``ImageGenerationEvent/progress(step:total:)`` (and
+    /// ``ImageGenerationEvent/preview(step:total:image:)``) the backend emits
+    /// MUST carry the actually-resolved step count in `total` — including the
+    /// very first tick. A backend that reports `total: 0` while it figures
+    /// out the real count leaves UI consumers (e.g.
+    /// `GeneratedMediaProgressCardView`) stuck showing a zero-width progress
+    /// bar and a "Starting…" label for the entire run, because nothing ever
+    /// corrects `total` afterward. Resolve the count before yielding the
+    /// first `.progress`/`.preview` event, not lazily on some later tick.
     func generate(
         prompt: String,
         config: ImageGenerationConfig

@@ -39,9 +39,21 @@ packages:
   # and LocalInferenceExample/README.md, for the `swift package edit`
   # workflow that switches either pin to a local checkout during companion
   # development.
+  # TEMPORARY lockstep pin (#2453 M2): `ImageGenerationConfig.steps` becomes
+  # optional in core v0.77.0, and manifold-mlx's `makeParams` needs the
+  # coordinated adaptation on branch `fix/steps-nil-resolves-preset` before
+  # it can build against that core source. Keep this branch pin through the
+  # v0.77.0 release. After that release, manifold-mlx#191 must bump its core
+  # pin to v0.77.0 and publish; then a core follow-up restores
+  # `minorVersion: 0.6.0`. #191 is a breaking `fix!` change, so its next
+  # companion release is v0.6.0 rather than a 0.5.x patch; regenerate the
+  # Xcode project so its package requirement also becomes
+  # `upToNextMinorVersion` with `minimumVersion = 0.6.0`. Do not delete the
+  # companion branch before that follow-up merges, or this project's package
+  # resolution fails (see AGENTS.md § "Companion pin-bump releases").
   ManifoldMLX:
     url: https://github.com/ManifoldKit/manifold-mlx
-    minorVersion: 0.5.0
+    branch: fix/steps-nil-resolves-preset
   ManifoldLlama:
     url: https://github.com/ManifoldKit/manifold-llama
     minorVersion: 0.4.3
