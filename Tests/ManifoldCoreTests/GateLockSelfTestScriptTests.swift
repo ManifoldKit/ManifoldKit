@@ -281,7 +281,7 @@ final class GateLockSelfTestScriptTests: XCTestCase {
         signal(identity.pid)
     }
 
-    /// Runs all seven self-test scenarios (waiting on a live holder;
+    /// Runs all fourteen self-test scenarios (waiting on a live holder;
     /// reclaiming a dead holder's lock; rejecting a widowed sentinel;
     /// concurrent-reclaim serialization; the lock actually being wired into
     /// each of its two real call sites; the enclosing run's watchdog log
@@ -303,7 +303,7 @@ final class GateLockSelfTestScriptTests: XCTestCase {
     /// load with a genuine overlap, confirming D is a real detector whose
     /// window depends on contention this single-process CI shape does not
     /// provide — see the in-script comment on scenario D and the PR body's
-    /// "Reclaim race" section for the full account. Passes `timeout: 120`
+    /// "Reclaim race" section for the full account. Passes `timeout: 180`
     /// (not the default 60s) — this runs on a machine that may simultaneously
     /// be compiling/building for a real gate elsewhere, far heavier than
     /// five bash subprocesses, so keeping headroom over the measured cost
@@ -358,7 +358,7 @@ final class GateLockSelfTestScriptTests: XCTestCase {
             return
         }
         let script = root.appendingPathComponent("scripts/test.sh")
-        let result = try run(script: script, args: ["--lock-selftest"], timeout: 120)
+        let result = try run(script: script, args: ["--lock-selftest"], timeout: 180)
 
         XCTAssertEqual(result.status, 0, "lock self-test must exit 0 when all scenarios pass:\n\(result.output)")
         XCTAssertTrue(
@@ -392,6 +392,34 @@ final class GateLockSelfTestScriptTests: XCTestCase {
         XCTAssertTrue(
             result.output.contains("scenario F: PASS"),
             "the lock-is-actually-wired-into-the-fallthrough-acquire (bare invocation / --profile spike) scenario must report PASS:\n\(result.output)"
+        )
+        XCTAssertTrue(
+            result.output.contains("scenario H: PASS"),
+            "the --profile local --filter path must actually run ci-test-with-watchdog.sh (not just sit next to a copy of it):\n\(result.output)"
+        )
+        XCTAssertTrue(
+            result.output.contains("scenario I: PASS"),
+            "a missing ci-test-with-watchdog.sh must refuse --profile local --filter with exit 127:\n\(result.output)"
+        )
+        XCTAssertTrue(
+            result.output.contains("scenario J: PASS"),
+            "the narrow --profile local --filter path must wait for the gate lock OUTSIDE the watchdog:\n\(result.output)"
+        )
+        XCTAssertTrue(
+            result.output.contains("scenario K: PASS"),
+            "an outer ci-test-with-watchdog.sh wrapping --profile local --filter must not SIGABRT a healthy run:\n\(result.output)"
+        )
+        XCTAssertTrue(
+            result.output.contains("scenario L: PASS"),
+            "an outer watchdog must receive gate-lock liveness while the complete three-leaf profile waits, and each leaf must retain an honest private summary:\n\(result.output)"
+        )
+        XCTAssertTrue(
+            result.output.contains("scenario M: PASS"),
+            "a forged or stale MANIFOLD_WATCHDOG_ACTIVE sentinel must not bypass local watchdog wrapping:\n\(result.output)"
+        )
+        XCTAssertTrue(
+            result.output.contains("scenario N: PASS"),
+            "a failed outer leaf-summary tee must fail closed rather than report a passing test run:\n\(result.output)"
         )
         XCTAssertTrue(
             result.output.contains("waiting for gate lock held by PID"),

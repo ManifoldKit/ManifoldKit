@@ -56,6 +56,42 @@
 #   WATCHDOG_DIAGNOSTICS_DIR=path
 #                       Directory for watchdog-specific process snapshots.
 #                       Default: directory containing WATCHDOG_LOG.
+#   WATCHDOG_POLL_INTERVAL=N
+#                       Seconds between liveness checks (`kill -0` on the
+#                       wrapped process) and progress-count re-checks.
+#                       Default: 15, unchanged — CI never sets this, so CI's
+#                       own timing (and every threshold this file's header
+#                       comment and STALL_SECONDS reasoning is calibrated
+#                       against) is provably identical to before. A lower
+#                       value shrinks the "up to N seconds after the child
+#                       already exited before this loop notices" latency tax
+#                       every wrapped invocation pays. Not free per tick —
+#                       lowering this to 1 means ~15x more `kill -0`/`grep -cE`
+#                       scans over a monotonically growing log for the
+#                       duration of the run, not just at the end — but the
+#                       shape is still cheap in absolute terms at real log
+#                       scale: measured ~43ms per scan over a 3 MB log,
+#                       ~1.6s of extra CPU per 40s of wall time, extrapolating
+#                       to ~20s of one-core CPU across a 20-minute gate.
+#                       Against the ~45s of wall clock a caller reclaims per
+#                       gate invocation by lowering this (felt on every local
+#                       iteration, unlike CI's multi-minute real builds,
+#                       where the 15s default is comparatively free), that
+#                       trade is worth it — but it is a trade, not a free
+#                       lunch, and a caller lowering this further than
+#                       scripts/test.sh's local-gate driver does should size
+#                       it against their own log growth rate.
+#   MANIFOLD_WATCHDOG_ACTIVE / MANIFOLD_WATCHDOG_WRAPPER_PID
+#                       Set together by this wrapper before it launches
+#                       scripts/test.sh. test.sh accepts the already-watched
+#                       passthrough only when the recorded PID is an actual
+#                       ancestor running this wrapper; a caller-supplied or
+#                       stale environment value is ignored. Without this
+#                       authenticated sentinel,
+#                       `ci-test-with-watchdog.sh --profile local` (an outer
+#                       wrap of the documented local gate) redirected every
+#                       leaf log and the outer watchdog SIGABRT'd a healthy
+#                       run at STALL_SECONDS. Not a user knob.
 #
 # Exit codes
 # ----------
@@ -95,14 +131,25 @@ mkdir -p "$(dirname "$WATCHDOG_LOG")" "$WATCHDOG_DIAGNOSTICS_DIR"
 
 # Background-launch scripts/test.sh. We use the same shell-quoting shape the
 # CI step uses so the wrapper is a drop-in replacement.
+#
+# MANIFOLD_WATCHDOG_ACTIVE tells a nested `--profile local|ci` driver it is
+# already being watched: do not wrap again, and do not point
+# MANIFOLD_TEST_OUTPUT_FILE at a per-label file this loop cannot see.
+export MANIFOLD_WATCHDOG_ACTIVE=1
+export MANIFOLD_WATCHDOG_WRAPPER_PID="$$"
+export MANIFOLD_WATCHDOG_STALL_SECONDS="$STALL_SECONDS"
 "$PACKAGE_DIR/scripts/test.sh" "$@" &
 TEST_PID=$!
 
 # Watchdog loop. We wake every $POLL_INTERVAL seconds and check whether any
-# progress line has appeared in the last $STALL_SECONDS. Using mtime is
-# deterministic across log rotations and survives the `tee` buffering that
-# would otherwise hide writes from `wc -l` polling.
-POLL_INTERVAL=15
+# progress line has appeared in the last $STALL_SECONDS. The mechanism is a
+# count-based high-water mark (grep -cE against the progress pattern, below),
+# not mtime: mtime would be weaker than what's actually implemented here —
+# any output at all (a hung process's stderr chatter, a retry loop with no
+# real progress) refreshes mtime and would falsely re-arm the timer, whereas
+# the count only advances on a line that actually matches the progress
+# pattern, so a stall with unrelated chatter still gets caught.
+POLL_INTERVAL="${WATCHDOG_POLL_INTERVAL:-15}"
 LAST_PROGRESS_TS=$(date +%s)
 LAST_LINE_COUNT=0
 
@@ -123,7 +170,7 @@ aborted_by_watchdog=0
 #      "Test Case '...' passed" lines.
 #
 # Any one of these proves a worker is alive and making forward progress.
-progress_pattern='^\[[0-9]+/[0-9]+\] (Testing|Compiling|Write|Emitting) |^Emitting module |^Building for |^Build complete|^Planning build|^Test Case .* (passed|failed|skipped)|^[✔✘↩] (Test|Suite) '
+progress_pattern='^\[[0-9]+/[0-9]+\] (Testing|Compiling|Write|Emitting) |^\[gate-lock\] (waiting for gate lock|waiting for gate-lock reclaim|acquired after waiting) |^Emitting module |^Building for |^Build complete|^Planning build|^Test Case .* (passed|failed|skipped)|^[✔✘↩] (Test|Suite) '
 
 # Snapshot the descendant swift-test / xctest pid set so we can SIGABRT them
 # all on stall without touching unrelated Swift work that may be running on the
