@@ -281,7 +281,7 @@ final class GateLockSelfTestScriptTests: XCTestCase {
         signal(identity.pid)
     }
 
-    /// Runs all eleven self-test scenarios (waiting on a live holder;
+    /// Runs all fourteen self-test scenarios (waiting on a live holder;
     /// reclaiming a dead holder's lock; rejecting a widowed sentinel;
     /// concurrent-reclaim serialization; the lock actually being wired into
     /// each of its two real call sites; the enclosing run's watchdog log
@@ -408,6 +408,18 @@ final class GateLockSelfTestScriptTests: XCTestCase {
         XCTAssertTrue(
             result.output.contains("scenario K: PASS"),
             "an outer ci-test-with-watchdog.sh wrapping --profile local --filter must not SIGABRT a healthy run:\n\(result.output)"
+        )
+        XCTAssertTrue(
+            result.output.contains("scenario L: PASS"),
+            "an outer watchdog must receive gate-lock liveness while the complete three-leaf profile waits, and each leaf must retain an honest private summary:\n\(result.output)"
+        )
+        XCTAssertTrue(
+            result.output.contains("scenario M: PASS"),
+            "a forged or stale MANIFOLD_WATCHDOG_ACTIVE sentinel must not bypass local watchdog wrapping:\n\(result.output)"
+        )
+        XCTAssertTrue(
+            result.output.contains("scenario N: PASS"),
+            "a failed outer leaf-summary tee must fail closed rather than report a passing test run:\n\(result.output)"
         )
         XCTAssertTrue(
             result.output.contains("waiting for gate lock held by PID"),

@@ -156,6 +156,55 @@ sweep_orphaned_candidates() {
     done
 }
 
+# An outer ci-test-with-watchdog.sh must let a profile driver use its watched
+# log rather than redirecting each leaf to a private one. The environment is
+# not authority: a caller can forge or retain MANIFOLD_WATCHDOG_ACTIVE=1 long
+# after the wrapper has gone away. Accept the bypass only when the advertised
+# wrapper PID is still an ancestor and is actually running the watchdog
+# wrapper. A forged/stale value therefore takes the normal, fail-closed wrap
+# path; see scenario M in run_gate_lock_selftest.
+is_authenticated_outer_watchdog() {
+    [[ "${MANIFOLD_WATCHDOG_ACTIVE:-}" == "1" ]] || return 1
+    local wrapper_pid="${MANIFOLD_WATCHDOG_WRAPPER_PID:-}"
+    [[ "$wrapper_pid" =~ ^[0-9]+$ ]] || return 1
+
+    local ancestor="$$" hops=0 parent command
+    while [[ "$ancestor" =~ ^[0-9]+$ && "$ancestor" -gt 1 && $hops -lt 64 ]]; do
+        if [[ "$ancestor" == "$wrapper_pid" ]]; then
+            # `ps` otherwise truncates a long worktree path on some macOS
+            # builds, and preserves harmless duplicate path separators from
+            # the caller's argv, so authenticate the live wrapper command by
+            # its fixed script suffix rather than an exact path spelling.
+            command="$(ps -ww -p "$ancestor" -o command= 2>/dev/null)" || command=""
+            # Accept both the normal relative invocation
+            # `scripts/ci-test-with-watchdog.sh …` and an absolute worktree
+            # path. The PID still has to be a live ancestor, so this does
+            # not turn a caller-supplied sentinel back into an opt-out.
+            [[ "$command" == *"scripts/ci-test-with-watchdog.sh"* ]]
+            return
+        fi
+        parent="$(ps -p "$ancestor" -o ppid= 2>/dev/null | tr -d '[:space:]')" || parent=""
+        [[ "$parent" =~ ^[0-9]+$ && "$parent" != "$ancestor" ]] || return 1
+        ancestor="$parent"
+        hops=$((hops + 1))
+    done
+    return 1
+}
+
+# Lock queueing happens before a profile leaf starts `swift test`. When that
+# profile is itself wrapped, stdout alone is not liveness: the outer watchdog
+# watches MANIFOLD_TEST_OUTPUT_FILE. Append a progress line only after the
+# wrapper identity above is authenticated, so a forged sentinel cannot write
+# a fake heartbeat or bypass local wrapping.
+record_outer_watchdog_lock_progress() {
+    local detail="$1"
+    is_authenticated_outer_watchdog || return 0
+    if ! printf '[gate-lock] %s\n' "$detail" >> "$OUTPUT_FILE"; then
+        echo "::error::scripts/test.sh: could not write gate-lock liveness to outer watchdog log '$OUTPUT_FILE' — refusing to wait unobserved." >&2
+        return 1
+    fi
+}
+
 acquire_gate_lock() {
     if [[ "${MANIFOLD_GATE_NO_LOCK:-0}" == "1" ]]; then
         echo "[gate-lock] MANIFOLD_GATE_NO_LOCK=1 — skipping machine-wide gate serialization (deliberate parallel run)."
@@ -201,6 +250,7 @@ acquire_gate_lock() {
             export MANIFOLD_GATE_LOCK_OWNER_PID=$$
             if [[ $waited -gt 0 ]]; then
                 echo "[gate-lock] acquired after waiting ${waited}s."
+                record_outer_watchdog_lock_progress "acquired after waiting ${waited}s." || exit 76
             fi
             return 0
         fi
@@ -322,6 +372,7 @@ acquire_gate_lock() {
             # through to share the code below) is what actually bounds
             # this path: it degrades to a normal paced wait and fails
             # closed at the ceiling instead of spinning forever.
+            record_outer_watchdog_lock_progress "waiting for gate-lock reclaim of dead holder PID ${holder_pid:-unknown} — waited ${waited}s so far" || exit 76
             sleep "$GATE_LOCK_POLL_SECS"
             waited=$((waited + GATE_LOCK_POLL_SECS))
             if [[ $waited -ge $GATE_LOCK_WAIT_CEILING_SECS ]]; then
@@ -335,6 +386,13 @@ acquire_gate_lock() {
             echo "[gate-lock] waiting for gate lock held by PID ${holder_pid:-unknown} (age ${holder_age}) — waited ${waited}s so far"
             announced=1
         fi
+
+        # The outer watchdog's default threshold (240/480s) is comfortably
+        # above the 5s lock poll, so every real wait gets a fresh heartbeat
+        # before it can look stalled. This is deliberately per poll rather
+        # than per human-facing 60s announcement: the watchdog needs
+        # machine-readable liveness, not merely occasional terminal prose.
+        record_outer_watchdog_lock_progress "waiting for gate lock held by PID ${holder_pid:-unknown} (age ${holder_age}) — waited ${waited}s so far" || exit 76
 
         if [[ $waited -ge $GATE_LOCK_WAIT_CEILING_SECS ]]; then
             echo "[gate-lock] error: waited ${waited}s for gate lock held by PID ${holder_pid:-unknown} (ceiling ${GATE_LOCK_WAIT_CEILING_SECS}s) — failing CLOSED rather than proceeding unlocked. Set MANIFOLD_GATE_NO_LOCK=1 to bypass deliberately." >&2
@@ -464,7 +522,7 @@ run_gate_lock_selftest() {
     # scenarios drive the real wrap. Each nested invocation still
     # overrides MANIFOLD_TEST_OUTPUT_FILE, so this does not re-open #2464
     # against the enclosing run's log (scenario G).
-    unset MANIFOLD_WATCHDOG_ACTIVE
+    unset MANIFOLD_WATCHDOG_ACTIVE MANIFOLD_WATCHDOG_WRAPPER_PID MANIFOLD_WATCHDOG_STALL_SECONDS
     # Bounds every subprocess spawned below to a fast, loud failure instead
     # of the production 10800s (3h) default. Without this, a genuinely
     # broken reclaim/acquire path (exactly the thing scenario D exists to
@@ -1737,6 +1795,227 @@ STUB
         rm -rf "$scenario_k_root"
     fi
 
+    # ── Scenario L ────────────────────────────────────────────────────────
+    # The outer-wrapper composition has two independent contracts: a profile
+    # parent queued on the machine gate must keep the outer liveness log warm,
+    # and its three leaves must each calculate their summary from only their
+    # own output. A narrow leaf (K) cannot prove either property. Hold the
+    # real lock longer than STALL_SECONDS, then run the complete three-leaf
+    # profile through the real outer wrapper against a stub swift. Deleting
+    # the lock heartbeat produces exit 124; parsing the shared outer log
+    # produces 1/2/3 rather than three honest 1-test summaries.
+    echo "[lock-selftest] scenario L: outer watchdog survives a contended three-leaf profile and every leaf summary stays private"
+    local scenario_l_root="$selftest_root/scenario-l"
+    local scenario_l_copy="$scenario_l_root/scripts/test.sh"
+    local scenario_l_watchdog="$scenario_l_root/scripts/ci-test-with-watchdog.sh"
+    local scenario_l_stub_dir="$scenario_l_root/stub-bin"
+    local scenario_l_lock="$scenario_l_root/lock"
+    mkdir -p "$scenario_l_root/scripts" "$scenario_l_stub_dir"
+    cp "$0" "$scenario_l_copy"
+    chmod +x "$scenario_l_copy"
+    local scenario_l_wrapper_ok=1
+    if ! cp "$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh" "$scenario_l_watchdog" 2>/dev/null \
+        || ! chmod +x "$scenario_l_watchdog" 2>/dev/null; then
+        scenario_l_wrapper_ok=0
+    fi
+    cat > "$scenario_l_stub_dir/swift" <<'STUB'
+#!/usr/bin/env bash
+echo "[stub-swift] $*"
+echo "Test Case '-[ManifoldMCPTests.StubTest testStub]' passed (0.001 seconds)."
+exit 0
+STUB
+    chmod +x "$scenario_l_stub_dir/swift"
+    local scenario_l_log="$selftest_root/scenario-l.log"
+    local scenario_l_stub_ok=1
+    if [[ $scenario_l_wrapper_ok -eq 1 ]]; then
+        assert_stub_swift_effective "$scenario_l_stub_dir" "L" || scenario_l_stub_ok=0
+    else
+        scenario_l_stub_ok=0
+    fi
+    if [[ $scenario_l_wrapper_ok -eq 0 ]]; then
+        echo "[lock-selftest] scenario L: FAIL (could not stage ci-test-with-watchdog.sh)"
+        failures=$((failures + 1))
+        rm -rf "$scenario_l_root"
+    elif [[ $scenario_l_stub_ok -eq 0 ]]; then
+        failures=$((failures + 1))
+        rm -rf "$scenario_l_root"
+    else
+        MANIFOLD_GATE_LOCK_FILE="$scenario_l_lock" \
+            "$0" --lock-selftest-hold 8 > "$selftest_root/scenario-l-holder.log" 2>&1 &
+        local scenario_l_holder=$!
+        local scenario_l_hold_i=0
+        while [[ ! -s "$scenario_l_lock" && $scenario_l_hold_i -lt 100 ]]; do
+            sleep 0.05
+            scenario_l_hold_i=$((scenario_l_hold_i + 1))
+        done
+        set +e
+        (
+            cd "$scenario_l_root" || exit 76
+            PATH="$scenario_l_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_l_lock" \
+                MANIFOLD_TEST_OUTPUT_FILE="$scenario_l_root/outer-watchdog.log" \
+                STALL_SECONDS=3 WATCHDOG_POLL_INTERVAL=1 MANIFOLD_GATE_LOCK_POLL_SECS=1 \
+                scripts/ci-test-with-watchdog.sh --profile local
+        ) > "$scenario_l_log" 2>&1
+        local scenario_l_exit=$?
+        set -e
+        set +e
+        wait "$scenario_l_holder" 2>/dev/null
+        set -e
+        cat "$scenario_l_log"
+        local scenario_l_liveness=0 scenario_l_summaries=0 scenario_l_inflated=0 scenario_l_stub_lines=0
+        if [[ -f "$scenario_l_root/outer-watchdog.log" ]]; then
+            scenario_l_liveness="$(grep -c '^\[gate-lock\] waiting for gate lock' "$scenario_l_root/outer-watchdog.log")" || scenario_l_liveness=0
+        fi
+        scenario_l_summaries="$(grep -c 'TOTAL RUN:    1  (excludes tests in crashed suites)' "$scenario_l_log")" || scenario_l_summaries=0
+        scenario_l_inflated="$(grep -cE 'TOTAL RUN:    [2-9][0-9]*  \(excludes tests in crashed suites\)' "$scenario_l_log")" || scenario_l_inflated=0
+        scenario_l_stub_lines="$(grep -c '^\[stub-swift\]' "$scenario_l_log")" || scenario_l_stub_lines=0
+        if [[ $scenario_l_exit -eq 0 && $scenario_l_liveness -gt 0 && $scenario_l_summaries -eq 3 \
+              && $scenario_l_inflated -eq 0 && $scenario_l_stub_lines -eq 3 ]]; then
+            echo "[lock-selftest] scenario L: PASS (outer wrap waited past STALL_SECONDS=3 with ${scenario_l_liveness} lock heartbeats; 3/3 leaves each reported TOTAL RUN: 1)"
+        else
+            echo "[lock-selftest] scenario L: FAIL (exit=${scenario_l_exit} lock_heartbeats=${scenario_l_liveness} summaries_1=${scenario_l_summaries}/3 inflated_summaries=${scenario_l_inflated} stub_invocations=${scenario_l_stub_lines}/3)"
+            failures=$((failures + 1))
+        fi
+        rm -rf "$scenario_l_root"
+    fi
+
+    # ── Scenario N ────────────────────────────────────────────────────────
+    # Both `tee`s in an outer-watched leaf are load-bearing: the first feeds
+    # watchdog liveness and the second feeds the honest per-leaf summary.
+    # A pipeline's status is normally its last command, so retaining only
+    # PIPESTATUS[0] used to turn either writer failure into RESULT: PASSED.
+    # Make the second writer consume its input then fail; the real wrapper
+    # and relative invocation ensure this drives the exact three-command
+    # pipeline rather than a lookalike.
+    echo "[lock-selftest] scenario N: a private leaf-summary writer failure is fail-closed"
+    local scenario_n_root="$selftest_root/scenario-n"
+    local scenario_n_copy="$scenario_n_root/scripts/test.sh"
+    local scenario_n_watchdog="$scenario_n_root/scripts/ci-test-with-watchdog.sh"
+    local scenario_n_stub_dir="$scenario_n_root/stub-bin"
+    mkdir -p "$scenario_n_root/scripts" "$scenario_n_stub_dir"
+    cp "$0" "$scenario_n_copy"
+    chmod +x "$scenario_n_copy"
+    local scenario_n_wrapper_ok=1
+    if ! cp "$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh" "$scenario_n_watchdog" 2>/dev/null \
+        || ! chmod +x "$scenario_n_watchdog" 2>/dev/null; then
+        scenario_n_wrapper_ok=0
+    fi
+    cat > "$scenario_n_stub_dir/swift" <<'STUB'
+#!/usr/bin/env bash
+echo "[stub-swift] $*"
+echo "Test Case '-[ManifoldCoreTests.StubTest testStub]' passed (0.001 seconds)."
+exit 0
+STUB
+    cat > "$scenario_n_stub_dir/tee" <<'STUB'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-a" ]]; then
+    exec /usr/bin/tee "$@"
+fi
+cat >/dev/null
+echo "[scenario-n] deliberately failing private leaf-summary tee" >&2
+exit 91
+STUB
+    chmod +x "$scenario_n_stub_dir/swift" "$scenario_n_stub_dir/tee"
+    local scenario_n_log="$selftest_root/scenario-n.log"
+    if [[ $scenario_n_wrapper_ok -eq 0 ]]; then
+        echo "[lock-selftest] scenario N: FAIL (could not stage ci-test-with-watchdog.sh)"
+        failures=$((failures + 1))
+    else
+        set +e
+        (
+            cd "$scenario_n_root" || exit 76
+            PATH="$scenario_n_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_n_root/lock" \
+                MANIFOLD_TEST_OUTPUT_FILE="$scenario_n_root/outer-watchdog.log" \
+                STALL_SECONDS=6 WATCHDOG_POLL_INTERVAL=1 \
+                scripts/ci-test-with-watchdog.sh --profile local --filter ManifoldCoreTests
+        ) > "$scenario_n_log" 2>&1
+        local scenario_n_exit=$?
+        set -e
+        cat "$scenario_n_log"
+        if [[ $scenario_n_exit -eq 74 \
+              && $(grep -c 'RESULT: FAILED (test-output writer exit 0; leaf-summary writer exit 91)' "$scenario_n_log") -eq 1 ]]; then
+            echo "[lock-selftest] scenario N: PASS (private summary tee exit 91 propagated as fail-closed exit 74)"
+        else
+            echo "[lock-selftest] scenario N: FAIL (exit=${scenario_n_exit}; expected fail-closed exit 74 from private summary tee)"
+            failures=$((failures + 1))
+        fi
+    fi
+    rm -rf "$scenario_n_root"
+
+    # ── Scenario M ────────────────────────────────────────────────────────
+    # MANIFOLD_WATCHDOG_ACTIVE is transport state, not a public opt-out. A
+    # direct caller can forge it, and an environment retained from a finished
+    # wrapper is indistinguishable from a forge unless test.sh verifies the
+    # wrapper is a live ancestor. Both inputs below must take the normal
+    # fail-closed wrap path and leave real wrapper diagnostics behind.
+    echo "[lock-selftest] scenario M: forged and stale watchdog sentinels cannot bypass local watchdog wrapping"
+    local scenario_m_root="$selftest_root/scenario-m"
+    local scenario_m_copy="$scenario_m_root/scripts/test.sh"
+    local scenario_m_watchdog="$scenario_m_root/scripts/ci-test-with-watchdog.sh"
+    local scenario_m_stub_dir="$scenario_m_root/stub-bin"
+    mkdir -p "$scenario_m_root/scripts" "$scenario_m_stub_dir"
+    cp "$0" "$scenario_m_copy"
+    chmod +x "$scenario_m_copy"
+    local scenario_m_wrapper_ok=1
+    if ! cp "$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh" "$scenario_m_watchdog" 2>/dev/null \
+        || ! chmod +x "$scenario_m_watchdog" 2>/dev/null; then
+        scenario_m_wrapper_ok=0
+    fi
+    cat > "$scenario_m_stub_dir/swift" <<'STUB'
+#!/usr/bin/env bash
+echo "[stub-swift] $*"
+echo "Test Case '-[ManifoldCoreTests.StubTest testStub]' passed (0.001 seconds)."
+exit 0
+STUB
+    chmod +x "$scenario_m_stub_dir/swift"
+    local scenario_m_stub_ok=1
+    if [[ $scenario_m_wrapper_ok -eq 1 ]]; then
+        assert_stub_swift_effective "$scenario_m_stub_dir" "M" || scenario_m_stub_ok=0
+    else
+        scenario_m_stub_ok=0
+    fi
+    if [[ $scenario_m_wrapper_ok -eq 0 ]]; then
+        echo "[lock-selftest] scenario M: FAIL (could not stage ci-test-with-watchdog.sh)"
+        failures=$((failures + 1))
+        rm -rf "$scenario_m_root"
+    elif [[ $scenario_m_stub_ok -eq 0 ]]; then
+        failures=$((failures + 1))
+        rm -rf "$scenario_m_root"
+    else
+        local scenario_m_case scenario_m_pid scenario_m_exit scenario_m_diag scenario_m_stub_lines
+        local scenario_m_failures=0
+        for scenario_m_case in forged stale; do
+            local scenario_m_pid_value="$$"
+            [[ "$scenario_m_case" == "stale" ]] && scenario_m_pid_value=999999
+            local scenario_m_case_root="$scenario_m_root/$scenario_m_case"
+            local scenario_m_log="$selftest_root/scenario-m-$scenario_m_case.log"
+            mkdir -p "$scenario_m_case_root"
+            rm -rf "$scenario_m_root/test-diagnostics"
+            set +e
+            PATH="$scenario_m_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_m_case_root/lock" \
+                MANIFOLD_TEST_OUTPUT_FILE="$scenario_m_case_root/input.log" \
+                MANIFOLD_WATCHDOG_ACTIVE=1 MANIFOLD_WATCHDOG_WRAPPER_PID="$scenario_m_pid_value" \
+                "$scenario_m_copy" --profile local --filter ManifoldCoreTests > "$scenario_m_log" 2>&1
+            scenario_m_exit=$?
+            set -e
+            cat "$scenario_m_log"
+            scenario_m_diag="$(find "$scenario_m_root/test-diagnostics" -name 'watchdog-*.diagnostics.txt' -type f -print -quit 2>/dev/null)" || scenario_m_diag=""
+            scenario_m_stub_lines="$(grep -c '^\[stub-swift\]' "$scenario_m_log")" || scenario_m_stub_lines=0
+            if [[ $scenario_m_exit -eq 0 && -n "$scenario_m_diag" && $scenario_m_stub_lines -eq 1 ]]; then
+                echo "[lock-selftest] scenario M/$scenario_m_case: PASS (untrusted sentinel drove the real wrapper; diagnostics at $scenario_m_diag)"
+            else
+                echo "[lock-selftest] scenario M/$scenario_m_case: FAIL (exit=${scenario_m_exit} diagnostics='${scenario_m_diag}' stub_invocations=${scenario_m_stub_lines}/1)"
+                scenario_m_failures=$((scenario_m_failures + 1))
+            fi
+        done
+        if [[ $scenario_m_failures -eq 0 ]]; then
+            echo "[lock-selftest] scenario M: PASS (both forged and stale sentinels were rejected)"
+        else
+            failures=$((failures + 1))
+        fi
+        rm -rf "$scenario_m_root"
+    fi
+
     # ── Scenario G ────────────────────────────────────────────────────────
     # The self-test must leave the ENCLOSING run's artifacts alone. Scenarios
     # E, F, H, I, J, and K reach `scripts/test.sh`'s main path (and
@@ -2107,7 +2386,7 @@ run_leaf_with_local_watchdog() {
     # Children must APPEND to that inherited file (`tee -a` at the fallthrough
     # below): a truncating `tee` on invocation 2 of the three-invocation
     # shape is #2464 again.
-    if [[ "${MANIFOLD_WATCHDOG_ACTIVE:-0}" == "1" ]]; then
+    if is_authenticated_outer_watchdog; then
         set +e
         "$SCRIPT_PATH" "$@"
         rc=$?
@@ -2432,12 +2711,27 @@ set +e
 # re-execs three children into the same inherited log; a bare `tee`
 # on invocation 2 wipes the high-water mark and the outer watchdog
 # SIGABRTs a healthy run (#2464).
-if [[ "${MANIFOLD_WATCHDOG_ACTIVE:-0}" == "1" ]]; then
-    swift test ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} 2>&1 | tee -a "$OUTPUT_FILE"
+SUMMARY_OUTPUT_FILE="$OUTPUT_FILE"
+SUMMARY_OUTPUT_FILE_IS_PRIVATE=0
+OUTPUT_TEE_EXIT=0
+SUMMARY_TEE_EXIT=0
+if is_authenticated_outer_watchdog; then
+    SUMMARY_OUTPUT_FILE="$(mktemp "${OUTPUT_FILE}.leaf.XXXXXX" 2>/dev/null)" || {
+        echo "::error::scripts/test.sh: could not create a private leaf summary log beside outer watchdog log '$OUTPUT_FILE'." >&2
+        exit 76
+    }
+    SUMMARY_OUTPUT_FILE_IS_PRIVATE=1
+    swift test ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} 2>&1 | tee -a "$OUTPUT_FILE" | tee "$SUMMARY_OUTPUT_FILE"
+    PIPE_STATUSES=("${PIPESTATUS[@]}")
+    SWIFT_EXIT=${PIPE_STATUSES[0]}
+    OUTPUT_TEE_EXIT=${PIPE_STATUSES[1]}
+    SUMMARY_TEE_EXIT=${PIPE_STATUSES[2]}
 else
     swift test ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} 2>&1 | tee "$OUTPUT_FILE"
+    PIPE_STATUSES=("${PIPESTATUS[@]}")
+    SWIFT_EXIT=${PIPE_STATUSES[0]}
+    OUTPUT_TEE_EXIT=${PIPE_STATUSES[1]}
 fi
-SWIFT_EXIT=${PIPESTATUS[0]}
 set -e
 
 # Scenario F's stuck-child fixture keeps the lock-owning nested shell alive
@@ -2472,7 +2766,7 @@ if [[ $SWIFT_EXIT -ne 0 ]]; then
     # - "missing required module" (the _NumericsShims case from #2181)
     # - "build.db" / "workspace-state.json" (SwiftPM metadata corruption)
     # - "module cache" (Clang incremental-build desync)
-    if grep -qiE "(missing required module|build\.db|workspace-state\.json|module cache)" "$OUTPUT_FILE"; then
+    if grep -qiE "(missing required module|build\.db|workspace-state\.json|module cache)" "$SUMMARY_OUTPUT_FILE"; then
         echo ""
         echo "  ⚠️  DETECTED: Stale .build artifact error"
         echo ""
@@ -2484,9 +2778,9 @@ fi
 
 # ── Parse XCTest events ───────────────────────────────────────────────────────
 # Individual test-case results
-xctest_passed=$(grep -c "^Test Case '.*' passed" "$OUTPUT_FILE" || true)
-xctest_failed=$(grep -c "^Test Case '.*' failed" "$OUTPUT_FILE" || true)
-xctest_skipped=$(grep -c "^Test Case '.*' skipped" "$OUTPUT_FILE" || true)
+xctest_passed=$(grep -c "^Test Case '.*' passed" "$SUMMARY_OUTPUT_FILE" || true)
+xctest_failed=$(grep -c "^Test Case '.*' failed" "$SUMMARY_OUTPUT_FILE" || true)
+xctest_skipped=$(grep -c "^Test Case '.*' skipped" "$SUMMARY_OUTPUT_FILE" || true)
 
 # `swift test --parallel` runs each XCTest worker in its own process and
 # multiplexes their output through SwiftPM's xcodebuild-style streaming line:
@@ -2496,7 +2790,7 @@ xctest_skipped=$(grep -c "^Test Case '.*' skipped" "$OUTPUT_FILE" || true)
 # Use the streaming line count as the authoritative test-ran count when
 # --parallel is in play, and fall back to swift test's exit code for
 # pass/fail (any worker non-zero exit propagates).
-xctest_parallel_count=$(grep -cE "^\[[0-9]+/[0-9]+\] Testing " "$OUTPUT_FILE" || true)
+xctest_parallel_count=$(grep -cE "^\[[0-9]+/[0-9]+\] Testing " "$SUMMARY_OUTPUT_FILE" || true)
 if [[ $PARALLEL_MODE -eq 1 ]]; then
     # If the streaming runner emitted more tests than the classic counters
     # observed (typical when worker output is interleaved or truncated),
@@ -2520,12 +2814,12 @@ fi
 
 mcp_test_events=0
 if [[ $MCP_FILTER_REQUESTED -eq 1 ]]; then
-    mcp_test_events=$(grep -cE "(Test Case '-\[ManifoldMCP(E2E)?Tests\.|^\[[0-9]+/[0-9]+\] Testing ManifoldMCP(E2E)?Tests\.)" "$OUTPUT_FILE" || true)
+    mcp_test_events=$(grep -cE "(Test Case '-\[ManifoldMCP(E2E)?Tests\.|^\[[0-9]+/[0-9]+\] Testing ManifoldMCP(E2E)?Tests\.)" "$SUMMARY_OUTPUT_FILE" || true)
 fi
 
 # Suites that started but never emitted a 'passed' or 'failed' line are crash victims.
 # Exclude the two top-level container lines ("All tests" and the .xctest bundle).
-xctest_suites_started=$(grep "^Test Suite '" "$OUTPUT_FILE" \
+xctest_suites_started=$(grep "^Test Suite '" "$SUMMARY_OUTPUT_FILE" \
     | grep " started at " \
     | grep -v "^Test Suite 'All tests'" \
     | grep -v "\.xctest'" \
@@ -2539,14 +2833,14 @@ if [[ -n "$xctest_suites_started" ]]; then
     while IFS= read -r suite; do
         [[ -z "$suite" ]] && continue
         suite_pat=$(printf '%s' "$suite" | sed 's/[][(){}.*+?^$|\\]/\\&/g')
-        if ! grep -qE "^Test Suite '${suite_pat}' (passed|failed) at" "$OUTPUT_FILE" 2>/dev/null; then
+        if ! grep -qE "^Test Suite '${suite_pat}' (passed|failed) at" "$SUMMARY_OUTPUT_FILE" 2>/dev/null; then
             # Under --parallel, worker output is interleaved across processes
             # and SwiftPM may swallow the trailing "Test Suite '...' passed"
             # line for some workers. If the streaming runner emitted at least
             # one test from this suite, it ran — only flag as crashed if
             # SwiftPM itself reported a non-zero exit.
             if [[ $PARALLEL_MODE -eq 1 ]]; then
-                if grep -qE "^\[[0-9]+/[0-9]+\] Testing .*\.${suite_pat}/" "$OUTPUT_FILE" 2>/dev/null; then
+                if grep -qE "^\[[0-9]+/[0-9]+\] Testing .*\.${suite_pat}/" "$SUMMARY_OUTPUT_FILE" 2>/dev/null; then
                     continue
                 fi
             fi
@@ -2560,12 +2854,12 @@ fi
 # Lines: "✔ Test foo() passed after N seconds."
 #        "✘ Test foo() failed after N seconds."
 #        "↩ Test foo() skipped after N seconds."
-st_passed=$(awk '/^✔ Test .* passed after / && $0 !~ /^✔ Test run / { count++ } END { print count + 0 }' "$OUTPUT_FILE")
-st_failed=$(awk '/^✘ Test .* failed after / && $0 !~ /^✘ Test run / { count++ } END { print count + 0 }' "$OUTPUT_FILE")
-st_skipped=$(awk '/^↩ Test .* skipped after / && $0 !~ /^↩ Test run / { count++ } END { print count + 0 }' "$OUTPUT_FILE")
+st_passed=$(awk '/^✔ Test .* passed after / && $0 !~ /^✔ Test run / { count++ } END { print count + 0 }' "$SUMMARY_OUTPUT_FILE")
+st_failed=$(awk '/^✘ Test .* failed after / && $0 !~ /^✘ Test run / { count++ } END { print count + 0 }' "$SUMMARY_OUTPUT_FILE")
+st_skipped=$(awk '/^↩ Test .* skipped after / && $0 !~ /^↩ Test run / { count++ } END { print count + 0 }' "$SUMMARY_OUTPUT_FILE")
 
 # Swift Testing suites: "◇ Suite "Name" started." vs "✔ Suite "Name" passed after N seconds."
-st_suites_started=$(grep '^◇ Suite "' "$OUTPUT_FILE" \
+st_suites_started=$(grep '^◇ Suite "' "$SUMMARY_OUTPUT_FILE" \
     | sed 's/^◇ Suite "//; s/" started\.//' \
     || true)  # fail-open-ok: a run with no Swift Testing suites is a valid outcome
 
@@ -2575,7 +2869,7 @@ if [[ -n "$st_suites_started" ]]; then
     while IFS= read -r suite; do
         [[ -z "$suite" ]] && continue
         suite_pat=$(printf '%s' "$suite" | sed 's/[][(){}.*+?^$|\\]/\\&/g')
-        if ! grep -qE "^[✔✘] Suite \"${suite_pat}\" (passed|failed) after" "$OUTPUT_FILE" 2>/dev/null; then
+        if ! grep -qE "^[✔✘] Suite \"${suite_pat}\" (passed|failed) after" "$SUMMARY_OUTPUT_FILE" 2>/dev/null; then
             st_crashed_suites="${st_crashed_suites}  - ${suite} (Swift Testing)"$'\n'
             st_crashed_count=$((st_crashed_count + 1))
         fi
@@ -2587,7 +2881,7 @@ all_crashed_suites="${xctest_crashed_suites}${st_crashed_suites}"
 total_crashed_count=$((xctest_crashed_count + st_crashed_count))
 
 # Number of distinct processes that emitted a signal-exit error line.
-signal_count=$(grep -c "exited with unexpected signal code" "$OUTPUT_FILE" || true)
+signal_count=$(grep -c "exited with unexpected signal code" "$SUMMARY_OUTPUT_FILE" || true)
 
 # ── Totals ────────────────────────────────────────────────────────────────────
 total_passed=$((xctest_passed + st_passed))
@@ -2638,6 +2932,9 @@ elif [[ $total_crashed_count -gt 0 ]]; then
 elif [[ $SWIFT_EXIT -ne 0 ]]; then
     echo "  RESULT: FAILED (swift test exit code $SWIFT_EXIT)"
     FINAL_EXIT=$SWIFT_EXIT
+elif [[ $OUTPUT_TEE_EXIT -ne 0 || $SUMMARY_TEE_EXIT -ne 0 ]]; then
+    echo "  RESULT: FAILED (test-output writer exit ${OUTPUT_TEE_EXIT}; leaf-summary writer exit ${SUMMARY_TEE_EXIT})"
+    FINAL_EXIT=74
 elif [[ $MCP_FILTER_REQUESTED -eq 1 && $mcp_test_events -eq 0 ]]; then
     echo "  RESULT: TRIPWIRE — MCP filter matched 0 MCP test cases (target dropped from the build, or filter typo)"
     FINAL_EXIT=3
@@ -2651,5 +2948,9 @@ else
     echo "  RESULT: PASSED"
 fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+if [[ $SUMMARY_OUTPUT_FILE_IS_PRIVATE -eq 1 ]]; then
+    rm -f "$SUMMARY_OUTPUT_FILE"
+fi
 
 exit $FINAL_EXIT

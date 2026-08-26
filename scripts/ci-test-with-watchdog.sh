@@ -81,11 +81,13 @@
 #                       lunch, and a caller lowering this further than
 #                       scripts/test.sh's local-gate driver does should size
 #                       it against their own log growth rate.
-#   MANIFOLD_WATCHDOG_ACTIVE
-#                       Set to 1 by this wrapper before it launches
-#                       scripts/test.sh. test.sh's --profile local|ci driver
-#                       reads it and refuses to re-wrap / steal
-#                       MANIFOLD_TEST_OUTPUT_FILE. Without this sentinel,
+#   MANIFOLD_WATCHDOG_ACTIVE / MANIFOLD_WATCHDOG_WRAPPER_PID
+#                       Set together by this wrapper before it launches
+#                       scripts/test.sh. test.sh accepts the already-watched
+#                       passthrough only when the recorded PID is an actual
+#                       ancestor running this wrapper; a caller-supplied or
+#                       stale environment value is ignored. Without this
+#                       authenticated sentinel,
 #                       `ci-test-with-watchdog.sh --profile local` (an outer
 #                       wrap of the documented local gate) redirected every
 #                       leaf log and the outer watchdog SIGABRT'd a healthy
@@ -134,6 +136,8 @@ mkdir -p "$(dirname "$WATCHDOG_LOG")" "$WATCHDOG_DIAGNOSTICS_DIR"
 # already being watched: do not wrap again, and do not point
 # MANIFOLD_TEST_OUTPUT_FILE at a per-label file this loop cannot see.
 export MANIFOLD_WATCHDOG_ACTIVE=1
+export MANIFOLD_WATCHDOG_WRAPPER_PID="$$"
+export MANIFOLD_WATCHDOG_STALL_SECONDS="$STALL_SECONDS"
 "$PACKAGE_DIR/scripts/test.sh" "$@" &
 TEST_PID=$!
 
@@ -166,7 +170,7 @@ aborted_by_watchdog=0
 #      "Test Case '...' passed" lines.
 #
 # Any one of these proves a worker is alive and making forward progress.
-progress_pattern='^\[[0-9]+/[0-9]+\] (Testing|Compiling|Write|Emitting) |^Emitting module |^Building for |^Build complete|^Planning build|^Test Case .* (passed|failed|skipped)|^[✔✘↩] (Test|Suite) '
+progress_pattern='^\[[0-9]+/[0-9]+\] (Testing|Compiling|Write|Emitting) |^\[gate-lock\] (waiting for gate lock|waiting for gate-lock reclaim|acquired after waiting) |^Emitting module |^Building for |^Build complete|^Planning build|^Test Case .* (passed|failed|skipped)|^[✔✘↩] (Test|Suite) '
 
 # Snapshot the descendant swift-test / xctest pid set so we can SIGABRT them
 # all on stall without touching unrelated Swift work that may be running on the
