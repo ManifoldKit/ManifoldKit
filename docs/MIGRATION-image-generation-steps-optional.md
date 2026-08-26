@@ -115,7 +115,10 @@ v0.77.0 and until the core example has switched back to its published
 `manifold-mlx` version pin. After v0.77.0 ships, manifold-mlx#191 must update
 its core requirement to `.upToNextMinor(from: "0.77.0")` and publish its
 companion pin-bump release; only then may the core follow-up restore the
-example's `minorVersion: 0.5.0` pin and delete that branch.
+example's `minorVersion: 0.6.0` pin (and regenerate the Xcode project's
+matching `minimumVersion = 0.6.0` requirement) before deleting that branch.
+The companion adaptation is a breaking `fix!` change, so it publishes as
+v0.6.0 rather than a 0.5.x patch.
 
 ## Related
 
