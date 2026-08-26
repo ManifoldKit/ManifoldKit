@@ -1161,7 +1161,8 @@ reason (see "Documentation gates" above).
 Detection of "is this run validating a release" is a `release-context` step in that job with **two
 necessary conditions**, not one — do not simplify this back to a bare version comparison, which
 reintroduces a real false-positive window (found in review):
-1. `version.txt` is ahead of the latest published tag (`gh api repos/.../releases/latest`).
+1. `version.txt` is valid SemVer and strictly newer than the latest published tag
+   (`gh api repos/.../releases/latest`); an older-but-unequal branch is not a release.
 2. The change actually under validation modifies `version.txt` itself — diffed against
    `github.event.merge_group.base_sha`/`head_sha` on `merge_group`, or against
    `origin/${{ github.base_ref }}` on `pull_request` (same idiom as the `dep-budget`/

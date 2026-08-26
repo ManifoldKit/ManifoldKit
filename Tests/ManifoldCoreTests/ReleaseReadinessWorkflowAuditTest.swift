@@ -59,6 +59,31 @@ final class ReleaseReadinessWorkflowAuditTest: XCTestCase {
         )
     }
 
+    /// Safe demonstrated-red fixture for the release-context gate: restoring
+    /// the original string-inequality predicate makes an older branch version
+    /// look like a release. The audit must reject that workflow shape before
+    /// it can ship as a skip-path-green required check.
+    func test_sabotage_releaseContextRejectsStringInequalityComparison() {
+        let sabotaged = """
+            id: release_context
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            if [ "$current_version" != "$latest_version" ]; then
+              echo "is_release=true" >> "$GITHUB_OUTPUT"
+            fi
+            """
+
+        let violations = Self.releaseContextViolations(in: sabotaged)
+        XCTAssertTrue(
+            violations.contains(where: { $0.contains("strict-SemVer comparator") }),
+            "a string-inequality release predicate must be rejected: \(violations)"
+        )
+        XCTAssertTrue(
+            violations.contains(where: { $0.contains("fail closed") }),
+            "the malformed-SemVer failure path must remain load-bearing: \(violations)"
+        )
+    }
+
     // MARK: - Detection
 
     /// Walks `workflow` as text (same shape as other workflow audits — we
@@ -96,6 +121,12 @@ final class ReleaseReadinessWorkflowAuditTest: XCTestCase {
         }
         if !workflow.contains("is_release=false") {
             violations.append("release_context never writes is_release=false")
+        }
+        if !workflow.contains("bash scripts/release-context-check.sh --is-strictly-greater") {
+            violations.append("release_context must invoke the tested strict-SemVer comparator, not use string inequality")
+        }
+        if !workflow.contains("Could not compare version.txt") {
+            violations.append("release_context comparator must fail closed on malformed SemVer input")
         }
         return violations
     }

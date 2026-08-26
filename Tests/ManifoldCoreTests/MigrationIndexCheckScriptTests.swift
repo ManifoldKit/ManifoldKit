@@ -276,6 +276,72 @@ final class MigrationIndexCheckScriptTests: XCTestCase {
         }
     }
 
+    /// A `MIGRATION-*.md` name written as prose in the second cell is not a
+    /// migration-index row. The cell needs a real Markdown link destination;
+    /// otherwise the release gate and the Swift completeness audit could both
+    /// pass while a note has no navigable index entry.
+    func test_release_rejectsProseOnlyMigrationNoteCell() throws {
+        try withFixture(
+            rows: [("v0.1.0", "MIGRATION-covered.md")],
+            notes: ["MIGRATION-covered.md", "MIGRATION-prose-only.md"]
+        ) { root, fixture in
+            try """
+            # Migration index
+
+            | Release | Migration note | What changed |
+            |---------|----------------|--------------|
+            | v0.1.0 | [`MIGRATION-covered.md`](MIGRATION-covered.md) | A real row. |
+            | v0.1.0 | See MIGRATION-prose-only.md for details. | Missing the required link. |
+            """.write(to: fixture.indexFile, atomically: true, encoding: .utf8)
+
+            let (status, output) = try run(scriptRoot: root, args: [
+                "--release", "--index", fixture.indexFile.path, "--docs-dir", fixture.docsDir.path,
+            ])
+
+            XCTAssertEqual(status, 1, "an unlinked second-cell mention must fail completeness: \(output)")
+            XCTAssertTrue(
+                output.contains("MIGRATION-prose-only.md"),
+                "the unlinked note must be named as missing, got: \(output)"
+            )
+            XCTAssertFalse(
+                output.contains("Flip each") && output.contains("MIGRATION-covered.md"),
+                "the real linked row must not be reported as an offender, got: \(output)"
+            )
+        }
+    }
+
+    /// The shell gate owns only the first Markdown link in the Migration note
+    /// cell, matching the Swift audit. A contextual second link must still be
+    /// reported as an unindexed note rather than silently acquiring a row.
+    func test_release_rejectsSecondMigrationLinkInNoteCell() throws {
+        try withFixture(
+            rows: [("v0.1.0", "MIGRATION-primary.md")],
+            notes: ["MIGRATION-primary.md", "MIGRATION-cross-link.md"]
+        ) { root, fixture in
+            try ("""
+            # Migration index
+
+            | Release | Migration note | What changed |
+            |---------|----------------|--------------|
+            | v0.1.0 | [`MIGRATION-primary.md`](MIGRATION-primary.md), see [`MIGRATION-cross-link.md`](MIGRATION-cross-link.md). | One owned row. |
+            """ + "\n").write(to: fixture.indexFile, atomically: true, encoding: .utf8)
+
+            let (status, output) = try run(scriptRoot: root, args: [
+                "--release", "--index", fixture.indexFile.path, "--docs-dir", fixture.docsDir.path,
+            ])
+
+            XCTAssertEqual(status, 1, "a second cross-link must not satisfy completeness: \(output)")
+            XCTAssertTrue(
+                output.contains("MIGRATION-cross-link.md"),
+                "the second link must be named as missing, got: \(output)"
+            )
+            XCTAssertFalse(
+                output.contains("MIGRATION-primary.md") && output.contains("missing a row"),
+                "the primary first link must remain covered, got: \(output)"
+            )
+        }
+    }
+
     /// Bare mode (no `--release`) must pass on a fixture whose rows all say
     /// `next` as long as it's otherwise complete — this pins the two modes
     /// apart: the `next` rule is release-only and must not leak into the

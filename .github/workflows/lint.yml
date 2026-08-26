@@ -26,8 +26,9 @@ name: Lint
 #   - release-context                (is this run validating a release? needs
 #                                     BOTH that the change modifies version.txt
 #                                     (checked first — purely local) and that
-#                                     version.txt is ahead of the latest
-#                                     published tag. Gates the two release-only
+#                                     version.txt is valid SemVer and strictly
+#                                     newer than the latest published tag.
+#                                     Gates the two release-only
 #                                     steps; pull_request + merge_group only)
 #   - companion-canary-gate          (release-only, pull_request ONLY, with
 #                                     --dispatch so the evidence is fresh —
@@ -678,7 +679,8 @@ jobs:
 
       # ── release-context ───────────────────────────────────────────────────
       # Detects whether THIS run is validating an in-flight release: version.txt
-      # bumped ahead of the latest published GitHub release tag. The two
+      # bumped to a valid SemVer version strictly newer than the latest
+      # published GitHub release tag. The two
       # release-only gates below (companion-canary-gate, migration-index-gate)
       # key off this step's `is_release` output.
       #
@@ -710,7 +712,7 @@ jobs:
       # version.txt) fails the job outright. A release gate that silently
       # resolves to "not a release" when its own precondition check fails
       # would defeat the entire point of gating a release.
-      - name: "release-context — detect whether version.txt is ahead of the latest published tag"
+      - name: "release-context — detect whether version.txt is strict-SemVer newer than the latest published tag"
         id: release_context
         if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
         env:
@@ -824,23 +826,35 @@ jobs:
           latest_version="${latest_tag#v}"
           echo "latest published tag:  $latest_tag (version $latest_version)"
 
-          # Both conditions logged independently above, so a future reader can
-          # see which one decided the outcome.
-          if [ "$current_version" != "$latest_version" ]; then
+          # `!=` is not a release comparison: with latest v0.76.1, an old
+          # branch carrying 0.76.0 is unequal yet must NOT trigger a release
+          # gate. The helper validates both values as strict SemVer and applies
+          # SemVer precedence (including prereleases); malformed input fails
+          # closed instead of becoming a false "not a release" result.
+          if ! comparison="$(bash scripts/release-context-check.sh --is-strictly-greater "$current_version" "$latest_version")"; then
+            echo "::error::Could not compare version.txt ($current_version) with latest published tag ($latest_tag) as strict SemVer."
+            exit 1
+          fi
+          if [ "$comparison" = "true" ]; then
             echo "is_release=true" >> "$GITHUB_OUTPUT"
-            echo "→ Release in flight: version.txt ($current_version) is ahead of the latest published tag ($latest_version), and this change modifies it."
+            echo "→ Release in flight: version.txt ($current_version) is strict-SemVer newer than the latest published tag ($latest_version), and this change modifies it."
             exit 0
           fi
+          if [ "$comparison" != "false" ]; then
+            echo "::error::release-context comparator returned an unexpected result ($comparison); refusing to skip release gates."
+            exit 1
+          fi
 
-          # version.txt is touched but already matches the latest published
-          # tag. On an ordinary PR that is a legitimate no-op. On the release
-          # PR it means condition 1 — which depends on a mutable external API —
-          # has told us something that cannot be true, and silently skipping
-          # the gates is exactly the outcome this change exists to prevent.
+          # version.txt is touched but is equal to or older than the latest
+          # published tag. On an ordinary PR that is a legitimate no-op or a
+          # stale branch. On the release PR it means condition 1 — which
+          # depends on a mutable external API — has told us something that
+          # cannot be true, and silently skipping the gates is exactly the
+          # outcome this change exists to prevent.
           echo "is_release=false" >> "$GITHUB_OUTPUT"
-          echo "→ Not a release: version.txt matches the latest published tag."
+          echo "→ Not a release: version.txt is not newer than the latest published tag."
           if [ "$on_release_branch" = true ]; then
-            echo "::error::On $HEAD_REF the release gates must run, but version.txt ($current_version) already matches the latest published tag ($latest_tag). Refusing to skip them silently — check whether a release was published out of band."
+            echo "::error::On $HEAD_REF the release gates must run, but version.txt ($current_version) is not newer than the latest published tag ($latest_tag). Refusing to skip them silently — check whether a release was published out of band."
             exit 1
           fi
 

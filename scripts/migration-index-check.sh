@@ -139,10 +139,9 @@ row_releases=()
 row_files=()
 
 while IFS= read -r line; do
-    # Only rows that name a MIGRATION-*.md file — this alone excludes the
-    # header row and the `|---|---|---|` separator, neither of which
-    # contains that token.
-    if ! printf '%s' "$line" | grep -qE '^\|.*MIGRATION-[A-Za-z0-9._-]+\.md'; then
+    # Only Markdown table rows can contribute coverage. A prose line may use
+    # pipe characters and a migration link, but is not the index's row shape.
+    if [[ "$line" != \|* ]]; then
         continue
     fi
 
@@ -165,20 +164,21 @@ while IFS= read -r line; do
         | tr -d '`*_' \
         | tr '[:upper:]' '[:lower:]' \
         | awk '{gsub(/^[ \t]+|[ \t]+$/, ""); print}')"
-    # The migration-note filename. Matched natively rather than via
-    # `grep -oE ... | head -n1`: `head` closing the pipe early can SIGPIPE
-    # grep, which `pipefail` would then propagate, so that form needs a
-    # `|| true` to be safe — and a discarded failure is exactly what this
-    # repo's fail-open rules (and the estate lint) exist to stop. Bash's own
-    # `=~` has no pipe, no subprocess and no failure mode to discard.
-    # BASH_REMATCH is available in Bash 3.2, which is what CI runners ship.
-    # The regex must stay unquoted; a quoted one matches literally in 3.2.
-    if [[ "$line" =~ (MIGRATION-[A-Za-z0-9._-]+\.md) ]]; then
+    # The migration-note filename MUST be the destination of a Markdown link
+    # in the second table cell (`Migration note`), not merely the first
+    # MIGRATION-looking token anywhere on the row. A summary can naturally say
+    # "Supersedes MIGRATION-x.md"; counting that prose as a row lets x escape
+    # the completeness gate. `BASH_REMATCH` is available in Bash 3.2 and
+    # avoids a grep|head pipeline whose SIGPIPE handling would otherwise need
+    # a fail-open suppression.
+    note_field="$(printf '%s\n' "$line" \
+        | awk -F'|' 'NF >= 4 {gsub(/^[ \t]+|[ \t]+$/, "", $3); print $3}')"
+    # The regex must stay unquoted; a quoted regex is literal in Bash 3.2.
+    if [[ "$note_field" =~ \]\((MIGRATION-[A-Za-z0-9._-]+\.md)\) ]]; then
         filename="${BASH_REMATCH[1]}"
     else
-        # Unreachable given the filter above, which already required this
-        # token — kept so a future edit to that filter degrades to "skip the
-        # row" rather than to an unset variable under `set -u`.
+        # Header/separator/malformed rows are not migration-note rows. The
+        # completeness check below then names any real note they fail to cover.
         continue
     fi
 

@@ -150,12 +150,12 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
 2. **Companion-canary gate — CI-enforced, hard-blocking, no override flag.**
    `.github/workflows/lint.yml`'s `lint` job now runs
    `scripts/companion-canary-check.sh` automatically once it detects a release
-   in flight — which needs **both** that `version.txt` is ahead of the latest
-   published tag **and** that the change being validated modifies `version.txt`
-   itself. The release PR satisfies the second condition by construction, so
-   this is invisible here; it exists to stop an unrelated PR firing the gates
-   in the window after the release PR merges but before `release-please` cuts
-   the tag.
+   in flight — which needs **both** that `version.txt` is valid SemVer and
+   strictly newer than the latest published tag **and** that the change being
+   validated modifies `version.txt` itself. The release PR satisfies the second
+   condition by construction, so this is invisible here; it exists to stop an
+   unrelated PR firing the gates in the window after the release PR merges but
+   before `release-please` cuts the tag.
 
    **It runs on the `pull_request` event only** — in practice, when you push
    the changelog rewrite in step 3 — using `--dispatch`, which triggers fresh
@@ -209,7 +209,7 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    > the PR is blocked until you push again. That re-run includes the canary
    > dispatch wait. It stalls rather than bypasses anything, but it is not free:
    > budget another dispatch cycle each time main moves.
-   
+
    Check out the release
    branch in its worktree (`release-please--branches--main`). CI's
    `changelog-parser-check` (any push, any actor) already re-runs Release

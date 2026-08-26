@@ -124,8 +124,7 @@ final class MigrationIndexAuditTest: XCTestCase {
     /// take every `MIGRATION-*.md` match on a `|`-prefixed line, so the
     /// perfectly natural "Superseded by `MIGRATION-x.md`" phrasing silently
     /// registered `MIGRATION-x.md` as covered. The audit passed on exactly
-    /// the defect it exists to catch, and diverged from
-    /// `scripts/migration-index-check.sh`, which takes only the first match.
+    /// the defect it exists to catch.
     func test_sabotage_completenessViolationsIgnoresNotesNamedInsideAnotherRowsProse() throws {
         let tmp = try Self.makeTempRoot("migration-index-prose-mention")
         defer { try? FileManager.default.removeItem(at: tmp) }
@@ -161,6 +160,76 @@ final class MigrationIndexAuditTest: XCTestCase {
         XCTAssertFalse(
             violations.contains { $0.contains("MIGRATION-alpha.md") },
             "The note the row is actually about must not be flagged; got \(violations)"
+        )
+    }
+
+    /// A filename merely mentioned in the second cell is not an index row;
+    /// that cell must contain the actual Markdown link to the migration note.
+    /// This is the counterpart to the summary-prose sabotage above: choosing
+    /// the first filename anywhere in a row incorrectly accepts both forms.
+    func test_sabotage_completenessViolationsRejectsProseOnlyMigrationNoteCell() throws {
+        let tmp = try Self.makeTempRoot("migration-index-unlinked-note-cell")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let docsDir = tmp.appendingPathComponent("docs", isDirectory: true)
+        try FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true)
+        try """
+        # Migration index
+
+        | Release | Migration note | What changed |
+        |---------|----------------|--------------|
+        | v0.76.0 | [`MIGRATION-covered.md`](MIGRATION-covered.md) | A real row. |
+        | v0.76.0 | See MIGRATION-prose-only.md for details. | Missing the required link. |
+        """.write(to: docsDir.appendingPathComponent("MIGRATION-INDEX.md"), atomically: true, encoding: .utf8)
+        try "# Covered".write(
+            to: docsDir.appendingPathComponent("MIGRATION-covered.md"), atomically: true, encoding: .utf8
+        )
+        try "# Prose only".write(
+            to: docsDir.appendingPathComponent("MIGRATION-prose-only.md"), atomically: true, encoding: .utf8
+        )
+
+        let violations = try Self.completenessViolations(repoRoot: tmp)
+        XCTAssertTrue(
+            violations.contains { $0.contains("MIGRATION-prose-only.md") },
+            "An unlinked prose mention in the Migration note cell must not count as a row; got \(violations)"
+        )
+        XCTAssertFalse(
+            violations.contains { $0.contains("MIGRATION-covered.md") },
+            "A real second-cell link must continue to count as a row; got \(violations)"
+        )
+    }
+
+    /// A row may cross-link another migration note for context, but only its
+    /// first Migration note-cell link is the row it owns. This pins the Swift
+    /// parser to Bash's `BASH_REMATCH` first-match semantics.
+    func test_sabotage_completenessViolationsIgnoresSecondMigrationLinkInNoteCell() throws {
+        let tmp = try Self.makeTempRoot("migration-index-note-cell-cross-link")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let docsDir = tmp.appendingPathComponent("docs", isDirectory: true)
+        try FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true)
+        try """
+        # Migration index
+
+        | Release | Migration note | What changed |
+        |---------|----------------|--------------|
+        | v0.76.0 | [`MIGRATION-primary.md`](MIGRATION-primary.md), see [`MIGRATION-cross-link.md`](MIGRATION-cross-link.md). | One owned row. |
+        """.write(to: docsDir.appendingPathComponent("MIGRATION-INDEX.md"), atomically: true, encoding: .utf8)
+        try "# Primary".write(
+            to: docsDir.appendingPathComponent("MIGRATION-primary.md"), atomically: true, encoding: .utf8
+        )
+        try "# Cross-link".write(
+            to: docsDir.appendingPathComponent("MIGRATION-cross-link.md"), atomically: true, encoding: .utf8
+        )
+
+        let violations = try Self.completenessViolations(repoRoot: tmp)
+        XCTAssertFalse(
+            violations.contains { $0.contains("MIGRATION-primary.md") },
+            "The first migration-note link owns the row; got \(violations)"
+        )
+        XCTAssertTrue(
+            violations.contains { $0.contains("MIGRATION-cross-link.md") },
+            "A second cross-link must not count as its own index row; got \(violations)"
         )
     }
 
@@ -271,21 +340,27 @@ final class MigrationIndexAuditTest: XCTestCase {
         return names
     }
 
-    /// The `MIGRATION-*.md` filename a single table row is *about* — the
-    /// FIRST match on the line, never every match.
+    /// The `MIGRATION-*.md` filename a single table row is *about*: the
+    /// Markdown-link destination in its second (`Migration note`) cell.
     ///
     /// A row's "What changed" cell can legitimately name another note
     /// ("Superseded by `MIGRATION-x.md`"), which is a natural way to write
     /// this table. Taking every match would treat that mention as though
     /// `MIGRATION-x.md` had its own row, so the audit would pass while the
     /// note it is supposed to protect has no row at all — failing open on the
-    /// precise defect it exists to catch. Taking the first match matches both
-    /// the table's shape (the note is the row's second column, before the
-    /// prose) and `scripts/migration-index-check.sh`, whose BASH_REMATCH
-    /// extraction is first-match-only; the two must not diverge or the
+    /// precise defect it exists to catch. Selecting the actual table cell,
+    /// then taking only its first Markdown link target, rejects a malformed
+    /// second cell, prose-only mentions, and unrelated cross-links. This must
+    /// remain in lockstep with `scripts/migration-index-check.sh` or the
     /// release gate can red where the per-PR audit was green.
     private static func migrationNoteReferences(in line: String) -> [String] {
-        Array(matches(of: #"(MIGRATION-[A-Za-z0-9._-]+\.md)"#, in: line).prefix(1))
+        let cells = line.components(separatedBy: "|")
+        guard cells.count >= 4,
+              cells[0].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return []
+        }
+        let noteCell = cells[2]
+        return Array(matches(of: #"\]\((MIGRATION-[A-Za-z0-9._-]+\.md)\)"#, in: noteCell).prefix(1))
     }
 
     /// The first capture group of every match of `pattern` in `text`.
