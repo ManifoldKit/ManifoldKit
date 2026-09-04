@@ -175,7 +175,7 @@ current-release approval: qualification blockers can withhold a scoped Tier
 
 ## Release health — qualification ledger
 
-**Dated:** 2026-08-16. This is the current-release qualification ledger for
+**Dated:** 2026-09-05. This is the current-release qualification ledger for
 Tier 1 and Tier 2 promises. It is deliberately separate from
 [`PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md), which assigns a product's
 **compatibility tier**. A tier says what compatibility commitment the project
@@ -191,18 +191,26 @@ a substitute for the evidence named here. This ledger does not produce a
 blanket “all Tier 2 qualified” result: claims remain scoped to the products and
 paths whose evidence is actually clear.
 
-### Tier 1/2 blockers
+### Cleared qualification evidence
+
+| Cleared | Scope | Terminal evidence |
+|---|---|---|
+| 2026-09-05 | Tier 1 bootstrap recipe and Tier 2 `ManifoldUIModelManagement` endpoint configuration ([#2476](https://github.com/ManifoldKit/ManifoldKit/issues/2476)) | `ZZZEndpointStorePresentationIntegrationTests` presents the real `ChatView` API-configuration sheet, receives the bootstrap's live store, and writes an endpoint through it. Both presentation tests executed in the [terminal green CI job](https://github.com/ManifoldKit/ManifoldKit/actions/runs/31932009577/job/95128187395); the implementation, canonical recipe, and runnable Advanced example are carried forward on [#2498](https://github.com/ManifoldKit/ManifoldKit/pull/2498). |
+| 2026-08-21 | Tier 1 cold-start release gate ([#2423](https://github.com/ManifoldKit/ManifoldKit/issues/2423)) | [#2482](https://github.com/ManifoldKit/ManifoldKit/pull/2482) removed broad restore fallback and fails closed unless the Actions API returns the requested exact key and ref. Its [terminal green `cold-start-human` run](https://github.com/ManifoldKit/ManifoldKit/actions/runs/31931507051) recorded an exact dated key and verified `refs/pull/2482/merge`, eliminating the stale-cache diagnostic divergence. The fix shipped in v0.76.1. |
+
+### Open Tier 1/2 blockers — claims withheld from v0.77
+
+ManifoldKit v0.77 does not claim the cancellation-contract or live Ollama
+tool-continuation paths below as release-qualified. Their compatibility-tier
+assignments remain unchanged; only these scoped release claims are withheld.
 
 | Order | Scope affected | Blocker | Evidence required to clear |
 |---:|---|---|---|
-| 1 | Tier 1 bootstrap recipe and Tier 2 `ManifoldUIModelManagement` endpoint configuration | [#2476](https://github.com/ManifoldKit/ManifoldKit/issues/2476) is **blocked**: the canonical ancestor `endpointStore` injection yields `nil` in `ChatView`'s configuration sheet. | An Example/integration test presents the real configuration content and proves it receives a usable store; the canonical recipe and runnable example use that verified wiring; and CI executes the test. A compile-only snippet is insufficient. |
-| 2 | Tier 1 cold-start release gate | [#2423](https://github.com/ManifoldKit/ManifoldKit/issues/2423) is **blocked**: `cold-start-human` can restore a stale main-scoped cache and report diagnostics not reproducible from source. | A PR run records either a current-generation cache hit or intentional cold miss, including cache `createdAt`/key provenance; no multi-week-old restored build directory is accepted; and the `llama`/`ManifoldLlama` diagnostic divergence is rechecked from the corrected run. |
-| 3 | Tier 1 `ManifoldContract`; every Tier 2 backend | [#2409](https://github.com/ManifoldKit/ManifoldKit/issues/2409) is **blocked**: cancellation and immediate reuse have no shared, non-vacuous contract tripwire. | `BackendContractChecks` proves a generation is in flight before cancelling, then asserts synchronous `isGenerating == false` and successful immediate reuse; its test demonstrably fails on a known violating backend; and every in-tree backend passes or publishes a deliberate deviation. |
-| 4 | Tier 2 `ManifoldOllama`; terminal-turn behaviour in Tier 1 Runtime/UI | [#2376](https://github.com/ManifoldKit/ManifoldKit/issues/2376) remains **unqualified**: bounded production mitigations now include a five-minute stream-idle timeout, terminal drain, and visible diagnostics, but the reported live iOS Ollama tool-continuation path has no terminal-state evidence. | A regression test drives an Ollama tool round-trip to a terminal state, and a real iOS-simulator/Ollama CI or release-gate run records either a completed continuation or the explicit bounded error. If request shape is causal, pin it with a request-body test; a runner timeout is failure. |
+| 1 | Tier 1 `ManifoldContract`; every Tier 2 backend | [#2409](https://github.com/ManifoldKit/ManifoldKit/issues/2409) is **blocked**: cancellation and immediate reuse have no shared, non-vacuous contract tripwire. | `BackendContractChecks` proves a generation is in flight before cancelling, then asserts synchronous `isGenerating == false` and successful immediate reuse; its test demonstrably fails on a known violating backend; and every in-tree backend passes or publishes a deliberate deviation. |
+| 2 | Tier 2 `ManifoldOllama`; terminal-turn behaviour in Tier 1 Runtime/UI | [#2376](https://github.com/ManifoldKit/ManifoldKit/issues/2376) remains **unqualified**: bounded production mitigations now include a five-minute stream-idle timeout, terminal drain, and visible diagnostics, but the reported live iOS Ollama tool-continuation path has no terminal-state evidence. | A regression test drives an Ollama tool round-trip to a terminal state, and a real iOS-simulator/Ollama CI or release-gate run records either a completed continuation or the explicit bounded error. If request shape is causal, pin it with a request-body test; a runner timeout is failure. |
 
-The rows are in the approved remediation sequence, not severity: rows 1–2 are
-the first parallel lane, followed by rows 3–4. A release cannot skip an
-unresolved blocker by calling a later canary green.
+The rows remain in the approved remediation sequence, not severity. A release
+cannot skip either unresolved blocker by calling a later canary green.
 
 ### Additional product-scoped qualification gaps
 
