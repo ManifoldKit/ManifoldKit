@@ -5,11 +5,11 @@ import Foundation
 /// one scenario at one decoy level and repeat index.
 ///
 /// It exists so the Ollama, llama.cpp, MLX, and cloud legs — which run in
-/// *separate processes* (see `docs/plans/manifold-eval-repo.md` §3: one process
-/// is unbuildable because `llama_backend_init` is once-per-process and MLX needs
-/// serialized in-process Metal) — can each emit the same shape, and a downstream
-/// collator can fold them into one matrix without re-deriving per-backend
-/// vocabulary. It mirrors the `ConformanceScorer.ResultRow` outputs (the
+/// *separate processes* because `llama_backend_init` is once-per-process and MLX
+/// needs serialized in-process Metal (see `docs/HARDWARE-TOOLCHAIN.md`) — can
+/// each emit the same shape, and a downstream collator can fold them into one
+/// matrix without re-deriving per-backend vocabulary. It mirrors the
+/// `ConformanceScorer.ResultRow` outputs (the
 /// assertion-derived ``ConformanceScorer/Verdict`` and the tool-selection
 /// precision/recall/F1) but adds the cell-identity coordinates and, crucially,
 /// a first-class ``CellStatus``.
@@ -18,7 +18,7 @@ import Foundation
 /// A missing GGUF, an unavailable backend, or a skipped cell must read as
 /// `notMeasured`, never as a `fail` ``ConformanceScorer/Verdict``: scoring a hole
 /// in the matrix as a failure is exactly the "empty CSV reads as measured" defect
-/// this schema was added to kill (plan §1). When `status` is anything other than
+/// this schema was added to kill. When `status` is anything other than
 /// `.measured`, `verdict` and `toolSelection` are `nil` — there is no measurement
 /// to carry.
 public struct ConformanceRecord: Codable, Sendable, Equatable {
@@ -40,8 +40,7 @@ public struct ConformanceRecord: Codable, Sendable, Equatable {
     /// The prompt-rendering path exercised, e.g. `"ollama-server"`,
     /// `"jinja-prompt"`, `"swift-transformers"`, `"native"`. Not present on the
     /// scorer row — it is the dimension cross-backend twin-divergence is attributed
-    /// to (plan §4: a divergence needs a same-bytes control before it's a renderer
-    /// bug).
+    /// to: a divergence needs a same-bytes control before it's a renderer bug.
     public let renderer: String
 
     // MARK: Scenario coordinates
@@ -57,7 +56,7 @@ public struct ConformanceRecord: Codable, Sendable, Equatable {
     /// Which repetition of an otherwise-identical cell this is. Named
     /// `repeatIndex` because `repeat` is a Swift keyword. Repeats exist so a
     /// verdict-class regression detector can see the 0.10–0.12 F1 run-to-run swing
-    /// (plan §4) rather than trust a single sample.
+    /// rather than trust a single sample.
     public let repeatIndex: Int
 
     // MARK: Outcome
@@ -86,8 +85,7 @@ public struct ConformanceRecord: Codable, Sendable, Equatable {
 
     /// Path to (or content hash of) the raw `TranscriptLogger` JSONL this record
     /// was reduced from, so a human can always re-read the transcript that
-    /// produced a verdict (plan §4: keep the human transcript spot-check in the
-    /// loop).
+    /// produced a verdict and keep the human transcript spot-check in the loop.
     public let transcriptRef: String
 
     /// The ManifoldKit core commit the run was built from — runs are only
@@ -96,8 +94,7 @@ public struct ConformanceRecord: Codable, Sendable, Equatable {
     public let coreCommit: String
 
     /// Tooling/runtime versions that shaped the run (e.g. `"ollama": "0.5.4"`,
-    /// `"mlx": "0.18.0"`), so an environment drift doesn't read as a regression
-    /// (plan §4: guard regression-vs-last-run against environment drift).
+    /// `"mlx": "0.18.0"`), so environment drift doesn't read as a regression.
     public let toolingVersions: [String: String]
 
     public init(
