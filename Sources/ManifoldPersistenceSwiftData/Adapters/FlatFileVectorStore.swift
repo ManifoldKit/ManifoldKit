@@ -11,6 +11,9 @@ import ManifoldRuntime
 /// The entire index is rewritten on each mutation — acceptable for the write
 /// patterns of a local document library (ingest once, query many times).
 ///
+/// Only a missing index starts as an empty store. Existing indexes that cannot
+/// be read or decoded propagate their error and are never replaced implicitly.
+///
 /// File format: 20-byte header followed by variable-length records. See the
 /// private `encode`/`decode` helpers for the exact byte layout.
 public actor FlatFileVectorStore: VectorStore {
@@ -30,11 +33,27 @@ public actor FlatFileVectorStore: VectorStore {
     // MARK: - State
 
     private let storageURL: URL
+    /// Kept narrow so concrete-store tests can force a real file write to fail
+    /// without replacing the persistence implementation.
+    private let fileWriter: @Sendable (Data, URL) throws -> Void
     /// Nil until the first access; loaded lazily.
     private var records: [Record]?
 
     public init(storageURL: URL) {
         self.storageURL = storageURL
+        self.fileWriter = { data, url in
+            try data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Internal test seam for one concrete file-write failure path. Successful
+    /// writes must still write `data` to `url`; this does not replace storage.
+    init(
+        storageURL: URL,
+        fileWriter: @escaping @Sendable (Data, URL) throws -> Void
+    ) {
+        self.storageURL = storageURL
+        self.fileWriter = fileWriter
     }
 
     // MARK: - VectorStore
@@ -59,8 +78,8 @@ public actor FlatFileVectorStore: VectorStore {
             ))
         }
 
-        records = loaded
         try persist(loaded)
+        records = loaded
     }
 
     public func search(embedding: [Float], limit: Int) throws -> [VectorSearchHit] {
@@ -153,13 +172,13 @@ public actor FlatFileVectorStore: VectorStore {
     public func delete(documentID: UUID) throws {
         var loaded = try ensureLoaded()
         loaded.removeAll { $0.documentID == documentID }
-        records = loaded
         try persist(loaded)
+        records = loaded
     }
 
     public func deleteAll() throws {
-        records = []
         try persist([])
+        records = []
     }
 
     // MARK: - Persistence
@@ -172,27 +191,34 @@ public actor FlatFileVectorStore: VectorStore {
     }
 
     private func load() throws -> [Record] {
-        guard FileManager.default.fileExists(atPath: storageURL.path) else { return [] }
         let data: Data
         do {
             data = try Data(contentsOf: storageURL)
         } catch {
+            let nsError = error as NSError
+            let isMissingIndex = nsError.domain == NSCocoaErrorDomain && (
+                nsError.code == CocoaError.Code.fileNoSuchFile.rawValue ||
+                nsError.code == CocoaError.Code.fileReadNoSuchFile.rawValue
+            )
+            if isMissingIndex {
+                return []
+            }
             let name = self.storageURL.lastPathComponent
             Log.persistence.warning("FlatFileVectorStore: failed to read \(name, privacy: .public): \(error.localizedDescription)")
-            return []
+            throw error
         }
         do {
             return try decode(data)
         } catch {
-            Log.persistence.warning("FlatFileVectorStore: corrupt index, starting fresh: \(error.localizedDescription)")
-            return []
+            Log.persistence.warning("FlatFileVectorStore: invalid index: \(error.localizedDescription)")
+            throw error
         }
     }
 
     private func persist(_ records: [Record]) throws {
         let data = encode(records)
         do {
-            try data.write(to: storageURL, options: .atomic)
+            try fileWriter(data, storageURL)
         } catch {
             throw VectorStoreError.writeFailed(underlying: error)
         }

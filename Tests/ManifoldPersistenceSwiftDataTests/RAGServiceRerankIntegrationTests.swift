@@ -156,6 +156,97 @@ final class RAGServiceRerankIntegrationTests: XCTestCase {
         XCTAssertTrue(resultAfterDelete.citations.isEmpty,
                        "deleteDocument(id:) must remove text-ingested chunks from the real vector store")
     }
+
+    // Sabotage-evidence:
+    //   M1: make FlatFileVectorStore publish its candidate before writing it →
+    //       the concrete-store durability test fails; this integration witness
+    //       confirms RAG does not continue on a surfaced vector failure.
+    func test_ingestVectorWriteFailureLeavesSwiftDataMetadataAbsentUntilRetry() async throws {
+        let documentStore = SwiftDataDocumentStore(modelContext: container.mainContext)
+        let writer = FailNextRAGFileWriter()
+        writer.failNextWrite()
+        let vectorStore = FlatFileVectorStore(storageURL: vectorURL, fileWriter: writer.write)
+        let sut = RAGService(
+            documentStore: documentStore,
+            vectorStore: vectorStore,
+            embeddingBackend: AxisEmbeddingBackend()
+        )
+        let documentID = UUID()
+
+        do {
+            _ = try await sut.ingest(
+                text: "The failed vector write must prevent a metadata row from being saved.",
+                documentID: documentID,
+                title: "Failure ordering"
+            )
+            XCTFail("The injected vector write must fail")
+        } catch let error as VectorStoreError {
+            guard case .writeFailed = error else {
+                return XCTFail("Expected writeFailed, got \(error)")
+            }
+        }
+
+        XCTAssertFalse(
+            try documentStore.fetchDocuments().contains { $0.id == documentID },
+            "RAG must surface a vector failure before inserting SwiftData metadata"
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vectorURL.path))
+
+        _ = try await sut.ingest(
+            text: "The failed vector write must prevent a metadata row from being saved.",
+            documentID: documentID,
+            title: "Failure ordering"
+        )
+        XCTAssertTrue(try documentStore.fetchDocuments().contains { $0.id == documentID })
+        let reopened = FlatFileVectorStore(storageURL: vectorURL)
+        let reopenedResults = try await reopened.keywordSearch(query: "metadata", limit: 10)
+        XCTAssertEqual(reopenedResults.count, 1)
+    }
+
+    func test_deleteVectorWriteFailureLeavesSwiftDataMetadataUntilRetry() async throws {
+        let documentStore = SwiftDataDocumentStore(modelContext: container.mainContext)
+        let writer = FailNextRAGFileWriter()
+        let vectorStore = FlatFileVectorStore(storageURL: vectorURL, fileWriter: writer.write)
+        let documentID = UUID()
+        let chunk = DocumentChunk(documentID: documentID, text: "retain until vector deletion persists", chunkIndex: 0)
+        try await vectorStore.insert(chunks: [chunk], documentTitle: "Delete ordering", embeddings: [[1, 0, 0]])
+        try documentStore.insertDocument(DocumentRecord(
+            id: documentID,
+            title: "Delete ordering",
+            sourceURL: URL(filePath: "/tmp/Delete-ordering.txt"),
+            fileType: "txt",
+            chunkCount: 1
+        ))
+        let sut = RAGService(
+            documentStore: documentStore,
+            vectorStore: vectorStore,
+            embeddingBackend: AxisEmbeddingBackend()
+        )
+
+        writer.failNextWrite()
+        do {
+            try await sut.deleteDocument(id: documentID)
+            XCTFail("The injected vector write must fail")
+        } catch let error as VectorStoreError {
+            guard case .writeFailed = error else {
+                return XCTFail("Expected writeFailed, got \(error)")
+            }
+        }
+
+        XCTAssertTrue(
+            try documentStore.fetchDocuments().contains { $0.id == documentID },
+            "RAG must preserve SwiftData metadata when vector deletion fails"
+        )
+        let reopenedBeforeRetry = FlatFileVectorStore(storageURL: vectorURL)
+        let beforeRetryResults = try await reopenedBeforeRetry.keywordSearch(query: "retain", limit: 10)
+        XCTAssertEqual(beforeRetryResults.map(\.chunk.id), [chunk.id])
+
+        try await sut.deleteDocument(id: documentID)
+        XCTAssertFalse(try documentStore.fetchDocuments().contains { $0.id == documentID })
+        let reopenedAfterRetry = FlatFileVectorStore(storageURL: vectorURL)
+        let afterRetryResults = try await reopenedAfterRetry.keywordSearch(query: "retain", limit: 10)
+        XCTAssertTrue(afterRetryResults.isEmpty)
+    }
 }
 
 // MARK: - Fakes
@@ -179,4 +270,28 @@ private final class AxisEmbeddingBackend: EmbeddingBackend, @unchecked Sendable 
         texts.map { _ in [1, 0, 0] }
     }
     func unloadModel() { isModelLoaded = false }
+}
+
+private enum InjectedRAGWriteFailure: Error {
+    case requested
+}
+
+/// The failure path remains a real file-backed store: only one attempted
+/// replacement is rejected, then all writes use `Data.write` atomically.
+private final class FailNextRAGFileWriter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var shouldFail = false
+
+    func failNextWrite() {
+        lock.withLock { shouldFail = true }
+    }
+
+    func write(_ data: Data, _ url: URL) throws {
+        let shouldFailNow = lock.withLock {
+            defer { shouldFail = false }
+            return shouldFail
+        }
+        if shouldFailNow { throw InjectedRAGWriteFailure.requested }
+        try data.write(to: url, options: .atomic)
+    }
 }
