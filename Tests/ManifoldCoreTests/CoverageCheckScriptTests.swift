@@ -5,9 +5,10 @@ import XCTest
 /// supplies an `xcrun` shim and inert profile/binary files, so these tests run
 /// the checker without rebuilding or running the package's Swift test suites.
 ///
-/// The invalid-measurement expectations were red against c27b7626: that
-/// version treated every one as a successful skipped check. The valid and
-/// low-coverage controls ensure the new failures are not a blanket rejection.
+/// Wave 0 showed that c27b7626 returned success for missing inputs, failed or
+/// empty reports, absent module data, and malformed report rows. The valid
+/// and low-coverage controls ensure the new failures are not a blanket
+/// rejection; the remaining invalid-count cases extend that contract.
 final class CoverageCheckScriptTests: XCTestCase {
     private enum XcrunMode {
         case available
@@ -96,7 +97,7 @@ final class CoverageCheckScriptTests: XCTestCase {
 
         // A pipe can deadlock when a failing checker emits enough diagnostics
         // to fill its buffer before `waitUntilExit()` returns. File-backed
-        // capture keeps this fixture bounded without changing the process's
+        // capture avoids pipe-capacity deadlock without changing the process's
         // output semantics.
         let outputURL = fixture.root.appendingPathComponent("checker-output-\(UUID().uuidString).log")
         FileManager.default.createFile(atPath: outputURL.path, contents: nil)
