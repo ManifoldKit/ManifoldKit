@@ -5,6 +5,8 @@ import XCTest
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldPersistenceSwiftData
+import ManifoldPersistenceTestSupport
 
 // MARK: - ManifoldMCPHostTests
 
@@ -58,10 +60,11 @@ final class ManifoldMCPHostTests: XCTestCase {
     private func sendRequest(
         method: String,
         params: JSONSchemaValue?,
-        to host: ManifoldMCPHost
+        to host: ManifoldMCPHost,
+        maxMessageBytes: Int = 512 * 1024
     ) async throws -> JSONSchemaValue? {
         let transport = LoopbackHostTransport()
-        let codec = MCPJSONRPCCodec(maxMessageBytes: 512 * 1024, maxJSONNestingDepth: 32)
+        let codec = MCPJSONRPCCodec(maxMessageBytes: maxMessageBytes, maxJSONNestingDepth: 32)
         let id = MCPRequestID.int(1)
         let request = MCPJSONRPCMessage.request(id: id, method: method, params: params)
         let payload = try codec.encode(request)
@@ -233,6 +236,72 @@ final class ManifoldMCPHostTests: XCTestCase {
         }
         XCTAssertTrue(text.contains("Hello world"), "Message content should appear in resource text")
         // Sabotage: if we returned messages=[] in readSessionResource, this assertion would fail.
+    }
+
+    /// The MCP transcript resource is a complete-history consumer, not a UI
+    /// page. Drive it through the real SwiftData provider with more records
+    /// than the former fetch ceiling and assert the wire transcript preserves
+    /// every record's identity, content, and chronological order.
+    func test_resourcesRead_realSwiftDataTranscriptContainsCompleteHistoryBeyondFormerCeiling() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        XCTAssertTrue(InMemoryPersistenceHarness.isInMemoryStore(stack.container))
+
+        let session = ChatSession(title: "Long MCP transcript")
+        try await stack.provider.insertSession(session)
+        let timestamp = Date(timeIntervalSince1970: 1_000)
+        let expectedMessages = (0...10_000).map { index in
+            ChatMessage(
+                role: index.isMultiple(of: 2) ? .user : .assistant,
+                content: "history-message-\(index)",
+                timestamp: timestamp.addingTimeInterval(Double(index)),
+                sessionID: session.id
+            )
+        }
+        try await stack.provider.performMessageMutations(expectedMessages.map(MessageStoreMutation.insert))
+
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        let runtime = ConversationRuntime(
+            messageStore: stack.provider,
+            sessionStore: stack.provider,
+            inferenceService: InferenceService(backend: backend)
+        )
+        let host = ManifoldMCPHost(
+            sessionStore: stack.provider,
+            messageStore: stack.provider,
+            conversationRuntime: runtime
+        )
+
+        let result = try await sendRequest(
+            method: "resources/read",
+            params: .object(["uri": .string("manifold://sessions/\(session.id.uuidString)")]),
+            to: host,
+            maxMessageBytes: 8 * 1024 * 1024
+        )
+
+        guard case .object(let response) = result,
+              case .array(let contents) = response["contents"],
+              case .object(let resource) = contents.first,
+              case .string(let text) = resource["text"] else {
+            return XCTFail("Expected the session transcript resource")
+        }
+        let object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
+        )
+        XCTAssertEqual((object["messageCount"] as? NSNumber)?.intValue, expectedMessages.count)
+        let messages = try XCTUnwrap(object["messages"] as? [[String: Any]])
+        XCTAssertEqual(messages.count, expectedMessages.count)
+
+        let receivedIDs = messages.compactMap { $0["id"] as? String }
+        XCTAssertEqual(receivedIDs.count, expectedMessages.count, "Every transcript row must encode its id")
+        XCTAssertEqual(receivedIDs, expectedMessages.map { $0.id.uuidString })
+
+        let receivedContent = messages.compactMap { $0["content"] as? String }
+        XCTAssertEqual(receivedContent.count, expectedMessages.count, "Every transcript row must encode its content")
+        XCTAssertEqual(receivedContent, expectedMessages.map(\.content))
+
+        // Sabotage: restoring a bounded complete-history fetch truncates the
+        // resource and makes both full-array assertions fail.
     }
 
     func test_resourcesRead_returnsNotFoundForMissingSession() async throws {

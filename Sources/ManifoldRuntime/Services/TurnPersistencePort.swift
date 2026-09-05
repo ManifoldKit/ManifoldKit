@@ -33,6 +33,10 @@ package protocol TurnPersistencePort: Sendable {
     /// `HealedHistoryFetch.swift` for the seam contract.
     func fetchHealedMessages(sessionID: UUID) async throws -> [ChatMessage]
 
+    /// Bounded generation context. This is separate from the complete healed
+    /// history used by compression and replacement flows.
+    func fetchRecentHealedMessages(sessionID: UUID, limit: Int) async throws -> [ChatMessage]
+
     /// Fetches the storage-agnostic session record used for multi-agent
     /// state (`activeAgentID`, `agents`) during the turn.
     func fetchSession(sessionID: UUID) async -> ChatSession?
@@ -44,6 +48,14 @@ package protocol TurnPersistencePort: Sendable {
     /// Bumps the session's `updatedAt` after a successful turn. Best-effort:
     /// returns `false` and logs on failure.
     func touchSession(sessionID: UUID) async -> Bool
+}
+
+extension TurnPersistencePort {
+    func fetchRecentHealedMessages(sessionID: UUID, limit: Int) async throws -> [ChatMessage] {
+        guard limit > 0 else { return [] }
+        let history = try await fetchHealedMessages(sessionID: sessionID)
+        return Array(history.suffix(limit))
+    }
 }
 
 extension ConversationPersistencePort: TurnPersistencePort {}

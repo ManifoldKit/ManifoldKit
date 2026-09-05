@@ -84,6 +84,38 @@ final class SessionBranchCoordinatorTests: XCTestCase {
             "branchOriginTitle(for:) must resolve the chip's display title")
     }
 
+    func test_branch_reachesOldestMessageBeyondFormerHistoryCap() async throws {
+        let source = ChatSession(title: "Long history")
+        try await stack.provider.insertSession(source)
+        let start = Date(timeIntervalSince1970: 1)
+        let history = (0...10_000).map { index in
+            ChatMessage(role: .user, content: "m\(index)", timestamp: start.addingTimeInterval(Double(index)), sessionID: source.id)
+        }
+        try await stack.provider.performMessageMutations(history.map(MessageStoreMutation.insert))
+        let childID = UUID()
+        _ = try await coordinator.branch(sourceSessionID: source.id, branchMessageID: history[0].id, newSessionID: childID, newSessionTitle: nil)
+        let copied = try await stack.provider.fetchMessages(for: childID)
+        XCTAssertEqual(copied.map(\.content), [history[0].content])
+        XCTAssertNotEqual(copied.first?.id, history[0].id)
+        let unchanged = try await stack.provider.fetchMessages(for: source.id)
+        XCTAssertEqual(unchanged.map(\.id), history.map(\.id))
+    }
+
+    func test_branch_preservesSourceOrderForEqualTimestampsWithFreshIDs() async throws {
+        let source = ChatSession(title: "Ties")
+        try await stack.provider.insertSession(source)
+        let time = Date(timeIntervalSince1970: 1)
+        let sourceMessages = (1...4).map { index in
+            ChatMessage(id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index))!, role: .user, content: "m\(index)", timestamp: time, sessionID: source.id)
+        }
+        try await stack.provider.performMessageMutations(sourceMessages.map(MessageStoreMutation.insert))
+        let childID = UUID()
+        _ = try await coordinator.branch(sourceSessionID: source.id, branchMessageID: sourceMessages.last!.id, newSessionID: childID, newSessionTitle: nil)
+        let copied = try await stack.provider.fetchMessages(for: childID)
+        XCTAssertEqual(copied.map(\.content), sourceMessages.map(\.content))
+        XCTAssertTrue(Set(copied.map(\.id)).isDisjoint(with: Set(sourceMessages.map(\.id))))
+    }
+
     func test_branch_nonBranchedSession_hasNoOriginTitle() async throws {
         let session = ChatSession(title: "Ordinary session")
         try await stack.provider.insertSession(session)

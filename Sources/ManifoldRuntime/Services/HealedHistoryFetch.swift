@@ -40,4 +40,15 @@ extension MessageStore {
     func fetchHealedMessages(for sessionID: UUID) async throws -> [ChatMessage] {
         TranscriptHealer.heal(try await fetchMessages(for: sessionID))
     }
+
+    /// Bounded generation context for callers that never mutate the complete
+    /// transcript. Whole-history replacement flows keep using
+    /// ``fetchHealedMessages(for:)``.
+    package func fetchRecentHealedMessages(
+        for sessionID: UUID,
+        limit: Int
+    ) async throws -> [ChatMessage] {
+        let page = try await fetchMessageHistoryPage(for: sessionID, cursor: nil, limit: limit)
+        return TranscriptHealer.heal(page.messages)
+    }
 }

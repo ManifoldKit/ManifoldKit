@@ -3,6 +3,8 @@ import Foundation
 @testable import ManifoldRuntime
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceSwiftData
+import ManifoldPersistenceTestSupport
 
 private final class RuntimeUsageBackend: InferenceBackend, TokenUsageProvider, @unchecked Sendable {
     struct Turn: Sendable {
@@ -1725,6 +1727,53 @@ final class ConversationRuntimeTests: XCTestCase {
         if let r = removedIndex, let s = startedIndex {
             XCTAssertLessThan(r, s, "messageRemoved precedes streamStarted")
         }
+    }
+
+    func test_regenerate_reachesAssistantBeyondTenThousandRowsInSwiftData() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["replacement"]
+        let runtime = ConversationRuntime(messageStore: stack.provider, inferenceService: InferenceService(backend: backend, name: "Mock"))
+        let sessionID = UUID()
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let history = (0...10_000).map { index in
+            ChatMessage(role: index == 0 ? .assistant : .user, content: "m\(index)", timestamp: base.addingTimeInterval(Double(index)), sessionID: sessionID)
+        }
+        try await stack.provider.performMessageMutations(history.map(MessageStoreMutation.insert))
+        let pendingTurn = try await runtime.processTurnWithOutcome(TurnInput(sessionID: sessionID, kind: .regenerate))
+        let turn = try XCTUnwrap(pendingTurn)
+        _ = try await waitForOutcome(from: turn)
+        let stored = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertFalse(stored.contains { $0.id == history[0].id })
+        XCTAssertEqual(stored.count, history.count)
+        XCTAssertEqual(stored.filter { $0.role == .user }.map(\.id), history.dropFirst().map(\.id))
+        XCTAssertEqual(stored.last?.content, "replacement")
+    }
+
+    func test_edit_reachesOldestMessageBeyondFormerSwiftDataTenThousandCap() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["replacement"]
+        let runtime = ConversationRuntime(messageStore: stack.provider, inferenceService: InferenceService(backend: backend, name: "Mock"))
+        let sessionID = UUID()
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let history = (0...10_000).map { index in
+            ChatMessage(role: index.isMultiple(of: 2) ? .user : .assistant, content: "m\(index)", timestamp: base.addingTimeInterval(Double(index)), sessionID: sessionID)
+        }
+        try await stack.provider.performMessageMutations(history.map(MessageStoreMutation.insert))
+
+        let pendingTurn = try await runtime.processTurnWithOutcome(TurnInput(sessionID: sessionID, kind: .edit(messageID: history[0].id, text: "edited oldest")))
+        let turn = try XCTUnwrap(pendingTurn)
+        _ = try await waitForOutcome(from: turn)
+
+        let stored = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(stored.count, 2)
+        XCTAssertEqual(stored[0].id, history[0].id)
+        XCTAssertEqual(stored[0].content, "edited oldest")
+        XCTAssertFalse(stored.contains { $0.id == history[1].id })
+        XCTAssertEqual(stored[1].content, "replacement")
     }
 
     // MARK: - Regenerate: no assistant message

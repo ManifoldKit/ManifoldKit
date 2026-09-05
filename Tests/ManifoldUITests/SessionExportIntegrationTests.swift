@@ -76,6 +76,23 @@ final class SessionExportIntegrationTests: XCTestCase {
         writtenDirectories.append(file.url.deletingLastPathComponent())
     }
 
+    func test_exportSession_includesHistoryBeyondTenThousandRows() async throws {
+        let session = try await sessionManager.createSession(title: "Complete export")
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let messages = (0...10_000).map { index in
+            ChatMessage(role: .user, content: "row-\(index)", timestamp: base.addingTimeInterval(Double(index)), sessionID: session.id)
+        }
+        try await persistence.performMessageMutations(messages.map(MessageStoreMutation.insert))
+
+        let file = try await sessionManager.exportSession(session, format: JSONLExportFormat())
+        track(file)
+        let text = try String(contentsOf: file.url, encoding: .utf8)
+        let lines = text.split(separator: "\n")
+        XCTAssertEqual(lines.count, messages.count)
+        let contents = try lines.map { try JSONSerialization.jsonObject(with: Data($0.utf8)) as! [String: Any] }.map { $0["content"] as! String }
+        XCTAssertEqual(contents, messages.map(\.content))
+    }
+
     // MARK: - Markdown
 
     func test_exportSession_markdown_writesRealFileWithFetchedMessages() async throws {

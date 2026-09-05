@@ -249,6 +249,79 @@ final class ConversationExporterTests: XCTestCase {
         XCTAssertLessThan(firstRange.lowerBound, secondRange.lowerBound)
     }
 
+    func test_export_viaPersistenceProvider_includesHistoryBeyondTenThousandRows() async throws {
+        let session = PersistedChatSession(title: "Complete export")
+        stack.context.insert(session)
+        try stack.context.save()
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let messages = (0...10_000).map { index in
+            ManifoldInference.ChatMessage(role: .user, content: "row-\(index)", timestamp: base.addingTimeInterval(Double(index)), sessionID: session.id)
+        }
+        try await stack.provider.performMessageMutations(messages.map(MessageStoreMutation.insert))
+
+        let file = try await ConversationExporter.export(session: session, format: JSONLExportFormat(), provider: stack.provider, directory: tempDir)
+        let text = try String(contentsOf: file.url, encoding: .utf8)
+        let lines = text.split(separator: "\n")
+        XCTAssertEqual(lines.count, messages.count)
+        let contents = try lines.map { line -> String in
+            let object = try JSONSerialization.jsonObject(with: Data(line.utf8))
+            let record = try XCTUnwrap(object as? [String: Any])
+            return try XCTUnwrap(record["content"] as? String)
+        }
+        XCTAssertEqual(contents, messages.map(\.content))
+    }
+
+    /// Opens a fresh on-disk SwiftData container before exporting, proving the
+    /// persistence overload works after a SQLite round trip rather than only
+    /// against the test harness's in-memory configuration.
+    func test_export_viaReopenedOnDiskSQLiteContainer_roundTripsMessages() async throws {
+        let storeURL = tempDir.appendingPathComponent("Conversation.sqlite")
+        let sessionID: UUID
+        do {
+            let container = try ModelContainerFactory.makeContainer(
+                configurations: [ModelConfiguration(url: storeURL)]
+            )
+            let context = container.mainContext
+            let session = PersistedChatSession(title: "On-disk export")
+            context.insert(session)
+            try context.save()
+            let provider = SwiftDataPersistenceProvider(modelContext: context)
+            try await provider.insertMessage(ManifoldInference.ChatMessage(
+                role: .user,
+                content: "persisted question",
+                timestamp: Date(timeIntervalSinceReferenceDate: 1),
+                sessionID: session.id
+            ))
+            try await provider.insertMessage(ManifoldInference.ChatMessage(
+                role: .assistant,
+                content: "persisted answer",
+                timestamp: Date(timeIntervalSinceReferenceDate: 2),
+                sessionID: session.id
+            ))
+            sessionID = session.id
+        }
+
+        let reopened = try ModelContainerFactory.makeContainer(
+            configurations: [ModelConfiguration(url: storeURL)]
+        )
+        let context = reopened.mainContext
+        let sessions = try context.fetch(FetchDescriptor<PersistedChatSession>(
+            predicate: #Predicate { $0.id == sessionID }
+        ))
+        let session = try XCTUnwrap(sessions.first)
+        let provider = SwiftDataPersistenceProvider(modelContext: context)
+        let file = try await ConversationExporter.export(
+            session: session,
+            format: MarkdownExportFormat(),
+            provider: provider,
+            directory: tempDir
+        )
+
+        let text = try String(contentsOf: file.url, encoding: .utf8)
+        XCTAssertTrue(text.contains("persisted question"))
+        XCTAssertTrue(text.contains("persisted answer"))
+    }
+
     func test_export_useDefaultDirectory_writesToTemp() throws {
         // Exercise the nil-directory path so the temp-dir branch is covered.
         let session = ManifoldInference.ChatSession(title: "tempy")

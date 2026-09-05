@@ -3,6 +3,8 @@ import Foundation
 @testable import ManifoldRuntime
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceSwiftData
+import ManifoldPersistenceTestSupport
 
 /// Integration coverage for ``SummarisationHook``.
 ///
@@ -21,6 +23,57 @@ import ManifoldTestSupport
 /// - An empty summary from the summariser leaves history unchanged.
 @MainActor
 final class SummarisationHookTests: XCTestCase {
+
+    /// Counts which production persistence operation a hook dispatches while
+    /// forwarding all storage work to the real SwiftData provider.
+    final class CountingSwiftDataMessageStore: MessageStore {
+        struct PageRequest: Equatable {
+            let cursor: MessageHistoryCursor?
+            let limit: Int
+        }
+
+        private let provider: SwiftDataPersistenceProvider
+        private(set) var wholeFetchCount = 0
+        private(set) var pageRequests: [PageRequest] = []
+
+        init(provider: SwiftDataPersistenceProvider) {
+            self.provider = provider
+        }
+
+        func insertMessage(_ message: ChatMessage) async throws {
+            try await provider.insertMessage(message)
+        }
+
+        func updateMessage(_ message: ChatMessage) async throws {
+            try await provider.updateMessage(message)
+        }
+
+        func deleteMessage(_ messageID: UUID) async throws {
+            try await provider.deleteMessage(messageID)
+        }
+
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
+            wholeFetchCount += 1
+            return try await provider.fetchMessages(for: sessionID)
+        }
+
+        func fetchMessageHistoryPage(
+            for sessionID: UUID,
+            cursor: MessageHistoryCursor?,
+            limit: Int
+        ) async throws -> MessageHistoryPage {
+            pageRequests.append(PageRequest(cursor: cursor, limit: limit))
+            return try await provider.fetchMessageHistoryPage(
+                for: sessionID,
+                cursor: cursor,
+                limit: limit
+            )
+        }
+
+        func deleteMessages(for sessionID: UUID) async throws {
+            try await provider.deleteMessages(for: sessionID)
+        }
+    }
 
     // MARK: - In-memory MessageStore
 
@@ -680,5 +733,55 @@ final class SummarisationHookTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(chatMessages.count, beforeCount,
             "pre-existing chat turns should all still be present; chat count: \(chatMessages.count)")
     }
-}
 
+    /// `postGeneration` must use a bounded keyset page for its candidate
+    /// window. Calling `fetchHealedMessages` here would dispatch through the
+    /// wrapper's whole-session method and fail this regression check.
+    func test_postGeneration_readsBoundedSwiftDataPage_notWholeTranscript() async throws {
+        struct AlwaysSummarise: SummarisationPolicy {
+            func shouldSummarise(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
+                true
+            }
+        }
+
+        let stack = try InMemoryPersistenceHarness.make()
+        let sessionID = UUID()
+        let records = (0..<3).map { index in
+            ChatMessage(
+                role: index.isMultiple(of: 2) ? .user : .assistant,
+                content: "history-\(index)",
+                timestamp: Date(timeIntervalSinceReferenceDate: Double(index)),
+                sessionID: sessionID
+            )
+        }
+        try await stack.provider.performMessageMutations(records.map(MessageStoreMutation.insert))
+
+        let messageStore = CountingSwiftDataMessageStore(provider: stack.provider)
+        let summariser = RecordingDialogueSummariser(fixedResponse: "bounded-summary")
+        let hook = SummarisationHook(
+            messageStore: messageStore,
+            backend: MockInferenceBackend(),
+            summariser: summariser,
+            policy: AlwaysSummarise(),
+            recentTurnsToPreserve: 1,
+            contextSizeProvider: { 1 }
+        )
+        let completedTurn = CompletedTurn(
+            sessionID: sessionID,
+            assistantMessage: records[2],
+            promptTokens: 1,
+            completionTokens: 1
+        )
+
+        await hook.postGeneration(completedTurn)
+
+        let folded = await summariser.capturedTurns
+        XCTAssertEqual(folded.map(\.id), records.prefix(2).map(\.id))
+        XCTAssertEqual(messageStore.wholeFetchCount, 0)
+        XCTAssertEqual(messageStore.pageRequests, [.init(cursor: nil, limit: 10_000)])
+
+        let remaining = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(remaining.filter { $0.kind == .chat }.map(\.id), [records[2].id])
+        XCTAssertEqual(remaining.first(where: { $0.kind == .memory("summary") })?.content, "bounded-summary")
+    }
+}

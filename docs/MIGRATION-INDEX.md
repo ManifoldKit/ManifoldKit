@@ -16,6 +16,7 @@ are indexed by the literal compiler diagnostic you'll hit.
 
 | Release | Migration note | What changed |
 |---------|----------------|--------------|
+| next | [`MIGRATION-history-pagination.md`](MIGRATION-history-pagination.md) | `fetchMessages(for:)` is complete again; custom stores can implement stable `(timestamp, UUID)` keyset paging. |
 | v0.77.0 | [`MIGRATION-image-generation-steps-optional.md`](MIGRATION-image-generation-steps-optional.md) | `ImageGenerationConfig.steps` / `ImageGenerationConfigSnapshot.steps` are now `Int?`; `nil` (the new default) means the backend resolves the loaded model's own preset step count (#2453 M2). |
 | v0.76.0 | [`MIGRATION-chatexporter-removed.md`](MIGRATION-chatexporter-removed.md) | `ChatExporter` / `ChatExporterError` removed (zero adopters, M1 #2453); use `ExportButton` or `ConversationExporter` directly. |
 | v0.76.0 | [`MIGRATION-additive-tool-sources.md`](MIGRATION-additive-tool-sources.md) | `ManifoldBootstrap.addToolSources(_:)` now accumulates instead of clobbering (#2440); `addGenerationToolSources(viewModel:)` removed. |
