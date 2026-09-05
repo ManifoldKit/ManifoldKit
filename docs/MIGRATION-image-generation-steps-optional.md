@@ -107,18 +107,35 @@ normatively; the short version:
    zero-width progress bar for the entire run, because nothing downstream
    ever corrects `total` after the first tick.
 
-`manifold-mlx`'s `makeParams` needs its own adaptation to satisfy this — its
-`guidanceScale` handling already does `config.guidanceScale ?? defaults.cfgWeight`,
-and `steps` gets the same treatment. The coordinated
-`fix/steps-nil-resolves-preset` branch must remain available while core ships
-v0.77.0 and until the core example has switched back to its published
-`manifold-mlx` version pin. After v0.77.0 ships, manifold-mlx#191 must update
-its core requirement to `.upToNextMinor(from: "0.77.0")` and publish its
-companion pin-bump release; only then may the core follow-up restore the
-example's `minorVersion: 0.6.0` pin (and regenerate the Xcode project's
-matching `minimumVersion = 0.6.0` requirement) before deleting that branch.
-The companion adaptation is a breaking `fix!` change, so it publishes as
-v0.6.0 rather than a 0.5.x patch.
+A backend that must build against both the released `Int` API and the new
+`Int?` API can normalize the input before resolving the preset:
+
+```swift
+import ManifoldKit
+
+func resolveSteps(config: ImageGenerationConfig, modelPresetSteps: Int) -> Int {
+    let requestedSteps: Int? = config.steps
+    return requestedSteps ?? modelPresetSteps
+}
+```
+
+On core 0.76.1 a bare config supplies 20, which remains an explicit request.
+On core 0.77.0 a bare config supplies `nil`, so the loaded model's preset wins.
+Test both dependency versions before merging a companion adaptation; testing
+only the released core does not exercise the new default path.
+
+The coordinated `manifold-mlx` adaptation in PR #191 uses this dual-compatible
+shape and must land **before** core v0.77.0, so the required core-main companion
+canary can pass. It retains the released core requirement until the normal
+post-release pin-bump automation updates it to `.upToNextMinor(from: "0.77.0")`.
+Publish the resulting companion release before restoring the core example's
+published-version dependency, using the version actually tagged rather than
+predicting it here.
+
+Keep `fix/steps-nil-resolves-preset` available until the core example's package
+reference and generated Xcode requirement have both switched to that published
+companion version. Deleting the branch while the example still resolves it
+would break the release demo gate.
 
 ## Related
 
