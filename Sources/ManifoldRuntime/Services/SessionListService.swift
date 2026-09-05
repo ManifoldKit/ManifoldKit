@@ -100,9 +100,6 @@ package final class SessionListService: Sendable {
     /// Default cap on message search results per query.
     package static let messageSearchLimit: Int = 100
 
-    /// Upper bound on sessions resolved when surfacing message-search hits.
-    package static let messageSearchSessionResolveCap: Int = 10_000
-
     /// Async stream of state transitions. The adapter
     /// (`SessionManagerViewModel`) installs a synchronous sink via
     /// ``setEventSink(_:)`` so state changes land in observable state in the
@@ -344,12 +341,13 @@ package final class SessionListService: Sendable {
                 }
                 grouped[hit.sessionID, default: []].append(hit)
             }
-            let allSessions = try await persistence.fetchSessions(
-                offset: 0,
-                limit: Self.messageSearchSessionResolveCap
-            )
-            let byID = Dictionary(uniqueKeysWithValues: allSessions.map { ($0.id, $0) })
-            let matchSessions = orderedSessionIDs.compactMap { byID[$0] }
+            var matchSessions: [ChatSession] = []
+            matchSessions.reserveCapacity(orderedSessionIDs.count)
+            for sessionID in orderedSessionIDs {
+                if let session = try await persistence.fetchSession(id: sessionID) {
+                    matchSessions.append(session)
+                }
+            }
             emit(.searchResultsChanged(SearchResults(
                 titleMatches: [],
                 messageHitsBySession: grouped,

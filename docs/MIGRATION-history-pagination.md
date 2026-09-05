@@ -32,3 +32,14 @@ func latestHistoryPage(
 Paging bounds each database fetch, not the final complete array. A page captures
 a high-water key; inserts above it are excluded, while concurrent backdated
 inserts and deletes are not a transaction snapshot.
+
+Message-scope session search no longer exposes
+`SessionManagerViewModel.messageSearchSessionResolveCap`. The former 10,000-session
+resolution cap could hide matches in older sessions; results now resolve each distinct
+matching session directly. Remove uses of that constant; there is no replacement API.
+
+Message search now scans fixed-size candidate pages until the requested number of
+all-term matches is found or the candidates are exhausted. Results are ordered by
+descending timestamp, then UUID. Cancellation is observed between pages. The page
+bound limits fetched rows, not total scan time or the requested result array;
+concurrent inserts, edits and deletes are not a transaction snapshot.

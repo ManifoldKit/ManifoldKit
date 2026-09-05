@@ -28,6 +28,12 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     private var messageHooks: [any MessageStorePostWriteHook] = []
     private var sessionHooks: [any SessionStorePostWriteHook] = []
 
+    /// Test-only observation point for the bounded candidate scan in
+    /// ``searchMessages(query:limit:)``. It is instance-owned so parallel
+    /// providers cannot affect one another, and package-scoped so it never
+    /// becomes part of the persistence API.
+    package var searchCandidatePageObserver: (@MainActor @Sendable (Int) async -> Void)?
+
     public init(modelContext: ModelContext) {
         self.modelContext = modelContext
 
@@ -356,46 +362,82 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         // in memory so words can match across non-adjacent parts of a message.
         let terms = Self.messageSearchTerms(from: trimmed)
         let needle = terms[0]
-        // Bound the store fetch on EVERY branch. Multi-term queries previously
-        // had no limit and matched only the first term in-store, then filtered
-        // the rest in Swift — a common first word on a large history loaded all
-        // matching rows into RAM (OOM/stall). The store fetch must over-fetch
-        // enough to survive the in-memory all-terms filter below, so multi-term
-        // queries fetch a widened cap rather than the exact `limit`; single-term
-        // queries need exactly `limit` because the in-memory filter is a no-op.
-        let descriptor = boundedMessageFetch(
-            predicate: #Predicate { $0.content.localizedStandardContains(needle) },
-            sortBy: [SortDescriptor(\.timestamp, order: .reverse)],
-            limit: terms.count == 1 ? limit : limit * Self.multiTermFetchMultiplier
-        )
-
-        let results = try modelContext.fetch(descriptor)
         var hits: [MessageSearchHit] = []
-        hits.reserveCapacity(min(results.count, limit))
-        for message in results {
-            guard terms.allSatisfy({ message.content.localizedStandardContains($0) }),
-                  let snippetTerm = terms.first(where: { message.content.localizedStandardContains($0) }),
-                  let (snippet, range) = makeMessageSearchSnippet(content: message.content, query: snippetTerm) else {
-                continue
+        hits.reserveCapacity(min(limit, Self.messageSearchCandidatePageSize))
+        var beforeTimestamp: Date?
+        var beforeID: UUID?
+        var fetchedPageCount = 0
+
+        while hits.count < limit {
+            try Task.checkCancellation()
+
+            let predicate: Predicate<PersistedChatMessage>
+            if let beforeTimestamp, let beforeID {
+                predicate = #Predicate {
+                    $0.content.localizedStandardContains(needle) &&
+                        ($0.timestamp < beforeTimestamp ||
+                            ($0.timestamp == beforeTimestamp && $0.id < beforeID))
+                }
+            } else {
+                predicate = #Predicate { $0.content.localizedStandardContains(needle) }
             }
-            hits.append(MessageSearchHit(
-                messageID: message.id,
-                sessionID: message.sessionID,
-                snippet: snippet,
-                matchRange: range,
-                timestamp: message.timestamp
-            ))
-            if hits.count == limit { break }
+            let descriptor = boundedMessageFetch(
+                predicate: predicate,
+                sortBy: [
+                    SortDescriptor(\.timestamp, order: .reverse),
+                    SortDescriptor(\.id, order: .reverse)
+                ],
+                limit: Self.messageSearchCandidatePageSize
+            )
+            let candidates = try modelContext.fetch(descriptor)
+            fetchedPageCount += 1
+
+            // Capture the next keyset position before any suspension. The
+            // fetched SwiftData rows stay confined to this actor turn; after an
+            // observer or yield re-enters the actor, only these value scalars
+            // are used to construct the following page.
+            let nextBeforeTimestamp = candidates.last?.timestamp
+            let nextBeforeID = candidates.last?.id
+
+            for message in candidates {
+                guard terms.allSatisfy({ message.content.localizedStandardContains($0) }),
+                      let snippetTerm = terms.first(where: { message.content.localizedStandardContains($0) }),
+                      let (snippet, range) = makeMessageSearchSnippet(content: message.content, query: snippetTerm) else {
+                    continue
+                }
+                hits.append(MessageSearchHit(
+                    messageID: message.id,
+                    sessionID: message.sessionID,
+                    snippet: snippet,
+                    matchRange: range,
+                    timestamp: message.timestamp
+                ))
+                if hits.count == limit { break }
+            }
+
+            let finished = hits.count == limit || candidates.count < Self.messageSearchCandidatePageSize
+            if let observer = searchCandidatePageObserver {
+                await observer(fetchedPageCount)
+            }
+            guard !finished else { break }
+
+            // A `ModelContext.fetch` is synchronous on this main-actor
+            // provider. Yield between bounded pages so cancellation can be
+            // delivered, then observe it before issuing another store query.
+            await Task.yield()
+            try Task.checkCancellation()
+            guard let nextBeforeTimestamp, let nextBeforeID else { break }
+            beforeTimestamp = nextBeforeTimestamp
+            beforeID = nextBeforeID
         }
         return hits
     }
 
-    /// Over-fetch factor for multi-term search. The store predicate matches only
-    /// the first term; the remaining terms are required in memory. A common first
-    /// term can knock out many candidates, so we fetch `limit * multiplier` rows
-    /// before the in-memory filter to keep recall high — while still bounding the
-    /// fetch so a common word on a huge history can't load every matching row.
-    private static let multiTermFetchMultiplier = 10
+    /// Candidate rows are bounded even when a common first term needs many
+    /// pages before enough rows satisfy every query term. The result array is
+    /// bounded by the caller's limit; only this many SwiftData rows are held per
+    /// page.
+    private static let messageSearchCandidatePageSize = 100
 
     private static func messageSearchTerms(from query: String) -> [String] {
         query.split(whereSeparator: \.isWhitespace).map(String.init)
