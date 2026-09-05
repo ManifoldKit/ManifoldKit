@@ -310,6 +310,9 @@ struct MyChatApp: App {
                 ChatView(showModelManagement: $showModelManagement)
                     .environment(result.viewModel)
                     .environment(managementVM)
+                    // ChatView forwards this custom value into its
+                    // API-configuration sheet/popover content.
+                    .environment(\.endpointStore, result.bootstrap.endpointStore)
                     .modelContainer(result.bootstrap.modelContainer)
                     .sheet(isPresented: $showModelManagement) {
                         ModelManagementSheet(modelRegistry: result.viewModel.modelRegistry)
@@ -324,6 +327,12 @@ struct MyChatApp: App {
     }
 }
 ```
+
+When you mount `APIConfigurationView` with `.chatAPIConfiguration { … }`,
+keep the `.environment(\.endpointStore, result.bootstrap.endpointStore)`
+modifier on `ChatView` or an ancestor as shown. `ChatView` re-injects the
+custom key into its presented API-configuration content; omitting it leaves
+the editor unable to load or save endpoints.
 
 If you don't want the full model-management UI (e.g. cloud-only apps that seed an endpoint at launch as shown above), leave the `.sheet` modifier off and the binding will simply toggle a value nothing observes. The `Select Model` / `Browse` buttons then become harmless no-ops; consider hiding the empty-state hint with a custom empty-state view (see `ChatView.chatEmptyState(_:)`).
 

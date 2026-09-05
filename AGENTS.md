@@ -201,8 +201,8 @@ struct MyChatApp: App {
                     .environment(chatViewModel)
                     .environment(sessionManager)
                     .environment(modelManagement)
-                    // endpointStore env key lives in ManifoldUIModelManagement
-                    // (imported above) — not on the ManifoldKit umbrella alone.
+                    // ChatView re-injects this custom environment value into
+                    // its API-configuration sheet/popover content.
                     .environment(\.endpointStore, bootstrap.endpointStore)
                     .modelContainer(bootstrap.modelContainer)
             } else if let startupError {

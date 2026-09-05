@@ -123,6 +123,13 @@ final class UmbrellaReexportAuditTest: XCTestCase {
             "ManifoldNetworking",
             "ManifoldSecrets",
         ],
+        // #2476 moves the endpointStore environment key to ManifoldUI, which
+        // owns the presentation boundary that forwards it. Re-export UI here
+        // so apps that historically imported only ModelManagement continue to
+        // resolve `EnvironmentValues.endpointStore` without a source break.
+        "ManifoldUIModelManagement": [
+            "ManifoldUI",
+        ],
     ]
 
     private var sourcesRoot: URL {

@@ -514,3 +514,4 @@ API breakage: accessor ImageGenerationConfigSnapshot.steps.Set() has parameter 0
 API breakage: constructor ImageGenerationConfigSnapshot.init(steps:width:height:seed:guidanceScale:aspectRatio:outputDirectory:) has parameter 0 type change from Swift.Int to Swift.Int?
 API breakage: var SessionManagerViewModel.messageSearchSessionResolveCap has been removed
 API breakage: var SessionListService.messageSearchSessionResolveCap has been removed
+API breakage: var EnvironmentValues.endpointStore has been removed

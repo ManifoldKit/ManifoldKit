@@ -304,11 +304,12 @@ await chatVM.loadSelectedEndpoint()        // await on first seed; see #2222
 `ManifoldUIModelManagement` is the **separate, explicitly imported**
 product that hosts the model browser, downloader, storage UI, and API
 endpoint editor. The dependency edge runs `ManifoldUIModelManagement →
-ManifoldUI` (never the reverse), which is why these views — and the
-``.environment(\.endpointStore, …)`` key used by `APIConfigurationView` —
-are not visible from `import ManifoldKit` / `ManifoldUI` alone. Without
-`import ManifoldUIModelManagement`, the compiler reports
-`EnvironmentValues has no member 'endpointStore'`.
+ManifoldUI` (never the reverse), which is why the editor views themselves
+are not visible from `import ManifoldKit` / `ManifoldUI` alone. The
+``.environment(\.endpointStore, …)`` key belongs to `ManifoldUI` (and is
+therefore available from the `ManifoldKit` umbrella): `ChatView` owns the
+presentation boundary and re-injects the host value into its API
+configuration sheet/popover content.
 
 Mount it via closure injection on `ChatView`:
 
@@ -348,9 +349,9 @@ It covers:
 
 - **Manual `ManifoldBootstrap.build(...)` bootstrap** from a `.task { }` (async, no deadlock).
 - **`SessionManagerViewModel` wired with `configureAndLoad`** (relaunch-safe restore).
-- **`.environment(\.endpointStore, bootstrap.endpointStore)` injection** — requires `import ManifoldUIModelManagement` (the env key lives there, not in the umbrella).
+- **`.environment(\.endpointStore, bootstrap.endpointStore)` injection** — apply it to the `ChatView` ancestor; `ChatView` carries it into its API-configuration sheet/popover content.
 - **Ollama endpoint pre-seeded *and loaded*** — insert alone is not enough; the recipe binds `selectedEndpoint` and awaits `loadSelectedEndpoint()` on every cold start (manual path has no `quickStart`-style auto-select).
-- **`ManifoldUIModelManagement`** mounted via closure injection (optional for the model browser; required for the env-key / `APIConfigurationView` lines).
+- **`ManifoldUIModelManagement`** mounted via closure injection (optional for the model browser; required for the `APIConfigurationView` lines).
 
 ### Package dependency
 
@@ -390,8 +391,8 @@ Target dependencies (add what you need):
 import SwiftUI
 import SwiftData                 // required for `.modelContainer` type-checking
 import ManifoldKit
-// Required for `.environment(\.endpointStore, …)`, `APIConfigurationView`,
-// and `ModelManagementSheet` — the env key is NOT on the ManifoldKit umbrella.
+// Required for `APIConfigurationView` and `ModelManagementSheet`. The
+// endpointStore environment key itself comes from ManifoldUI / ManifoldKit.
 import ManifoldUIModelManagement
 
 @main
@@ -411,9 +412,8 @@ struct MyChatApp: App {
                 RootView()
                     .environment(chatVM)
                     .environment(sessionVM)
-                    // Inject the endpoint store so APIConfigurationView can
-                    // persist API keys without any extra glue in the host.
-                    // (Requires `import ManifoldUIModelManagement` above.)
+                    // ChatView re-injects this store into its API configuration
+                    // sheet/popover so APIConfigurationView can persist API keys.
                     .environment(\.endpointStore, bootstrap.endpointStore)
                     .modelContainer(bootstrap.modelContainer)
             } else if let startupError {
