@@ -12,7 +12,8 @@ import ManifoldPersistenceTestSupport
 /// Uses the same in-memory store and mock backend shapes as
 /// `ConversationRuntimeTests` so both fixtures stay independent.
 @MainActor
-final class GenerationHookTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class GenerationHookIntegrationTests: XCTestCase {
 
     // MARK: - In-memory MessageStore
 

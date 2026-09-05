@@ -199,7 +199,8 @@ private final class CountingExecutor: ToolExecutor, @unchecked Sendable {
 ///   - `endpointID` is threaded into the `TurnUsage` written to the
 ///     `UsageStore` for endpoint-backed turns (#1207).
 @MainActor
-final class GlassBoxEventWiringTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class GlassBoxEventWiringIntegrationTests: XCTestCase {
 
     // MARK: - In-memory MessageStore
 
