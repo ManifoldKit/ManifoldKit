@@ -3,6 +3,8 @@ import Foundation
 @testable import ManifoldRuntime
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceSwiftData
+import ManifoldPersistenceTestSupport
 
 /// Coverage for ``GenerationHook`` — post-generation turn callbacks registered
 /// on ``ConversationRuntime``.
@@ -10,7 +12,8 @@ import ManifoldTestSupport
 /// Uses the same in-memory store and mock backend shapes as
 /// `ConversationRuntimeTests` so both fixtures stay independent.
 @MainActor
-final class GenerationHookTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class GenerationHookIntegrationTests: XCTestCase {
 
     // MARK: - In-memory MessageStore
 
@@ -79,12 +82,146 @@ final class GenerationHookTests: XCTestCase {
         }
     }
 
-    /// Hook that blocks indefinitely — used to verify timeout behaviour.
-    struct HangingHook: GenerationHook {
-        func postGeneration(_ turn: CompletedTurn) async {
-            // Sleep for a very long time; the runtime's timeout will cancel this task.
-            try? await Task.sleep(for: .seconds(3600))
+    /// A controllable hook that observes the runtime's cancellation signal but
+    /// deliberately remains pending until the test releases it. This models
+    /// arbitrary hook code that does not cooperate by returning promptly.
+    actor CancellationIgnoringHook: GenerationHook {
+        private let messageStore: any MessageStore
+        private var didStart = false
+        private var didObserveCancellation = false
+        private var didComplete = false
+        private var releaseRequested = false
+        private var didPersistMarker = false
+        private var didFailPersistMarker = false
+        private var startWaiters: [CheckedContinuation<Void, Never>] = []
+        private var cancellationWaiters: [CheckedContinuation<Void, Never>] = []
+        private var completionWaiters: [CheckedContinuation<Void, Never>] = []
+        private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+        init(messageStore: any MessageStore) {
+            self.messageStore = messageStore
         }
+
+        func postGeneration(_ turn: CompletedTurn) async {
+            didStart = true
+            let starters = startWaiters
+            startWaiters.removeAll()
+            for waiter in starters { waiter.resume() }
+
+            while !Task.isCancelled && !releaseRequested {
+                do {
+                    try await Task.sleep(for: .milliseconds(1))
+                } catch {
+                    // The loop condition observes cancellation on the next pass.
+                }
+            }
+            if Task.isCancelled {
+                didObserveCancellation = true
+                let cancellationObservers = cancellationWaiters
+                cancellationWaiters.removeAll()
+                for waiter in cancellationObservers { waiter.resume() }
+            }
+
+            if !releaseRequested {
+                await withCheckedContinuation { releaseWaiters.append($0) }
+            }
+            do {
+                try await messageStore.insertMessage(ChatMessage(
+                    role: .assistant,
+                    content: "hook marker",
+                    sessionID: turn.sessionID
+                ))
+                didPersistMarker = true
+            } catch {
+                didFailPersistMarker = true
+            }
+            didComplete = true
+            let completions = completionWaiters
+            completionWaiters.removeAll()
+            for waiter in completions { waiter.resume() }
+        }
+
+        func awaitStarted() async {
+            if didStart { return }
+            await withCheckedContinuation { startWaiters.append($0) }
+        }
+
+        func awaitCancellationObserved() async {
+            if didObserveCancellation { return }
+            await withCheckedContinuation { cancellationWaiters.append($0) }
+        }
+
+        func awaitCompletion() async {
+            if didComplete { return }
+            await withCheckedContinuation { completionWaiters.append($0) }
+        }
+
+        func release() {
+            releaseRequested = true
+            let waiters = releaseWaiters
+            releaseWaiters.removeAll()
+            for waiter in waiters { waiter.resume() }
+        }
+
+        var persistedMarker: Bool { didPersistMarker }
+        var failedToPersistMarker: Bool { didFailPersistMarker }
+    }
+
+    actor CancellationResponsiveHook: GenerationHook {
+        private var didStart = false
+        private var didObserveCancellation = false
+        private var didComplete = false
+        private var releaseRequested = false
+        private var startWaiters: [CheckedContinuation<Void, Never>] = []
+        private var cancellationWaiters: [CheckedContinuation<Void, Never>] = []
+        private var completionWaiters: [CheckedContinuation<Void, Never>] = []
+
+        func postGeneration(_ turn: CompletedTurn) async {
+            didStart = true
+            let starters = startWaiters
+            startWaiters.removeAll()
+            for waiter in starters { waiter.resume() }
+            while !Task.isCancelled && !releaseRequested {
+                do {
+                    try await Task.sleep(for: .milliseconds(1))
+                } catch {
+                    // The loop condition distinguishes cancellation from release.
+                }
+            }
+            if Task.isCancelled {
+                didObserveCancellation = true
+                let cancellationObservers = cancellationWaiters
+                cancellationWaiters.removeAll()
+                for waiter in cancellationObservers { waiter.resume() }
+            }
+            didComplete = true
+            let completions = completionWaiters
+            completionWaiters.removeAll()
+            for waiter in completions { waiter.resume() }
+        }
+
+        func awaitStarted() async {
+            if didStart { return }
+            await withCheckedContinuation { startWaiters.append($0) }
+        }
+
+        func awaitCancellationObserved() async {
+            if didObserveCancellation { return }
+            await withCheckedContinuation { cancellationWaiters.append($0) }
+        }
+
+        func awaitCompletion() async {
+            if didComplete { return }
+            await withCheckedContinuation { completionWaiters.append($0) }
+        }
+
+        func release() { releaseRequested = true }
+    }
+
+    actor OutcomeRecorder {
+        private var value: ConversationTurnOutcome?
+        func record(_ outcome: ConversationTurnOutcome) { value = outcome }
+        var isSettled: Bool { value != nil }
     }
 
     // MARK: - Helpers
@@ -256,47 +393,135 @@ final class GenerationHookTests: XCTestCase {
         XCTAssertEqual(turns.count, 0, "Hook must not fire when response is empty")
     }
 
-    // MARK: - Test 4: timeout does not hang turn
+    // MARK: - Test 4: cancellation request is cooperative
 
-    func test_hook_timeoutDoesNotHangTurn() async throws {
-        let hangingHook = HangingHook()
+    func test_hook_deadlineRequestsCancellation_butOutcomeWaitsForDirectHookAndStoreSettlement() async throws {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["ok"]
         mock.isModelLoaded = true
 
         let inference = InferenceService(backend: mock, name: "Mock")
-        let store = RuntimeMessageStore()
-        // Short 1s timeout — turn should complete even though the hook never returns.
+        let persistence = try InMemoryPersistenceHarness.make()
+        let hook = CancellationIgnoringHook(messageStore: persistence.provider)
+        let followingHook = RecordingHook()
         let runtime = ConversationRuntime(
-            messageStore: store,
+            messageStore: persistence.provider,
+            sessionStore: persistence.provider,
             inferenceService: inference,
             emptyResponseObserver: nil,
-            generationHooks: [hangingHook],
+            generationHooks: [hook, followingHook],
             compressionPolicy: nil,
-            hookTimeout: .seconds(1)
+            hookTimeout: .milliseconds(25)
         )
 
         let sessionID = UUID()
-        let startTime = ContinuousClock.now
-
-        _ = try await runtime.processTurn(TurnInput(
+        let maybeHandle = try await runtime.processTurnWithOutcome(TurnInput(
             sessionID: sessionID,
             kind: .send(text: "Hi", attachments: []),
             config: TurnConfig()
         ))
+        let handle = try XCTUnwrap(maybeHandle)
+        let outcomeRecorder = OutcomeRecorder()
+        let outcomeTask = Task {
+            let outcome = await handle.outcome
+            await outcomeRecorder.record(outcome)
+            return outcome
+        }
 
-        // Drain until afterGeneration; the hook fires in the detached task after that.
-        // With a 1-second hookTimeout, the turn-completing sequence should finish
-        // well under 5 seconds total.
-        _ = try await collectUntilAfterGeneration(from: runtime, deadline: .seconds(10))
+        do {
+            try await withTimeout(.seconds(5)) { await hook.awaitStarted() }
+            try await withTimeout(.seconds(5)) { await hook.awaitCancellationObserved() }
 
-        let elapsed = ContinuousClock.now - startTime
-        // The turn should complete; total time < 5 seconds even with a 1s hook timeout.
-        XCTAssertLessThan(
-            Double(elapsed.components.seconds),
-            5.0,
-            "Turn must complete in under 5 seconds even with a hanging hook"
+            // This is the demonstrated-red boundary: changing the old test's
+            // proxy (`afterGeneration`) to the awaited outcome makes its claimed
+            // hard deadline fail here. The timeout only requested cancellation;
+            // the direct hook remains part of the runtime settlement boundary.
+            let settledBeforeRelease = await outcomeRecorder.isSettled
+            XCTAssertFalse(settledBeforeRelease)
+            let followingBeforeRelease = await followingHook.receivedTurns
+            XCTAssertTrue(followingBeforeRelease.isEmpty)
+            let outcomeSettledWhileHeld: Bool
+            do {
+                _ = try await withTimeout(.milliseconds(100)) { await handle.outcome }
+                outcomeSettledWhileHeld = true
+            } catch {
+                // The awaited outcome is non-throwing; this is the external
+                // test deadline proving it remains pending while held.
+                outcomeSettledWhileHeld = false
+            }
+            XCTAssertFalse(outcomeSettledWhileHeld, "A cancellation request must not settle the outcome before the direct hook returns")
+            let messageCountBeforeRelease = try await persistence.provider.fetchMessages(for: sessionID).count
+            XCTAssertEqual(messageCountBeforeRelease, 2)
+        } catch {
+            // Release is latched, so this also cleans up a handler that has not
+            // reached its continuation yet when a bounded observation fails.
+            await hook.release()
+            throw error
+        }
+
+        // Controlled cleanup: the test owns this intentionally noncooperative
+        // hook and releases it before waiting for its externally bounded join.
+        await hook.release()
+        let outcome = try await withTimeout(.seconds(5)) { await outcomeTask.value }
+        XCTAssertEqual(outcome.reason, .stop)
+        let settledAfterRelease = await outcomeRecorder.isSettled
+        XCTAssertTrue(settledAfterRelease)
+        let persistedMarker = await hook.persistedMarker
+        let failedToPersistMarker = await hook.failedToPersistMarker
+        XCTAssertTrue(persistedMarker)
+        XCTAssertFalse(failedToPersistMarker)
+
+        let deliveredTurns = await followingHook.receivedTurns
+        XCTAssertEqual(deliveredTurns.count, 1, "Following hook runs after the cancellation-responsive hook settles")
+        XCTAssertEqual(deliveredTurns.first?.sessionID, sessionID)
+        let messageCountAfterRelease = try await persistence.provider.fetchMessages(for: sessionID).count
+        XCTAssertEqual(messageCountAfterRelease, 3)
+        let messagesAfterRelease = try await persistence.provider.fetchMessages(for: sessionID)
+        XCTAssertTrue(messagesAfterRelease.contains { $0.content == "hook marker" })
+    }
+
+    func test_cancellationResponsiveHook_runsFollowingHook_andSettlesOutcome() async throws {
+        let responsiveHook = CancellationResponsiveHook()
+        let followingHook = RecordingHook()
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["ok"]
+        mock.isModelLoaded = true
+
+        let inference = InferenceService(backend: mock, name: "Mock")
+        let persistence = try InMemoryPersistenceHarness.make()
+        let runtime = ConversationRuntime(
+            messageStore: persistence.provider,
+            sessionStore: persistence.provider,
+            inferenceService: inference,
+            emptyResponseObserver: nil,
+            generationHooks: [responsiveHook, followingHook],
+            hookTimeout: .milliseconds(25)
         )
+        let sessionID = UUID()
+        let maybeHandle = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Hi", attachments: []),
+            config: TurnConfig()
+        ))
+        let handle = try XCTUnwrap(maybeHandle)
+
+        let outcome: ConversationTurnOutcome
+        do {
+            try await withTimeout(.seconds(5)) { await responsiveHook.awaitStarted() }
+            try await withTimeout(.seconds(5)) { await responsiveHook.awaitCancellationObserved() }
+            try await withTimeout(.seconds(5)) { await responsiveHook.awaitCompletion() }
+            outcome = try await withTimeout(.seconds(5)) { await handle.outcome }
+        } catch {
+            await responsiveHook.release()
+            throw error
+        }
+
+        XCTAssertEqual(outcome.reason, .stop)
+        let deliveredTurns = await followingHook.receivedTurns
+        XCTAssertEqual(deliveredTurns.count, 1)
+        XCTAssertEqual(deliveredTurns.first?.sessionID, sessionID)
+        let messageCount = try await persistence.provider.fetchMessages(for: sessionID).count
+        XCTAssertEqual(messageCount, 2)
     }
 
     // MARK: - Test 5: multiple hooks fire in order
@@ -365,54 +590,4 @@ final class GenerationHookTests: XCTestCase {
         XCTAssertEqual(labels, ["A", "B"], "Hooks must fire in registration order")
     }
 
-    // MARK: - Test 6: first hook passes, second times out — turn still completes
-
-    func test_hooks_secondTimeoutDoesNotPreventTurnCompletion() async throws {
-        // hookA completes immediately; hookB hangs forever. With a short timeout
-        // the runtime must cancel hookB and still complete the turn — hookA's
-        // delivery and the persisted assistant message must be unaffected.
-        let hookA = RecordingHook()
-
-        let mock = MockInferenceBackend()
-        mock.tokensToYield = ["ok"]
-        mock.isModelLoaded = true
-
-        let inference = InferenceService(backend: mock, name: "Mock")
-        let store = RuntimeMessageStore()
-        let runtime = ConversationRuntime(
-            messageStore: store,
-            inferenceService: inference,
-            emptyResponseObserver: nil,
-            generationHooks: [hookA, HangingHook()],
-            compressionPolicy: nil,
-            hookTimeout: .seconds(1)
-        )
-
-        let sessionID = UUID()
-        _ = try await runtime.processTurn(TurnInput(
-            sessionID: sessionID,
-            kind: .send(text: "Hi", attachments: []),
-            config: TurnConfig()
-        ))
-
-        // hookA must fire; bound the wait with a deadline.
-        _ = try await withThrowingTaskGroup(of: CompletedTurn.self) { group in
-            group.addTask { await hookA.awaitNextTurn() }
-            group.addTask {
-                try await Task.sleep(for: .seconds(5))
-                throw TestError.deadlineElapsed
-            }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
-        }
-
-        let turns = await hookA.receivedTurns
-        XCTAssertEqual(turns.count, 1, "hookA must still receive the turn even when hookB times out")
-
-        // The assistant message must have been persisted before hooks ran.
-        let messages = try await store.fetchMessages(for: sessionID)
-        let assistantMessages = messages.filter { $0.role == .assistant }
-        XCTAssertEqual(assistantMessages.count, 1, "Assistant message must be persisted regardless of hook timeout")
-    }
 }

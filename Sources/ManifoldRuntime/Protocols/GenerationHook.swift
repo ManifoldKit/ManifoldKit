@@ -30,8 +30,15 @@ public struct CompletedTurn: Sendable {
 
 /// A callback invoked after each successful generation turn.
 ///
-/// `postGeneration(_:)` is awaited with a configurable timeout (default 30 s).
-/// A hung hook logs a warning and is skipped; it never blocks the next turn.
+/// `postGeneration(_:)` is awaited with a configurable cancellation-request
+/// deadline (default 30 s). When that deadline elapses, the runtime requests
+/// cancellation and logs it, but still joins this direct invocation before its
+/// turn outcome settles. A hook that ignores cancellation can therefore keep
+/// the turn pending until it returns; Swift cannot forcibly terminate it.
+///
+/// A hook may start host-owned descendant work and return promptly. That work
+/// is outside the runtime's settlement boundary; the host owns its lifetime
+/// and any later join.
 ///
 /// Hooks are **not** called when:
 /// - the turn was cancelled

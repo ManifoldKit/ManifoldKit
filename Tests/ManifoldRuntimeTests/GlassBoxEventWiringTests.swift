@@ -3,6 +3,8 @@ import Foundation
 @testable import ManifoldRuntime
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceSwiftData
+import ManifoldPersistenceTestSupport
 
 // MARK: - File-scope helpers (kept out of the @MainActor test class so they
 // can satisfy `Sendable` / actor-isolated protocol requirements honestly).
@@ -13,6 +15,25 @@ private func isHistoryCompressed(_ e: ConversationEvent) -> Bool {
 
 private func isStreamFinished(_ e: ConversationEvent) -> Bool {
     if case .streamFinished = e { return true }; return false
+}
+
+/// Timeout clock for the late-result dispatch test. It yields once so the
+/// handler starts, then deterministically wins the timeout race.
+private struct ImmediateHookClock: Clock {
+    struct Instant: InstantProtocol {
+        let rawValue: Int = 0
+        func advanced(by duration: Duration) -> Instant { self }
+        func duration(to other: Instant) -> Duration { .zero }
+        static func < (lhs: Instant, rhs: Instant) -> Bool { false }
+        static func == (lhs: Instant, rhs: Instant) -> Bool { true }
+    }
+
+    var now: Instant { Instant() }
+    var minimumResolution: Duration { .zero }
+
+    func sleep(until deadline: Instant, tolerance: Duration?) async throws {
+        await Task.yield()
+    }
 }
 
 /// Wraps ``MockInferenceBackend`` and appends a `.usage` event after the inner
@@ -151,6 +172,12 @@ private final class CountingExecutor: ToolExecutor, @unchecked Sendable {
     let definition: ToolDefinition
     let requiresApproval: Bool
     private let resultContent: String
+    private let countLock = NSLock()
+    private var storedCallCount = 0
+
+    var callCount: Int {
+        countLock.withLock { storedCallCount }
+    }
 
     init(name: String, resultContent: String, requiresApproval: Bool = false) {
         self.definition = ToolDefinition(name: name, description: "test \(name)", parameters: .object([:]))
@@ -159,7 +186,8 @@ private final class CountingExecutor: ToolExecutor, @unchecked Sendable {
     }
 
     nonisolated func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
-        ToolResult(callId: "", content: resultContent, errorKind: nil)
+        countLock.withLock { storedCallCount += 1 }
+        return ToolResult(callId: "", content: resultContent, errorKind: nil)
     }
 }
 
@@ -171,7 +199,8 @@ private final class CountingExecutor: ToolExecutor, @unchecked Sendable {
 ///   - `endpointID` is threaded into the `TurnUsage` written to the
 ///     `UsageStore` for endpoint-backed turns (#1207).
 @MainActor
-final class GlassBoxEventWiringTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class GlassBoxEventWiringIntegrationTests: XCTestCase {
 
     // MARK: - In-memory MessageStore
 
@@ -388,7 +417,8 @@ final class GlassBoxEventWiringTests: XCTestCase {
         ]
         backend.tokensToYieldPerTurn = [[], ["done"]]
 
-        let registry = ToolRegistry(tools: [CountingExecutor(name: "toolA", resultContent: "resA")])
+        let executor = CountingExecutor(name: "toolA", resultContent: "resA")
+        let registry = ToolRegistry(tools: [executor])
         let inference = InferenceService(backend: backend, name: "Mock", toolRegistry: registry)
         let store = InMemoryMessageStore()
         let runtime = ConversationRuntime(messageStore: store, inferenceService: inference)
@@ -505,9 +535,10 @@ final class GlassBoxEventWiringTests: XCTestCase {
         ]
         backend.tokensToYieldPerTurn = [[], ["done"]]
 
-        let registry = ToolRegistry(tools: [CountingExecutor(name: "toolA", resultContent: "resA")])
+        let executor = CountingExecutor(name: "toolA", resultContent: "resA")
+        let registry = ToolRegistry(tools: [executor])
         let inference = InferenceService(backend: backend, name: "Mock", toolRegistry: registry)
-        let store = InMemoryMessageStore()
+        let persistence = try InMemoryPersistenceHarness.make()
 
         // The runtime owns the pre-tool-use hook (it re-installs its own
         // adapter over the InferenceService on every turn), so the blocking
@@ -517,7 +548,7 @@ final class GlassBoxEventWiringTests: XCTestCase {
             HookOutput(block: true, denyReason: "policy:denied")
         }
         let runtime = ConversationRuntime(
-            messageStore: store,
+            messageStore: persistence.provider,
             inferenceService: inference,
             hookRegistry: hooks
         )
@@ -536,6 +567,72 @@ final class GlassBoxEventWiringTests: XCTestCase {
             events.contains { if case .toolCallApproved = $0 { return true }; return false },
             ".toolCallApproved must NOT fire when a preToolUse hook blocks the call before approval"
         )
+        XCTAssertEqual(executor.callCount, 0, "A successful block must prevent actual tool execution")
+        let deniedResult = events.compactMap { event -> ToolResult? in
+            if case .toolCallCompleted(let id, let result) = event, id == "call-H" { return result }
+            return nil
+        }.first
+        XCTAssertEqual(deniedResult?.errorKind, .permissionDenied, "Blocked calls must return a typed denial rather than silently disappearing")
+    }
+
+    func test_preToolUseTimeout_ignoresLateBlock_runsFollowingHandler_andDispatchesTool() async throws {
+        actor Trace {
+            private var values: [String] = []
+            func append(_ value: String) { values.append(value) }
+            func snapshot() -> [String] { values }
+        }
+
+        let backend = makeToolCapableBackend()
+        backend.scriptedToolCallsPerTurn = [
+            [ToolCall(id: "call-timeout", toolName: "toolA", arguments: "{}")],
+            [],
+        ]
+        backend.tokensToYieldPerTurn = [[], ["done"]]
+
+        let executor = CountingExecutor(name: "toolA", resultContent: "executed")
+        let toolRegistry = ToolRegistry(tools: [executor])
+        let inference = InferenceService(backend: backend, name: "Mock", toolRegistry: toolRegistry)
+        let trace = Trace()
+        let hooks = HookRegistry(clock: ImmediateHookClock(), timeout: .milliseconds(1))
+        await hooks.register(.preToolUse) { _ in
+            await trace.append("entered")
+            do {
+                try await Task.sleep(for: .seconds(3600))
+            } catch {
+                await trace.append("cancelled")
+                return HookOutput(block: true, denyReason: "late block")
+            }
+            return HookOutput(block: true, denyReason: "unexpected")
+        }
+        await hooks.register(.preToolUse) { _ in
+            await trace.append("following")
+            return .passthrough
+        }
+
+        let persistence = try InMemoryPersistenceHarness.make()
+        let runtime = ConversationRuntime(
+            messageStore: persistence.provider,
+            inferenceService: inference,
+            hookRegistry: hooks
+        )
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: UUID(),
+            kind: .send(text: "use the tool"),
+            config: TurnConfig(streamingUpdateInterval: .zero, streamingBatchCharacterLimit: 1)
+        ))
+        let events = await drain(from: runtime, until: isStreamFinished)
+
+        let traceValues = await trace.snapshot()
+        XCTAssertEqual(traceValues, ["entered", "cancelled", "following"])
+        XCTAssertEqual(executor.callCount, 1, "Timeout-as-passthrough must dispatch the real tool after the late block is ignored")
+        let completion = events.compactMap { event -> ToolResult? in
+            if case .toolCallCompleted(let id, let result) = event, id == "call-timeout" { return result }
+            return nil
+        }.first
+        XCTAssertNil(completion?.errorKind)
+        XCTAssertEqual(completion?.content, "executed")
+        // Sabotage-evidence: returning the late block after the handler
+        // finally exits makes `callCount` zero and produces a denied result.
     }
 
     // MARK: - Task D: endpointID threaded into TurnUsage

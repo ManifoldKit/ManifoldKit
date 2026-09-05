@@ -38,7 +38,7 @@ let runtime = ConversationRuntime(
 
 Hooks for an event run **in registration order**. The chain short-circuits on the first handler returning `block: true`. ``HookOutput/updatedInput`` from one handler is threaded into the next handler's ``HookInput/toolArguments`` so a chain of sanitisers can layer narrowing transforms.
 
-A handler that exceeds the registry's `timeout` (default `.seconds(5)`) is cancelled and treated as ``HookOutput/passthrough``. Slow hooks must never deadlock the turn loop. The clock is injectable for deterministic timeout tests:
+A handler that exceeds the registry's `timeout` (default `.seconds(5)`) receives a cancellation request. The registry still awaits that direct handler before it continues with ``HookOutput/passthrough``; Swift cancellation is cooperative, so a handler that ignores it keeps the invocation pending until it returns. A late `block: true` result is ignored after the handler returns, preserving timeout-as-passthrough semantics without claiming a hard deadline. The clock is injectable for deterministic timeout tests:
 
 ```swift,no-build
 import Foundation

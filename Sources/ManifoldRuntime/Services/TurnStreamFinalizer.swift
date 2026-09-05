@@ -903,31 +903,43 @@ package struct TurnStreamFinalizer: Sendable {
         return await registry.isCancelled(handle)
     }
 
-    /// Runs `operation` with a timeout. If the operation doesn't finish within
-    /// `duration`, the operation task is cancelled and a warning is logged.
-    /// The hook receives a Task cancellation signal; it is not forcibly killed.
+    /// Requests cancellation when `operation` exceeds `duration`, then joins
+    /// the direct hook invocation before returning. Swift task cancellation is
+    /// cooperative: an operation that ignores it keeps the turn unsettled
+    /// until it returns. The hook is not forcibly killed.
     private func withHookTimeout(
         _ duration: Duration,
         label: String,
         operation: @escaping @Sendable () async -> Void
     ) async {
-        await withTaskGroup(of: Void.self) { group in
+        let deadlineElapsed = await withTaskGroup(of: Bool.self) { group in
             group.addTask {
                 await operation()
+                return false
             }
             group.addTask {
                 do {
                     try await Task.sleep(for: duration)
                     Log.inference.warning(
-                        "GenerationHook '\(label, privacy: .public)' timed out after \(duration, privacy: .public) and was cancelled"
+                        "GenerationHook '\(label, privacy: .public)' exceeded \(duration, privacy: .public); requested cancellation and is awaiting the hook's return"
                     )
+                    return true
                 } catch {
-                    // Timer was cancelled because operation finished first — no action needed.
+                    // Timer was cancelled because operation finished first.
+                    return false
                 }
             }
-            // Wait for whichever finishes first, then cancel the other.
-            await group.next()
+            // The first completion chooses whether the deadline elapsed. The
+            // task-group scope still joins the direct hook invocation after
+            // cancellation, preserving outcome/store-settlement ordering.
+            let first = await group.next() ?? false
             group.cancelAll()
+            return first
+        }
+        if deadlineElapsed {
+            Log.inference.info(
+                "GenerationHook '\(label, privacy: .public)' returned after the cancellation request; turn settlement may continue"
+            )
         }
     }
 
