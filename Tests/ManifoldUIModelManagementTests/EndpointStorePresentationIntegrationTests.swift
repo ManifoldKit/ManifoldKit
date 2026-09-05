@@ -68,6 +68,44 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
         // explicit re-injection, including iPad's regular-width popover.
     }
 
+    func test_chatAPIConfigurationContent_overridesOuterStoreWithForwardedStore() throws {
+        let forwardedRuntime = try makeRuntime(suffix: "forwarded")
+        let outerRuntime = try makeRuntime(suffix: "outer")
+        let observation = EndpointStoreObservation()
+        let content = chatAPIConfigurationContent(
+            {
+                EndpointStoreProbe(observation: observation, onMounted: {})
+            },
+            endpointStore: forwardedRuntime.endpointStore
+        )
+        .environment(\.endpointStore, outerRuntime.endpointStore)
+
+        render(content, until: { observation.store != nil })
+
+        XCTAssertTrue(
+            (observation.store as AnyObject?) === (forwardedRuntime.endpointStore as AnyObject),
+            "The helper must override an inherited store with the store captured by ChatView"
+        )
+    }
+
+    func test_sabotage_omittingHelperInjection_exposesOuterStoreInstead() throws {
+        let forwardedRuntime = try makeRuntime(suffix: "sabotage-forwarded")
+        let outerRuntime = try makeRuntime(suffix: "sabotage-outer")
+        let observation = EndpointStoreObservation()
+        let content = EndpointStoreProbe(observation: observation, onMounted: {})
+            .environment(\.endpointStore, outerRuntime.endpointStore)
+
+        render(content, until: { observation.store != nil })
+
+        XCTAssertTrue(
+            (observation.store as AnyObject?) === (outerRuntime.endpointStore as AnyObject)
+        )
+        XCTAssertFalse(
+            (observation.store as AnyObject?) === (forwardedRuntime.endpointStore as AnyObject),
+            "Without explicit helper injection, the presented builder cannot receive the forwarded store"
+        )
+    }
+
     /// The macOS hosting harness can drive ChatView's sheet route above, but
     /// cannot create iPad's regular-width recovery popover. This production-
     /// linked tripwire pins every ChatView branch that must receive the same
@@ -137,6 +175,29 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.02))
         }
         return condition()
+    }
+
+    private func makeRuntime(suffix: String) throws -> ManifoldBootstrap {
+        try ManifoldBootstrap(
+            configuration: ManifoldConfiguration(
+                appName: "Endpoint Store Presentation Test \(suffix)",
+                bundleIdentifier: "com.manifoldkit.endpoint-store-presentation-test.\(suffix)"
+            ),
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+    }
+
+    private func render<Content: View>(
+        _ content: Content,
+        until condition: @escaping () -> Bool
+    ) {
+        let controller = NSHostingController(rootView: content)
+        let window = NSWindow(contentViewController: controller)
+        window.setContentSize(NSSize(width: 200, height: 100))
+        window.makeKeyAndOrderFront(nil)
+        controller.view.layoutSubtreeIfNeeded()
+        XCTAssertTrue(waitUntil(condition))
+        window.close()
     }
 
     private var chatViewSourceURL: URL {
