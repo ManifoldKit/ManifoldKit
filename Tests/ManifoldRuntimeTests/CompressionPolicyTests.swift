@@ -3,11 +3,48 @@ import Foundation
 @testable import ManifoldRuntime
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceSwiftData
+import ManifoldPersistenceTestSupport
 
 /// Coverage for ``CompressionPolicy`` — history compression triggered by
 /// ``ConversationRuntime`` after successful generation turns.
 @MainActor
-final class CompressionPolicyTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class CompressionPolicyIntegrationTests: XCTestCase {
+
+    private actor CompleteHistoryCapture {
+        private(set) var history: [ChatMessage]?
+
+        func record(_ history: [ChatMessage]) {
+            self.history = history
+        }
+    }
+
+    /// Keeps only a replacement derived from the oldest record. This makes a
+    /// truncated fetch observable both at policy input and after replacement.
+    private struct FullHistoryReplacementPolicy: CompressionPolicy {
+        let capture: CompleteHistoryCapture
+
+        func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
+            true
+        }
+
+        func compress(
+            history: [ChatMessage],
+            sessionID: UUID,
+            systemPrompt: String?,
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
+            await capture.record(history)
+            let oldestID = history.first?.id.uuidString ?? "missing-oldest"
+            return [ChatMessage(
+                role: .assistant,
+                content: "summary-retaining-oldest-\(oldestID)",
+                sessionID: sessionID,
+                kind: .memory("summary")
+            )]
+        }
+    }
 
     // MARK: - In-memory MessageStore
 
@@ -838,5 +875,58 @@ final class CompressionPolicyTests: XCTestCase {
             prompt.contains("SESSION_MUST_NOT_APPEAR"),
             "Composed wire prompt must not fall back to ChatSession.systemPrompt"
         )
+    }
+
+    /// Integration regression for the post-turn fetch → policy → replace path.
+    /// A former 10,000-row whole-history cap dropped the oldest seed record
+    /// before the policy saw it, then made compression permanently delete it.
+    func test_postTurnCompression_replacesCompleteHistoryBeyondTenThousandRecords() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let sessionID = UUID()
+        let messageCount = 10_001
+        let seeded = (0..<messageCount).map { index in
+            ChatMessage(
+                role: index.isMultiple(of: 2) ? .user : .assistant,
+                content: "history-\(index)",
+                timestamp: Date(timeIntervalSinceReferenceDate: Double(index)),
+                sessionID: sessionID
+            )
+        }
+        let oldest = try XCTUnwrap(seeded.first)
+        let newest = try XCTUnwrap(seeded.last)
+        try await stack.provider.performMessageMutations(seeded.map(MessageStoreMutation.insert))
+
+        let capture = CompleteHistoryCapture()
+        let backend = MockInferenceBackend(capabilities: BackendCapabilities(
+            supportedParameters: [],
+            maxContextTokens: 1024,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true
+        ))
+        let coordinator = TurnCompressionCoordinator(
+            persistence: ConversationPersistencePort(messageStore: stack.provider, sessionStore: nil),
+            inferenceService: InferenceService(backend: backend, name: "Mock"),
+            events: TurnEventEmitter { _ in },
+            preTurnPolicy: nil,
+            postTurnPolicy: FullHistoryReplacementPolicy(capture: capture)
+        )
+
+        await coordinator.compressAfterTurnIfNeeded(
+            sessionID: sessionID,
+            promptTokens: 1,
+            hookRegistry: nil
+        )
+
+        let capturedHistory = await capture.history
+        let history = try XCTUnwrap(capturedHistory)
+        XCTAssertEqual(history.count, messageCount)
+        XCTAssertEqual(history.first?.id, oldest.id, "Compression must receive the oldest persisted record")
+        XCTAssertEqual(history.last?.id, newest.id, "Compression must receive the newest persisted record")
+        XCTAssertEqual(history.map(\.id), seeded.map(\.id), "Policy input must be the complete chronological history")
+
+        let replacement = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(replacement.count, 1)
+        XCTAssertEqual(replacement.first?.content, "summary-retaining-oldest-\(oldest.id.uuidString)")
+        XCTAssertEqual(replacement.first?.kind, .memory("summary"))
     }
 }

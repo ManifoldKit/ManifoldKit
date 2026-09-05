@@ -114,7 +114,10 @@ package struct TurnPreparation: Sendable {
             // optional HistoryShaper, and context-window assembly run —
             // otherwise the unanswered tool_use reproduces the #629 cloud-API
             // rejection. See HealedHistoryFetch.swift for the seam contract.
-            canonicalHistory = try await persistence.fetchHealedMessages(sessionID: sessionID)
+            canonicalHistory = try await persistence.fetchRecentHealedMessages(
+                sessionID: sessionID,
+                limit: 10_000
+            )
         } catch {
             throw HistoryFailure.persistence(error)
         }

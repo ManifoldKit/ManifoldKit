@@ -95,14 +95,7 @@ package struct SessionBranchCoordinator: Sendable {
         // failed branch strands a ghost/empty session that surfaces as a
         // phantom in the sidebar. `transaction(block:)` does NOT roll back on
         // throw in this codebase, so the rollback is an explicit delete.
-        let copyMutations: [MessageStoreMutation] = slice.map { original in
-            .insert(ChatMessage(
-                role: original.role,
-                contentParts: original.contentParts,
-                timestamp: original.timestamp,
-                sessionID: newSessionID
-            ))
-        }
+        let copyMutations = branchCopyMutations(from: slice, sessionID: newSessionID)
         do {
             try await persistence.performMessageMutations(copyMutations)
         } catch {
@@ -118,4 +111,29 @@ package struct SessionBranchCoordinator: Sendable {
             lastMessageIsFromUser: slice.last?.role == .user
         )
     }
+}
+
+private func branchCopyMutations(
+    from source: [ChatMessage],
+    sessionID: UUID
+) -> [MessageStoreMutation] {
+    var mutations: [MessageStoreMutation] = []
+    var start = 0
+    while start < source.count {
+        let timestamp = source[start].timestamp
+        var end = start + 1
+        while end < source.count, source[end].timestamp == timestamp { end += 1 }
+        let freshIDs = (start..<end).map { _ in UUID() }.sorted()
+        for (original, id) in zip(source[start..<end], freshIDs) {
+            mutations.append(.insert(ChatMessage(
+                id: id,
+                role: original.role,
+                contentParts: original.contentParts,
+                timestamp: original.timestamp,
+                sessionID: sessionID
+            )))
+        }
+        start = end
+    }
+    return mutations
 }

@@ -207,7 +207,10 @@ public final class SummarisationHook: GenerationHook, @unchecked Sendable {
         // HealedHistoryFetch.swift.
         let history: [ChatMessage]
         do {
-            history = try await messageStore.fetchHealedMessages(for: sessionID)
+            history = try await messageStore.fetchRecentHealedMessages(
+                for: sessionID,
+                limit: 10_000
+            )
         } catch {
             Log.inference.warning(
                 "SummarisationHook: fetchMessages failed, skipping summarisation (sessionID=\(sessionID, privacy: .private)): \(error.localizedDescription, privacy: .public)"

@@ -837,6 +837,7 @@ let package = Package(
                 "ManifoldInference",
                 "ManifoldRuntime",
                 "ManifoldTestSupport",
+                "ManifoldPersistenceTestSupport",
             ],
             resources: [.copy("Fixtures")]
         ),

@@ -3,13 +3,44 @@ import ManifoldRuntime
 import ManifoldInference
 import ManifoldTestSupport
 import ManifoldContractTestSupport
+import ManifoldPersistenceTestSupport
 
-// MARK: - InMemoryMessageStoreContractTests
+@MainActor
+private final class LegacySwiftDataMessageStoreAdapter: MessageStore {
+    private let wrapped: any MessageStore
+
+    init(wrapping wrapped: any MessageStore) {
+        self.wrapped = wrapped
+    }
+
+    func insertMessage(_ message: ChatMessage) async throws {
+        try await wrapped.insertMessage(message)
+    }
+
+    func updateMessage(_ message: ChatMessage) async throws {
+        try await wrapped.updateMessage(message)
+    }
+
+    func deleteMessage(_ messageID: UUID) async throws {
+        try await wrapped.deleteMessage(messageID)
+    }
+
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
+        try await wrapped.fetchMessages(for: sessionID)
+    }
+
+    func deleteMessages(for sessionID: UUID) async throws {
+        try await wrapped.deleteMessages(for: sessionID)
+    }
+}
+
+// MARK: - InMemoryMessageStoreContractIntegrationTests
 
 /// Adopts ``MessageStoreContract`` via the in-memory reference implementation.
 /// Passing here proves the mixin assertion helpers compile and execute correctly.
 @MainActor
-final class InMemoryMessageStoreContractTests: XCTestCase, MessageStoreContract {
+/// Integration coverage uses real SwiftData alongside the reference-store contract cases.
+final class InMemoryMessageStoreContractIntegrationTests: XCTestCase, MessageStoreContract {
 
     func makeMessageStore() -> any MessageStore {
         InMemoryMessageStore()
@@ -29,6 +60,12 @@ final class InMemoryMessageStoreContractTests: XCTestCase, MessageStoreContract 
 
     func test_fetch_ordersByTimestampAscending() async throws {
         try await assertMessageStore_fetchOrdersByTimestampAscending()
+    }
+
+    func test_historyPage_defaultKeepsEqualTimestampsForLegacySwiftDataAdapter() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let legacyStore: any MessageStore = LegacySwiftDataMessageStoreAdapter(wrapping: stack.provider)
+        try await assertMessageStore_historyPageDefaultKeepsEqualTimestamps(store: legacyStore)
     }
 
     func test_update_persistsChanges() async throws {

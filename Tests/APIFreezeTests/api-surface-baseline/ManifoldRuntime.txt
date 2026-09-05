@@ -522,6 +522,28 @@ MarkdownExportFormat.contentType Var
 MarkdownExportFormat.export(session:messages:) Func
 MarkdownExportFormat.fileExtension Var
 MarkdownExportFormat.init() Constructor
+MessageHistoryCursor Struct
+MessageHistoryCursor conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
+MessageHistoryCursor.__derived_struct_equals(_:_:) Func
+MessageHistoryCursor.beforeID Var
+MessageHistoryCursor.beforeTimestamp Var
+MessageHistoryCursor.hash(into:) Func
+MessageHistoryCursor.hashValue Var
+MessageHistoryCursor.highWaterID Var
+MessageHistoryCursor.highWaterTimestamp Var
+MessageHistoryCursor.init(sessionID:highWaterTimestamp:highWaterID:beforeTimestamp:beforeID:) Constructor
+MessageHistoryCursor.sessionID Var
+MessageHistoryPage Struct
+MessageHistoryPage conformances: Copyable,Escapable,Sendable,SendableMetatype
+MessageHistoryPage.init(messages:nextCursor:) Constructor
+MessageHistoryPage.messages Var
+MessageHistoryPage.nextCursor Var
+MessageHistoryPagingError Enum
+MessageHistoryPagingError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
+MessageHistoryPagingError.__derived_enum_equals(_:_:) Func
+MessageHistoryPagingError.cursorSessionMismatch EnumElement
+MessageHistoryPagingError.errorDescription Var
+MessageHistoryPagingError.invalidLimit EnumElement
 MessageSearchHit Struct
 MessageSearchHit conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 MessageSearchHit.ID TypeAlias
@@ -541,6 +563,7 @@ MessageStore conformances: Copyable,Escapable,Sendable,SendableMetatype
 MessageStore.addPostWriteHook(_:) Func
 MessageStore.deleteMessage(_:) Func
 MessageStore.deleteMessages(for:) Func
+MessageStore.fetchMessageHistoryPage(for:cursor:limit:) Func
 MessageStore.fetchMessages(for:) Func
 MessageStore.fetchMessages(for:before:limit:) Func
 MessageStore.fetchRecentMessages(for:limit:) Func

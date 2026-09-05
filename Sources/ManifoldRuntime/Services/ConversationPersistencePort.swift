@@ -68,6 +68,11 @@ struct ConversationPersistencePort: Sendable {
     }
 
     @MainActor
+    func fetchRecentHealedMessages(sessionID: UUID, limit: Int) async throws -> [ChatMessage] {
+        try await messageStore.fetchRecentHealedMessages(for: sessionID, limit: limit)
+    }
+
+    @MainActor
     func insertSession(_ session: ChatSession) async throws {
         guard let sessionStore else { return }
         try await sessionStore.insertSession(session)

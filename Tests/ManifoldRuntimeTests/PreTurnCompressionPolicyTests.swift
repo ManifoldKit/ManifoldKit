@@ -3,12 +3,49 @@ import Foundation
 @testable import ManifoldRuntime
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceSwiftData
+import ManifoldPersistenceTestSupport
 
 /// Coverage for ``PreTurnCompressionPolicy`` — history compression triggered
 /// by ``ConversationRuntime`` before the user message is appended on `.send`
 /// turns.
 @MainActor
-final class PreTurnCompressionPolicyTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class PreTurnCompressionPolicyIntegrationTests: XCTestCase {
+
+    private actor CompleteHistoryCapture {
+        private(set) var history: [ChatMessage]?
+
+        func record(_ history: [ChatMessage]) {
+            self.history = history
+        }
+    }
+
+    /// Keeps only a replacement derived from the oldest record. This proves
+    /// that a pre-turn replacement is based on the complete persisted history.
+    private struct FullHistoryReplacementPolicy: PreTurnCompressionPolicy {
+        let capture: CompleteHistoryCapture
+
+        func shouldCompressBeforeTurn(messageCount: Int, lastPromptTokens: Int?) -> Bool {
+            true
+        }
+
+        func compressBeforeTurn(
+            history: [ChatMessage],
+            sessionID: UUID,
+            systemPrompt: String?,
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
+            await capture.record(history)
+            let oldestID = history.first?.id.uuidString ?? "missing-oldest"
+            return [ChatMessage(
+                role: .assistant,
+                content: "summary-retaining-oldest-\(oldestID)",
+                sessionID: sessionID,
+                kind: .memory("summary")
+            )]
+        }
+    }
 
     // MARK: - Call counter
 
@@ -702,5 +739,48 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         )
         XCTAssertFalse(prompt.contains(turnConfigPrompt), "Active agent must win over TurnConfig")
         XCTAssertFalse(prompt.contains(sessionFieldPrompt), "Active agent must win over session field")
+    }
+
+    /// Integration regression for the pre-turn fetch → policy → replace path.
+    /// A 10,000-row whole-history cap would omit the oldest record before this
+    /// policy ran, then delete that omitted history during replacement.
+    func test_preTurnCompression_replacesCompleteHistoryBeyondTenThousandRecords() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let sessionID = UUID()
+        let messageCount = 10_001
+        let seeded = (0..<messageCount).map { index in
+            ChatMessage(
+                role: index.isMultiple(of: 2) ? .user : .assistant,
+                content: "history-\(index)",
+                timestamp: Date(timeIntervalSinceReferenceDate: Double(index)),
+                sessionID: sessionID
+            )
+        }
+        let oldest = try XCTUnwrap(seeded.first)
+        let newest = try XCTUnwrap(seeded.last)
+        try await stack.provider.performMessageMutations(seeded.map(MessageStoreMutation.insert))
+
+        let capture = CompleteHistoryCapture()
+        let coordinator = TurnCompressionCoordinator(
+            persistence: ConversationPersistencePort(messageStore: stack.provider, sessionStore: nil),
+            inferenceService: InferenceService(),
+            events: TurnEventEmitter { _ in },
+            preTurnPolicy: FullHistoryReplacementPolicy(capture: capture),
+            postTurnPolicy: nil
+        )
+
+        try await coordinator.compressBeforeTurnIfNeeded(sessionID: sessionID)
+
+        let capturedHistory = await capture.history
+        let history = try XCTUnwrap(capturedHistory)
+        XCTAssertEqual(history.count, messageCount)
+        XCTAssertEqual(history.first?.id, oldest.id, "Compression must receive the oldest persisted record")
+        XCTAssertEqual(history.last?.id, newest.id, "Compression must receive the newest persisted record")
+        XCTAssertEqual(history.map(\.id), seeded.map(\.id), "Policy input must be the complete chronological history")
+
+        let replacement = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(replacement.count, 1)
+        XCTAssertEqual(replacement.first?.content, "summary-retaining-oldest-\(oldest.id.uuidString)")
+        XCTAssertEqual(replacement.first?.kind, .memory("summary"))
     }
 }
