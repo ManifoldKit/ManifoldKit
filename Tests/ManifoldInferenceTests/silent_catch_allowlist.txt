@@ -59,9 +59,3 @@ ManifoldServer/ChatCompletionsAdapter.swift:if let string = try? decoder.singleV
 # only failure mode and would be redundant to log.
 ManifoldTools/TranscriptLogger.swift:} catch {
 ManifoldTools/ReferenceTools/NowTool.swift:} catch {
-
-# GenerationHook timeout: the Task.sleep CancellationError fires when the
-# hook finishes before the timer; it is the happy path and warrants no log.
-# Relocated from ConversationTurnExecutor.swift by the TurnStreamFinalizer
-# extraction (PR #2329, issue #1957) — same catch block, moved verbatim.
-ManifoldRuntime/Services/TurnStreamFinalizer.swift:} catch {
