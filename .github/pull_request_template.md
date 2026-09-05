@@ -34,20 +34,18 @@
 
 ## Testing
 
-<!-- How was this tested? Which test targets cover it? -->
-<!-- Note: ManifoldCoreTests and ManifoldUITests run in CI. Hardware-dependent tests (ManifoldBackendsTests, ManifoldE2ETests) run locally. -->
+<!-- State the commands, results, and tested revision. AGENTS.md's Running tests
+     and Pre-push checklist define the current gate; note any live verification
+     and consumer builds relevant to this change. -->
 
-## Sabotage evidence (regression-test PRs only)
+## Verification evidence
 
-<!-- For any PR adding a regression test: temporarily revert the fix / break the
-     code path under test, confirm the new test goes RED, then re-apply the fix
-     and confirm GREEN. Paste the diff and red-run log (or link to a comment
-     that contains them). Exempt: pure refactors, docs-only PRs, dep bumps. -->
-
-- [ ] N/A (not a regression-test PR)
-- [ ] Reverted the fix / broke the path under test
-- [ ] Confirmed the new test went RED (log pasted or linked below)
-- [ ] Re-applied the fix and confirmed GREEN
+<!-- Follow the existing Test conventions and Draft-PR review loop in AGENTS.md.
+     Useful evidence: the caller-visible invariant; a limit or failure scenario;
+     a demonstrated-red fixture or log and restored-green result; and the final
+     stored state or outstanding work when the operation reports completion.
+     For a gate change, include evidence that the check fires and blocks.
+     These prompts help explain the evidence; they do not replace those rules. -->
 
 ## Checklist
 

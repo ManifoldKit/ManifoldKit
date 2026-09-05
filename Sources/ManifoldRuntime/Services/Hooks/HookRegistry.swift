@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldInference
 
 /// Synchronous hook dispatch surface. Distinct from the existing
 /// `GenerationHook` observability protocol: handlers here may mutate
@@ -35,8 +36,10 @@ public actor HookRegistry {
     /// If any handler returns `block: true`, the chain short-circuits and
     /// that output is returned. `updatedInput` from earlier handlers is
     /// threaded into later handlers' inputs (so a sanitizer can chain). A
-    /// handler that exceeds `timeout` is cancelled and treated as
-    /// passthrough — a slow hook must never deadlock the turn loop.
+    /// handler that exceeds `timeout` receives a cancellation request and,
+    /// after it returns, is treated as passthrough. Cancellation is
+    /// cooperative, so a handler that ignores it keeps this invocation
+    /// pending until it returns.
     public func run(_ input: HookInput) async -> HookOutput {
         let chain = handlers[input.event] ?? []
         guard !chain.isEmpty else { return .passthrough }
@@ -85,7 +88,7 @@ public actor HookRegistry {
         // discarded if the timeout already won.
         let timeout = self.timeout
         let clock = self.clock
-        return await withTaskGroup(of: RaceWinner?.self) { group in
+        let winner: RaceWinner? = await withTaskGroup(of: RaceWinner?.self) { group in
             group.addTask { @Sendable in
                 let output = await handler(input)
                 return .handler(output)
@@ -99,18 +102,32 @@ public actor HookRegistry {
                     return nil
                 }
             }
-            // First non-nil result is the race winner. Cancel siblings.
+            // First non-nil result is the race winner. The task-group scope
+            // joins the direct handler after cancellation, so this never
+            // manufactures a hard deadline by abandoning handler work.
             for await winner in group {
                 guard let winner else { continue }
                 group.cancelAll()
-                switch winner {
-                case .handler(let output):
-                    return output
-                case .timeout:
-                    // Treat slow hook as no-op rather than failing the turn.
-                    return .passthrough
+                if case .timeout = winner {
+                    Log.inference.warning(
+                        "HookRegistry \(input.event.rawValue, privacy: .public) handler exceeded \(timeout, privacy: .public); requested cancellation and is awaiting the handler's return"
+                    )
                 }
+                return winner
             }
+            return nil
+        }
+
+        switch winner {
+        case .handler(let output):
+            return output
+        case .timeout:
+            Log.inference.info(
+                "HookRegistry \(input.event.rawValue, privacy: .public) handler returned after the cancellation request; continuing with passthrough"
+            )
+            // A handler result that arrives after the timeout is ignored.
+            return .passthrough
+        case nil:
             return .passthrough
         }
     }

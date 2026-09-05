@@ -180,9 +180,11 @@ public final class ConversationRuntime: Sendable {
     ///     the turn loop.
     ///   - generationHooks: Optional list of callbacks invoked after each
     ///     successful generation turn. Hooks are awaited in order with a
-    ///     per-hook timeout (default 30 s). A hung hook is cancelled and
-    ///     logged — it never blocks the next turn. Hooks do not fire on
-    ///     cancelled, errored, or empty-response turns.
+    ///     per-hook cancellation-request deadline (default 30 s). A hook that
+    ///     exceeds it receives cancellation and is logged, but its direct
+    ///     invocation still settles before the turn outcome; cancellation is
+    ///     cooperative. Hooks do not fire on cancelled, errored, or
+    ///     empty-response turns.
     ///   - compressionPolicy: Optional. When provided, the runtime calls
     ///     ``CompressionPolicy/shouldCompress(promptTokens:contextSize:contextUtilization:)``
     ///     after each successful generation turn. When it returns `true`,

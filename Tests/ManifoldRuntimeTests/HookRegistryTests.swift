@@ -1,5 +1,6 @@
 import XCTest
 @testable import ManifoldRuntime
+import ManifoldTestSupport
 
 /// Tests for the synchronous hook dispatch surface. Timeout test uses a
 /// `TestClock` fake so the suite never burns wall-clock time on a hung
@@ -38,6 +39,109 @@ final class HookRegistryTests: XCTestCase {
             // Yield once to honour cooperative cancellation but return
             // immediately. The injected timeout fires "now" deterministically.
             await Task.yield()
+        }
+    }
+
+    /// A clock released explicitly by the test after the handler has started.
+    /// It makes the deadline/cancellation ordering deterministic without
+    /// pretending that a virtual timeout forcibly ends arbitrary Swift code.
+    private struct ControlledClock: Clock {
+        struct Instant: InstantProtocol {
+            let rawValue: Int = 0
+            func advanced(by duration: Duration) -> Instant { self }
+            func duration(to other: Instant) -> Duration { .zero }
+            static func < (lhs: Instant, rhs: Instant) -> Bool { false }
+            static func == (lhs: Instant, rhs: Instant) -> Bool { true }
+        }
+
+        let gate: ClockGate
+        var now: Instant { Instant() }
+        var minimumResolution: Duration { .zero }
+
+        func sleep(until deadline: Instant, tolerance: Duration?) async throws {
+            try Task.checkCancellation()
+            await gate.awaitFire()
+            try Task.checkCancellation()
+        }
+    }
+
+    private actor ClockGate {
+        private var fired = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+
+        func awaitFire() async {
+            if fired { return }
+            await withCheckedContinuation { waiters.append($0) }
+        }
+
+        func fire() {
+            fired = true
+            let pending = waiters
+            waiters.removeAll()
+            for waiter in pending { waiter.resume() }
+        }
+    }
+
+    private actor ControlledHandler {
+        private var started = false
+        private var cancellationObserved = false
+        private var completed = false
+        private var releaseRequested = false
+        private var startWaiters: [CheckedContinuation<Void, Never>] = []
+        private var cancellationWaiters: [CheckedContinuation<Void, Never>] = []
+        private var completionWaiters: [CheckedContinuation<Void, Never>] = []
+        private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+        func run() async -> HookOutput {
+            started = true
+            let starters = startWaiters
+            startWaiters.removeAll()
+            for waiter in starters { waiter.resume() }
+
+            while !Task.isCancelled && !releaseRequested {
+                do {
+                    try await Task.sleep(for: .milliseconds(1))
+                } catch {
+                    // Check cancellation on the next loop iteration.
+                }
+            }
+            if Task.isCancelled {
+                cancellationObserved = true
+                let cancellationObservers = cancellationWaiters
+                cancellationWaiters.removeAll()
+                for waiter in cancellationObservers { waiter.resume() }
+            }
+
+            if !releaseRequested {
+                await withCheckedContinuation { releaseWaiters.append($0) }
+            }
+            completed = true
+            let completions = completionWaiters
+            completionWaiters.removeAll()
+            for waiter in completions { waiter.resume() }
+            return HookOutput(block: true, denyReason: "late block")
+        }
+
+        func awaitStarted() async {
+            if started { return }
+            await withCheckedContinuation { startWaiters.append($0) }
+        }
+
+        func awaitCancellationObserved() async {
+            if cancellationObserved { return }
+            await withCheckedContinuation { cancellationWaiters.append($0) }
+        }
+
+        func awaitCompletion() async {
+            if completed { return }
+            await withCheckedContinuation { completionWaiters.append($0) }
+        }
+
+        func release() {
+            releaseRequested = true
+            let pending = releaseWaiters
+            releaseWaiters.removeAll()
+            for waiter in pending { waiter.resume() }
         }
     }
 
@@ -175,5 +279,62 @@ final class HookRegistryTests: XCTestCase {
         // M3 returning the late handler result instead of the timeout's
         // passthrough (e.g. by removing the RaceWinner tagging) would let
         // a cancellation-swallowing handler still block the call.
+    }
+
+    func test_run_timeoutRequestsCancellation_ignoresLateBlock_afterHandlerReturns() async throws {
+        let clockGate = ClockGate()
+        let handler = ControlledHandler()
+        let registry = HookRegistry(
+            clock: ControlledClock(gate: clockGate),
+            timeout: .milliseconds(1)
+        )
+        let trace = Counter()
+
+        await registry.register(.preToolUse) { _ in
+            await handler.run()
+        }
+        await registry.register(.preToolUse) { _ in
+            await trace.append("following")
+            return .passthrough
+        }
+
+        let runTask = Task {
+            await registry.run(HookInput(event: .preToolUse, sessionID: UUID()))
+        }
+
+        do {
+            try await withTimeout(.seconds(5)) { await handler.awaitStarted() }
+            await clockGate.fire()
+            try await withTimeout(.seconds(5)) { await handler.awaitCancellationObserved() }
+            let followingBeforeRelease = await trace.snapshot()
+            XCTAssertTrue(followingBeforeRelease.isEmpty)
+            let resultSettledWhileHeld: Bool
+            do {
+                _ = try await withTimeout(.milliseconds(100)) { await runTask.value }
+                resultSettledWhileHeld = true
+            } catch {
+                // `run` is non-throwing; the test deadline proves it remains
+                // pending until the direct handler is released.
+                resultSettledWhileHeld = false
+            }
+            XCTAssertFalse(resultSettledWhileHeld, "The registry must join the direct handler after requesting cancellation")
+        } catch {
+            // The release latch covers both a handler waiting already and one
+            // that reaches its continuation after this bounded observation.
+            await handler.release()
+            await clockGate.fire()
+            throw error
+        }
+
+        // Deterministic cleanup for the deliberately noncooperative handler.
+        await handler.release()
+        let output = try await withTimeout(.seconds(5)) { await runTask.value }
+
+        XCTAssertEqual(output, .passthrough, "The late block result must be discarded after the deadline")
+        let traceValues = await trace.snapshot()
+        XCTAssertEqual(traceValues, ["following"], "The following handler must run after timeout-as-passthrough")
+        // Sabotage-evidence: return `.handler(output)` after the timed-out
+        // handler finally returns, rather than preserving the timeout winner;
+        // this assertion flips to the late block and fails.
     }
 }
