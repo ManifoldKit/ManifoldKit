@@ -9,7 +9,7 @@ This directory contains the test suites that gate every PR to ManifoldKit. CI ru
 | `ManifoldCoreTests` | Core models & utilities (no backends, no UI) | Trait-independent. |
 | `ManifoldInferenceTests` | `InferenceBackend` plumbing, queues, errors, streaming | Trait-independent. |
 | `ManifoldInferenceSwiftTestingTests` | Swift Testing tests for inference. | Runs in a separate process from XCTest (#681). |
-| `ManifoldRuntimeTests` | `ConversationRuntime`, session services, ports | Uses in-memory `MessageStore` conformers; no SwiftData. |
+| `ManifoldRuntimeTests` | `ConversationRuntime`, session services, ports | Unit and integration suites; integration suites use real in-memory SwiftData. |
 | `ManifoldPersistenceSwiftDataTests` | Real SwiftData stack, schemas, migrations | Integration tier: hits SwiftData. |
 | `ManifoldBackendsTests` | Per-backend behaviour, capability contracts | Cloud (Ollama / OpenAI / Claude / LM Studio), Foundation, and mock backend suites. The MLX and llama.cpp suites moved to the companion repos (manifold-mlx / manifold-llama) in v0.48. |
 | `ManifoldBackendsTests/Conformance/` | Per-backend conformance suites against the strengthened contract harness | New in T1.1. |

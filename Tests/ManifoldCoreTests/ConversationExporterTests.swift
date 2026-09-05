@@ -12,7 +12,8 @@ import ManifoldPersistenceTestSupport
 /// Classified integration where we drive the persistence harness, unit
 /// elsewhere.
 @MainActor
-final class ConversationExporterTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class ConversationExporterIntegrationTests: XCTestCase {
 
     private var stack: InMemoryPersistenceHarness.Stack!
     private var tempDir: URL!
@@ -21,7 +22,7 @@ final class ConversationExporterTests: XCTestCase {
         try await super.setUp()
         stack = try InMemoryPersistenceHarness.make()
         tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ConversationExporterTests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("ConversationExporterIntegrationTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }
 

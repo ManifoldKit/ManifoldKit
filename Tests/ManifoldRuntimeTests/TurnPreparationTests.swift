@@ -10,7 +10,8 @@ import ManifoldPersistenceTestSupport
 /// (#1957 Priority 3). Full prepareHistory/prepareGeneration paths remain
 /// covered by ConversationRuntimeTurnPreparationTests + characterization
 /// goldens; these pin the now-isolated seams.
-final class TurnPreparationTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class TurnPreparationIntegrationTests: XCTestCase {
 
     @MainActor
     func test_boundedHealedHistory_usesKeysetOrderAcrossEqualTimestampTenThousandBoundary() async throws {

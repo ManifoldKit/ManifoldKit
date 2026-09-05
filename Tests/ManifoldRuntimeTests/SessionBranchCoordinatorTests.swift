@@ -16,7 +16,8 @@ import ManifoldPersistenceTestSupport
 /// hand-rolled in-memory stores — this is exactly the schema-mismatch /
 /// round-trip surface those in-memory doubles cannot catch.
 @MainActor
-final class SessionBranchCoordinatorTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class SessionBranchCoordinatorIntegrationTests: XCTestCase {
 
     private var stack: InMemoryPersistenceHarness.Stack!
     private var coordinator: SessionBranchCoordinator!

@@ -13,7 +13,8 @@ import ManifoldPersistenceTestSupport
 /// Classified integration (not unit) per CLAUDE.md: the suite drives a real
 /// SwiftData `ModelContainer`. See TESTING.md §Classification audit.
 @MainActor
-final class SwiftDataPersistenceProviderTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class SwiftDataPersistenceProviderIntegrationTests: XCTestCase {
 
     private var stack: InMemoryPersistenceHarness.Stack!
 

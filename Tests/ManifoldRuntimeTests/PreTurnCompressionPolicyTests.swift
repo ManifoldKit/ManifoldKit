@@ -10,7 +10,8 @@ import ManifoldPersistenceTestSupport
 /// by ``ConversationRuntime`` before the user message is appended on `.send`
 /// turns.
 @MainActor
-final class PreTurnCompressionPolicyTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class PreTurnCompressionPolicyIntegrationTests: XCTestCase {
 
     private actor CompleteHistoryCapture {
         private(set) var history: [ChatMessage]?

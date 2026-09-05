@@ -22,7 +22,8 @@ import ManifoldPersistenceTestSupport
 /// - Summarisation does not fire when utilization is below the threshold.
 /// - An empty summary from the summariser leaves history unchanged.
 @MainActor
-final class SummarisationHookTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class SummarisationHookIntegrationTests: XCTestCase {
 
     /// Counts which production persistence operation a hook dispatches while
     /// forwarding all storage work to the real SwiftData provider.

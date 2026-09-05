@@ -8,10 +8,11 @@ import ManifoldTestSupport
 import ManifoldPersistenceSwiftData
 import ManifoldPersistenceTestSupport
 
-// MARK: - ManifoldMCPHostTests
+// MARK: - ManifoldMCPHostIntegrationTests
 
 @MainActor
-final class ManifoldMCPHostTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class ManifoldMCPHostIntegrationTests: XCTestCase {
 
     // MARK: Helpers
 

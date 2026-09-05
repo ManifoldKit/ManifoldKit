@@ -9,7 +9,8 @@ import ManifoldPersistenceTestSupport
 /// Tests for message pagination: loadMessages pages, loadOlderMessages prepend,
 /// hasOlderMessages heuristic, and guard against concurrent loads.
 @MainActor
-final class PaginationTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class PaginationIntegrationTests: XCTestCase {
 
     private var vm: ChatViewModel!
     private var mock: MockInferenceBackend!

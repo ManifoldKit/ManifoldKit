@@ -146,6 +146,11 @@ public struct MessageHistoryPage: Sendable {
 }
 
 /// Recoverable validation failures for message-history paging.
+///
+/// ## Vocabulary growth (1.x)
+///
+/// New cursor-validation failures may be added as paging evolves. Consumers
+/// switching over this enum should include a `default` branch for future cases.
 public enum MessageHistoryPagingError: Error, LocalizedError, Sendable, Equatable {
     case invalidLimit(Int)
     case cursorSessionMismatch

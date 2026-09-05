@@ -34,12 +34,13 @@ private final class LegacySwiftDataMessageStoreAdapter: MessageStore {
     }
 }
 
-// MARK: - InMemoryMessageStoreContractTests
+// MARK: - InMemoryMessageStoreContractIntegrationTests
 
 /// Adopts ``MessageStoreContract`` via the in-memory reference implementation.
 /// Passing here proves the mixin assertion helpers compile and execute correctly.
 @MainActor
-final class InMemoryMessageStoreContractTests: XCTestCase, MessageStoreContract {
+/// Integration coverage uses real SwiftData alongside the reference-store contract cases.
+final class InMemoryMessageStoreContractIntegrationTests: XCTestCase, MessageStoreContract {
 
     func makeMessageStore() -> any MessageStore {
         InMemoryMessageStore()

@@ -9,7 +9,8 @@ import ManifoldPersistenceTestSupport
 /// Coverage for ``CompressionPolicy`` — history compression triggered by
 /// ``ConversationRuntime`` after successful generation turns.
 @MainActor
-final class CompressionPolicyTests: XCTestCase {
+/// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
+final class CompressionPolicyIntegrationTests: XCTestCase {
 
     private actor CompleteHistoryCapture {
         private(set) var history: [ChatMessage]?
