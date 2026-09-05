@@ -100,9 +100,6 @@ package final class SessionListService: Sendable {
     /// Default cap on message search results per query.
     package static let messageSearchLimit: Int = 100
 
-    /// Upper bound on sessions resolved when surfacing message-search hits.
-    package static let messageSearchSessionResolveCap: Int = 10_000
-
     /// Async stream of state transitions. The adapter
     /// (`SessionManagerViewModel`) installs a synchronous sink via
     /// ``setEventSink(_:)`` so state changes land in observable state in the
@@ -133,6 +130,11 @@ package final class SessionListService: Sendable {
     // splits the message-search use case off.
     private let persistence: any SessionStore & MessageStore
     private let diagnostics: DiagnosticsService?
+
+    @MainActor private var messageSearchGeneration = 0
+    /// Test seam called after the storage query completes but before search
+    /// results are published, so integration tests can exercise stale results.
+    @MainActor package var messageSearchObserver: ((String) async throws -> Void)?
 
     private let sinkBox = EventSinkBox()
 
@@ -307,6 +309,7 @@ package final class SessionListService: Sendable {
     /// not need to re-fetch persistence for a client-side filter.
     @MainActor
     package func runTitleSearch(_ query: String, against sessions: [ChatSession]) {
+        invalidateMessageSearch()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             emit(.searchResultsChanged(.empty))
@@ -326,6 +329,8 @@ package final class SessionListService: Sendable {
     /// `.searchResultsChanged`.
     @MainActor
     package func runMessageSearch(_ query: String) async {
+        invalidateMessageSearch()
+        let generation = messageSearchGeneration
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             emit(.searchResultsChanged(.empty))
@@ -333,6 +338,13 @@ package final class SessionListService: Sendable {
         }
         do {
             let hits = try await persistence.searchMessages(query: trimmed, limit: Self.messageSearchLimit)
+            try Task.checkCancellation()
+            guard generation == messageSearchGeneration else { return }
+            if let messageSearchObserver {
+                try await messageSearchObserver(trimmed)
+            }
+            try Task.checkCancellation()
+            guard generation == messageSearchGeneration else { return }
             var grouped: [UUID: [MessageSearchHit]] = [:]
             grouped.reserveCapacity(hits.count)
             // Preserve first occurrence order so recency-first ordering of
@@ -344,18 +356,28 @@ package final class SessionListService: Sendable {
                 }
                 grouped[hit.sessionID, default: []].append(hit)
             }
-            let allSessions = try await persistence.fetchSessions(
-                offset: 0,
-                limit: Self.messageSearchSessionResolveCap
-            )
-            let byID = Dictionary(uniqueKeysWithValues: allSessions.map { ($0.id, $0) })
-            let matchSessions = orderedSessionIDs.compactMap { byID[$0] }
+            var matchSessions: [ChatSession] = []
+            matchSessions.reserveCapacity(orderedSessionIDs.count)
+            for sessionID in orderedSessionIDs {
+                try Task.checkCancellation()
+                guard generation == messageSearchGeneration else { return }
+                if let session = try await persistence.fetchSession(id: sessionID) {
+                    try Task.checkCancellation()
+                    guard generation == messageSearchGeneration else { return }
+                    matchSessions.append(session)
+                }
+            }
+            try Task.checkCancellation()
+            guard generation == messageSearchGeneration else { return }
             emit(.searchResultsChanged(SearchResults(
                 titleMatches: [],
                 messageHitsBySession: grouped,
                 messageMatchSessions: matchSessions
             )))
+        } catch is CancellationError {
+            return
         } catch {
+            guard !Task.isCancelled, generation == messageSearchGeneration else { return }
             Log.persistence.error("Message search failed: \(error)")
             emit(.searchResultsChanged(.empty))
             emit(.persistenceFailure(error))
@@ -365,7 +387,13 @@ package final class SessionListService: Sendable {
     /// Clears search state and emits `.searchResultsChanged(.empty)`.
     @MainActor
     package func clearSearch() {
+        invalidateMessageSearch()
         emit(.searchResultsChanged(.empty))
+    }
+
+    @MainActor
+    package func invalidateMessageSearch() {
+        messageSearchGeneration &+= 1
     }
 
     // MARK: - Title generation

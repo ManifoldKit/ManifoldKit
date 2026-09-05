@@ -41,6 +41,8 @@ public struct SessionListView: View {
             if sessionManager.sessions.isEmpty {
                 await sessionManager.loadSessions()
             }
+            guard !Task.isCancelled else { return }
+            resumeRetainedSearchIfNeeded()
         }
         .searchable(text: $searchText, prompt: "Search chats")
         .searchScopes($searchScope) {
@@ -53,8 +55,17 @@ public struct SessionListView: View {
         .onChange(of: searchScope) { _, newScope in
             // Re-run immediately on scope change so the user sees a result swap
             // without the 200ms typing debounce — they didn't type anything.
+            debounceTask?.cancel()
+            sessionManager.invalidateMessageSearch()
             sessionManager.searchScope = newScope
-            runSearch(query: searchText, scope: newScope)
+            let query = searchText
+            debounceTask = Task { @MainActor [sessionManager] in
+                await Self.runSearch(query: query, scope: newScope, on: sessionManager)
+            }
+        }
+        .onDisappear {
+            debounceTask?.cancel()
+            sessionManager.invalidateMessageSearch()
         }
         .alert("Rename Chat", isPresented: isRenamePresented) {
             TextField("Chat title", text: $renameText)
@@ -319,6 +330,7 @@ public struct SessionListView: View {
 
     private func scheduleSearch(query: String, scope: SessionSearchScope) {
         debounceTask?.cancel()
+        sessionManager.invalidateMessageSearch()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         // Mirror the live state into the VM so observers (and tests) see the
         // current query immediately, even before the debounce fires.
@@ -328,18 +340,35 @@ public struct SessionListView: View {
             return
         }
         debounceTask = Task { @MainActor [sessionManager] in
-            // CancellationError is expected on task cancel — Task.isCancelled checked below.
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 200_000_000)
+            } catch is CancellationError {
+                return
+            } catch {
+                Log.persistence.error("SessionListView: search debounce failed: \(error)")
+                return
+            }
             if Task.isCancelled { return }
-            runSearch(query: query, scope: scope, on: sessionManager)
+            await Self.runSearch(query: query, scope: scope, on: sessionManager)
         }
     }
 
-    private func runSearch(query: String, scope: SessionSearchScope) {
-        runSearch(query: query, scope: scope, on: sessionManager)
+    /// Restarts a retained query after the view returns to the hierarchy. The
+    /// work remains tracked so disappearance can cancel the provider scan.
+    private func resumeRetainedSearchIfNeeded() {
+        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        debounceTask?.cancel()
+        sessionManager.invalidateMessageSearch()
+        let query = searchText
+        let scope = searchScope
+        debounceTask = Task { @MainActor [sessionManager] in
+            await Self.runSearch(query: query, scope: scope, on: sessionManager)
+        }
     }
 
-    private func runSearch(query: String, scope: SessionSearchScope, on vm: SessionManagerViewModel) {
+    static func runSearch(query: String, scope: SessionSearchScope, on vm: SessionManagerViewModel) async {
+        guard !Task.isCancelled else { return }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         vm.searchQuery = query
         vm.searchScope = scope
@@ -351,7 +380,7 @@ public struct SessionListView: View {
         case .titles:
             vm.runTitleSearch(query)
         case .messages:
-            Task { await vm.runMessageSearch(query) }
+            await vm.runMessageSearch(query)
         }
     }
 }

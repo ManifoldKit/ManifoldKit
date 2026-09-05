@@ -30,9 +30,6 @@ public final class SessionManagerViewModel {
     /// Default cap on message search results per query.
     public static let messageSearchLimit: Int = SessionListService.messageSearchLimit
 
-    /// Upper bound on sessions resolved when surfacing message-search hits.
-    public static let messageSearchSessionResolveCap: Int = SessionListService.messageSearchSessionResolveCap
-
     // MARK: - Published state
 
     public private(set) var sessions: [ChatSession] = []
@@ -457,6 +454,10 @@ public final class SessionManagerViewModel {
             return
         }
         await service.runMessageSearch(query)
+    }
+
+    func invalidateMessageSearch() {
+        service?.invalidateMessageSearch()
     }
 
     /// Clears search state and falls back to the unfiltered session list.
