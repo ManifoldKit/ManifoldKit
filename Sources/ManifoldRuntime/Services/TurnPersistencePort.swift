@@ -51,7 +51,7 @@ package protocol TurnPersistencePort: Sendable {
 }
 
 extension TurnPersistencePort {
-    func fetchRecentHealedMessages(sessionID: UUID, limit: Int) async throws -> [ChatMessage] {
+    package func fetchRecentHealedMessages(sessionID: UUID, limit: Int) async throws -> [ChatMessage] {
         guard limit > 0 else { return [] }
         let history = try await fetchHealedMessages(sessionID: sessionID)
         return Array(history.suffix(limit))

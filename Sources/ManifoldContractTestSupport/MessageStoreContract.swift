@@ -130,9 +130,9 @@ extension MessageStoreContract where Self: XCTestCase {
     ) async throws {
         let sessionID = UUID()
         let timestamp = Date(timeIntervalSinceReferenceDate: 0)
-        let records = (0..<5).map { index in
+        let records = try (0..<5).map { index in
             ChatMessage(
-                id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!,
+                id: try XCTUnwrap(UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))),
                 role: .user,
                 content: "equal-\(index)",
                 timestamp: timestamp,

@@ -320,6 +320,7 @@
         "ManifoldInference",
         "ManifoldMCP",
         "ManifoldMCPHost",
+        "ManifoldPersistenceTestSupport",
         "ManifoldRuntime",
         "ManifoldTestSupport"
       ]
