@@ -201,10 +201,7 @@ await sessionVM.configureAndLoad(bootstrap: bootstrap)
 if let restored = await sessionVM.selectInitialSession() {
     sessionVM.activeSession = restored
     await chatVM.switchToSession(restored)
-} else {
-    // Propagate failure to the launch error surface; do not show an inert,
-    // sessionless chat if persistence cannot create the initial row.
-    let fresh = try await sessionVM.createSession()
+} else if let fresh = try? await sessionVM.createSession() {
     sessionVM.activeSession = fresh
     await chatVM.switchToSession(fresh)
 }
@@ -469,16 +466,9 @@ struct MyChatApp: App {
             if let restored = await sessionVM.selectInitialSession() {
                 sessionVM.activeSession = restored
                 await chatVM.switchToSession(restored)
-            } else {
-                do {
-                    let fresh = try await sessionVM.createSession()
-                    sessionVM.activeSession = fresh
-                    await chatVM.switchToSession(fresh)
-                } catch {
-                    // Surface session creation failure through the launch view.
-                    self.startupError = error
-                    return
-                }
+            } else if let fresh = try? await sessionVM.createSession() {
+                sessionVM.activeSession = fresh
+                await chatVM.switchToSession(fresh)
             }
 
             // 2) Endpoint → model load (manual path, every cold start).

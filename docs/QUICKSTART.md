@@ -248,7 +248,6 @@ import ManifoldInference
 @main
 struct MyChatApp: App {
     @State private var result: QuickStartResult?
-    @State private var startupError: ManifoldKitError?
     @State private var showModelManagement = false
 
     var body: some Scene {
@@ -319,21 +318,9 @@ struct MyChatApp: App {
                         ModelManagementSheet(modelRegistry: result.viewModel.modelRegistry)
                             .environment(managementVM)
                     }
-            } else if let startupError {
-                ContentUnavailableView(
-                    "Failed to start",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(startupError.errorDescription ?? "Unknown error")
-                )
             } else {
                 ProgressView().task {
-                    do {
-                        result = try await ManifoldKit.quickStart()
-                    } catch let error as ManifoldKitError {
-                        startupError = error
-                    } catch {
-                        startupError = .from(error)
-                    }
+                    result = try? await ManifoldKit.quickStart()
                 }
             }
         }

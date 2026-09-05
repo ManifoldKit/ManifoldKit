@@ -252,16 +252,9 @@ struct MyChatApp: App {
             if let restored = await sessions.selectInitialSession() {
                 sessions.activeSession = restored
                 await vm.switchToSession(restored)
-            } else {
-                do {
-                    let fresh = try await sessions.createSession()
-                    sessions.activeSession = fresh
-                    await vm.switchToSession(fresh)
-                } catch {
-                    // Do not leave a recipe user with an inert, sessionless chat.
-                    self.startupError = error
-                    return
-                }
+            } else if let fresh = try? await sessions.createSession() {
+                sessions.activeSession = fresh
+                await vm.switchToSession(fresh)
             }
 
             // Sessions restore above; a *model* does not. Manual bootstrap does

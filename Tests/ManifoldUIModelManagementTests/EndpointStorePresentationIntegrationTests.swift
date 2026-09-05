@@ -15,10 +15,7 @@ import AppKit
 /// EnvironmentValues key does not reliably cross that boundary by SwiftUI
 /// inheritance alone.
 @MainActor
-/// Kept last alphabetically because this is the target's only real SwiftUI
-/// sheet presentation; AppKit releases its presentation host at process
-/// teardown, after the headless model-management render tests have run.
-final class ZZZEndpointStorePresentationIntegrationTests: XCTestCase {
+final class EndpointStorePresentationIntegrationTests: XCTestCase {
 
     #if canImport(AppKit)
     func test_chatViewDirectAPIConfigurationSheet_receivesUsableBootstrapEndpointStore() async throws {
@@ -84,26 +81,50 @@ final class ZZZEndpointStorePresentationIntegrationTests: XCTestCase {
         XCTAssertTrue(source.contains("chatAPIConfigurationContent(\n                apiConfigurationBuilder,\n                endpointStore: endpointStore"),
             "ChatView must prepare its host API configuration closure with endpointStore")
 
+        XCTAssertEqual(Self.missingForwardingRoutes(in: source), [])
+    }
+
+    func test_sabotage_forwardingTripwireRejectsOriginalBuilderOnEveryRoute() throws {
+        let source = try String(contentsOf: chatViewSourceURL, encoding: .utf8)
+        let sabotaged = source.replacingOccurrences(
+            of: "apiConfiguration: apiConfiguration\n",
+            with: "apiConfiguration: apiConfigurationBuilder\n"
+        )
+
+        XCTAssertEqual(
+            Set(Self.missingForwardingRoutes(in: sabotaged)),
+            Set([
+                "toolbar → Generation Settings",
+                "shell presentations",
+                "direct sheet / regular-width recovery popover",
+                "error-recovery banner",
+            ])
+        )
+    }
+
+    private static func missingForwardingRoutes(in source: String) -> [String] {
         let forwardingBranches = [
             (".toolbar {", ".chatShellPresentations(", "toolbar → Generation Settings"),
             (".chatShellPresentations(", ".chatAPIConfigurationPresentation(", "shell presentations"),
             (".chatAPIConfigurationPresentation(", "// Model-switcher presentation", "direct sheet / regular-width recovery popover"),
             ("ChatErrorRecoveryBanner(", "if viewModel.isLoading", "error-recovery banner"),
         ]
+        var missingRoutes: [String] = []
         for (start, end, route) in forwardingBranches {
             guard let branchRange = source.range(of: start),
                   let endRange = source.range(of: end, range: branchRange.upperBound..<source.endIndex) else {
-                return XCTFail("ChatView no longer contains the \(route) branch")
+                missingRoutes.append(route)
+                continue
             }
             let branchSource = source[branchRange.lowerBound..<endRange.lowerBound]
-            XCTAssertTrue(branchSource.contains("apiConfiguration: apiConfiguration"),
-                "ChatView's \(route) branch must receive the prepared closure")
+            let forwardsPreparedClosure = branchSource.split(whereSeparator: \.isNewline).contains {
+                String($0).trimmingCharacters(in: .whitespaces) == "apiConfiguration: apiConfiguration"
+            }
+            if !forwardsPreparedClosure {
+                missingRoutes.append(route)
+            }
         }
-
-        // Sabotage-evidence: remove any `apiConfiguration: apiConfiguration`
-        // forwarding call above, or pass `apiConfigurationBuilder` directly,
-        // and this route-specific structural tripwire fails. The direct-sheet
-        // integration test separately proves the closure's live store value.
+        return missingRoutes
     }
 
     private func waitUntil(
