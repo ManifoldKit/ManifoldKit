@@ -182,11 +182,19 @@ final class SwiftDataPersistenceProviderSearchIntegrationTests: XCTestCase {
     }
 
     func test_searchMessages_cancellationStopsBeforeNextCandidateFetch() async throws {
+        try await assertCancellationAfterFirstPage(candidateCount: 200)
+    }
+
+    func test_searchMessages_cancellationOnFinalPageDoesNotReturnResults() async throws {
+        try await assertCancellationAfterFirstPage(candidateCount: 1)
+    }
+
+    private func assertCancellationAfterFirstPage(candidateCount: Int) async throws {
         let session = try await makeSession(title: "Search cancellation")
         let gate = CandidatePageGate()
         provider.searchCandidatePageObserver = { page in await gate.observe(page) }
         let base = Date(timeIntervalSince1970: 5_000)
-        let records = (0..<200).map { index in
+        let records = (0..<candidateCount).map { index in
             message(
                 content: "dragon distractor \(index)",
                 timestamp: base.addingTimeInterval(Double(index)),
@@ -206,7 +214,7 @@ final class SwiftDataPersistenceProviderSearchIntegrationTests: XCTestCase {
 
             do {
                 _ = try await task.value
-                XCTFail("Cancelled searches must throw before fetching a second candidate page")
+                XCTFail("Cancelled searches must throw before returning or fetching another candidate page")
             } catch is CancellationError {
                 // Expected: the provider checks cancellation between pages.
             }

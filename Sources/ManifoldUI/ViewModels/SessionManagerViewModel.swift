@@ -456,6 +456,10 @@ public final class SessionManagerViewModel {
         await service.runMessageSearch(query)
     }
 
+    func invalidateMessageSearch() {
+        service?.invalidateMessageSearch()
+    }
+
     /// Clears search state and falls back to the unfiltered session list.
     ///
     /// Resets ``searchScope`` to `.titles` so the scope tab snaps back when

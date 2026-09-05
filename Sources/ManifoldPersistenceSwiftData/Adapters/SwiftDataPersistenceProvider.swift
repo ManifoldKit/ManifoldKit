@@ -419,6 +419,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
             if let observer = searchCandidatePageObserver {
                 await observer(fetchedPageCount)
             }
+            try Task.checkCancellation()
             guard !finished else { break }
 
             // A `ModelContext.fetch` is synchronous on this main-actor

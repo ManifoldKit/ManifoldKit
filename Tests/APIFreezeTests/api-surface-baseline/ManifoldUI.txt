@@ -679,7 +679,6 @@ SessionManagerViewModel.loadSessions() Func
 SessionManagerViewModel.messageHitsBySession Var
 SessionManagerViewModel.messageMatchSessions Var
 SessionManagerViewModel.messageSearchLimit Var
-SessionManagerViewModel.messageSearchSessionResolveCap Var
 SessionManagerViewModel.pendingSearchScrollMessageID Var
 SessionManagerViewModel.pinSession(_:) Func
 SessionManagerViewModel.pinnedSessions Var
