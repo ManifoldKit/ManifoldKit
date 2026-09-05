@@ -69,6 +69,29 @@ final class PaginationTests: XCTestCase {
         return records
     }
 
+    private func waitForSnapshotGate(
+        _ gate: MessageHistoryPageGate,
+        olderTask: Task<UUID?, Never>
+    ) async throws {
+        do {
+            try await withTimeout(.seconds(1)) {
+                await gate.waitUntilEntered()
+            }
+        } catch {
+            await gate.release()
+            _ = try await withTimeout(.seconds(1)) { await olderTask.value }
+            throw error
+        }
+    }
+
+    private func releaseAndJoin(
+        _ gate: MessageHistoryPageGate,
+        olderTask: Task<UUID?, Never>
+    ) async throws {
+        await gate.release()
+        _ = try await withTimeout(.seconds(1)) { await olderTask.value }
+    }
+
     // MARK: - loadMessages
 
     func test_loadMessages_loadsRecentPage() async {
@@ -83,14 +106,14 @@ final class PaginationTests: XCTestCase {
         XCTAssertFalse(vm.hasOlderMessages, "Fewer than pageSize messages means no older messages")
     }
 
-    func test_loadMessages_setsHasOlderMessages_whenFullPage() async {
+    func test_loadMessages_doesNotGuessOlderMessages_whenExactlyOnePageExists() async {
         let session = await makeSession()
         await insertMessages(count: ChatViewModel.messagePageSize, sessionID: session.id)
 
         await vm.loadMessages()
 
         XCTAssertEqual(vm.messages.count, ChatViewModel.messagePageSize)
-        XCTAssertTrue(vm.hasOlderMessages, "Full page should indicate older messages may exist")
+        XCTAssertFalse(vm.hasOlderMessages, "The page continuation is definitive; a full page alone is not evidence of older rows")
     }
 
     func test_loadMessages_setsHasOlderMessages_whenMoreThanPageSize() async {
@@ -158,11 +181,12 @@ final class PaginationTests: XCTestCase {
 
     func test_loadOlderMessages_setsHasOlderToFalse_whenFetchReturnsEmpty() async {
         let session = await makeSession()
-        // Insert exactly messagePageSize -- heuristic says there may be more.
+        // Insert exactly messagePageSize. A continuation-aware page reports
+        // conclusively that no older record exists.
         await insertMessages(count: ChatViewModel.messagePageSize, sessionID: session.id)
 
         await vm.loadMessages()
-        XCTAssertTrue(vm.hasOlderMessages)
+        XCTAssertFalse(vm.hasOlderMessages)
 
         await vm.loadOlderMessages()
 
@@ -213,27 +237,130 @@ final class PaginationTests: XCTestCase {
 
     // MARK: - Mock call tracking
 
-    func test_loadMessages_callsFetchRecentMessages() async {
+    func test_loadMessages_callsHistoryPageRequirement() async {
         let session = await makeSession()
         await insertMessages(count: 5, sessionID: session.id)
 
         // Reset count after switchToSession's loadMessages call.
-        persistence.fetchRecentMessagesCallCount = 0
+        persistence.fetchMessageHistoryPageCallCount = 0
 
         await vm.loadMessages()
 
-        XCTAssertEqual(persistence.fetchRecentMessagesCallCount, 1)
+        XCTAssertEqual(persistence.fetchMessageHistoryPageCallCount, 1)
     }
 
-    func test_loadOlderMessages_callsFetchMessagesBefore() async {
+    func test_loadOlderMessages_callsHistoryPageRequirement() async {
         let session = await makeSession()
         await insertMessages(count: ChatViewModel.messagePageSize + 10, sessionID: session.id)
 
         await vm.loadMessages()
-        persistence.fetchMessagesBeforeCallCount = 0
+        persistence.fetchMessageHistoryPageCallCount = 0
 
         await vm.loadOlderMessages()
 
-        XCTAssertEqual(persistence.fetchMessagesBeforeCallCount, 1)
+        XCTAssertEqual(persistence.fetchMessageHistoryPageCallCount, 1)
+    }
+
+    func test_loadOlderMessages_keepsEveryEqualTimestampRecordAcrossBoundary() async {
+        let session = await makeSession()
+        let timestamp = Date(timeIntervalSince1970: 1_000)
+        let records = (0..<(ChatViewModel.messagePageSize + 8)).map { index in
+            ManifoldInference.ChatMessage(
+                id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!,
+                role: .user,
+                content: "equal-\(index)",
+                timestamp: timestamp,
+                sessionID: session.id
+            )
+        }
+        for record in records {
+            try! await persistence.insertMessage(record)
+        }
+
+        await vm.loadMessages()
+        let anchor = await vm.loadOlderMessages()
+
+        XCTAssertEqual(vm.messages.map(\.id), records.map(\.id))
+        XCTAssertEqual(anchor, records[8].id)
+        XCTAssertFalse(vm.hasOlderMessages)
+    }
+
+    func test_staleOlderPage_doesNotInstallAfterReloadAndSessionABA() async throws {
+        let sessionA = await makeSession()
+        await insertMessages(count: ChatViewModel.messagePageSize + 10, sessionID: sessionA.id)
+        await vm.loadMessages()
+        let gate = MessageHistoryPageGate()
+        persistence.historyPageGate = gate
+
+        let olderTask = Task { @MainActor in
+            await self.vm.loadOlderMessages()
+        }
+        try await waitForSnapshotGate(gate, olderTask: olderTask)
+
+        let sessionB = ManifoldInference.ChatSession(title: "B")
+        try! await persistence.insertSession(sessionB)
+        await vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionA)
+        try await releaseAndJoin(gate, olderTask: olderTask)
+
+        XCTAssertEqual(vm.activeSession?.id, sessionA.id)
+        XCTAssertEqual(vm.messages.count, ChatViewModel.messagePageSize)
+        XCTAssertEqual(vm.messages.first?.content, "Message 10")
+        XCTAssertFalse(vm.isLoadingOlderMessages)
+    }
+
+    func test_staleOlderPage_doesNotInstallAfterDirectActiveSessionABA() async throws {
+        let sessionA = await makeSession()
+        await insertMessages(count: ChatViewModel.messagePageSize + 10, sessionID: sessionA.id)
+        await vm.loadMessages()
+        let gate = MessageHistoryPageGate()
+        persistence.historyPageGate = gate
+        let olderTask = Task { @MainActor in await self.vm.loadOlderMessages() }
+        try await waitForSnapshotGate(gate, olderTask: olderTask)
+
+        let sessionB = ManifoldInference.ChatSession(title: "B")
+        try! await persistence.insertSession(sessionB)
+        vm.activeSession = sessionB
+        vm.activeSession = sessionA
+        try await releaseAndJoin(gate, olderTask: olderTask)
+
+        XCTAssertEqual(vm.activeSession?.id, sessionA.id)
+        XCTAssertEqual(vm.messages.count, ChatViewModel.messagePageSize)
+        XCTAssertEqual(vm.messages.first?.content, "Message 10")
+        XCTAssertFalse(vm.isLoadingOlderMessages)
+    }
+
+    func test_staleOlderPage_doesNotRepopulateClearedSession() async throws {
+        let session = await makeSession()
+        await insertMessages(count: ChatViewModel.messagePageSize + 10, sessionID: session.id)
+        await vm.loadMessages()
+        let gate = MessageHistoryPageGate()
+        persistence.historyPageGate = gate
+        let olderTask = Task { @MainActor in await self.vm.loadOlderMessages() }
+        try await waitForSnapshotGate(gate, olderTask: olderTask)
+
+        await vm.clearChat()
+        try await releaseAndJoin(gate, olderTask: olderTask)
+
+        XCTAssertTrue(vm.messages.isEmpty)
+        XCTAssertFalse(vm.hasOlderMessages)
+        XCTAssertFalse(vm.isLoadingOlderMessages)
+    }
+
+    func test_staleOlderPage_doesNotInstallAfterExplicitReload() async throws {
+        let session = await makeSession()
+        await insertMessages(count: ChatViewModel.messagePageSize + 10, sessionID: session.id)
+        await vm.loadMessages()
+        let gate = MessageHistoryPageGate()
+        persistence.historyPageGate = gate
+        let olderTask = Task { @MainActor in await self.vm.loadOlderMessages() }
+        try await waitForSnapshotGate(gate, olderTask: olderTask)
+
+        await vm.loadMessages()
+        try await releaseAndJoin(gate, olderTask: olderTask)
+
+        XCTAssertEqual(vm.messages.count, ChatViewModel.messagePageSize)
+        XCTAssertEqual(vm.messages.first?.content, "Message 10")
+        XCTAssertFalse(vm.isLoadingOlderMessages)
     }
 }

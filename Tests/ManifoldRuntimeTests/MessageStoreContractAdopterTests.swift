@@ -3,6 +3,36 @@ import ManifoldRuntime
 import ManifoldInference
 import ManifoldTestSupport
 import ManifoldContractTestSupport
+import ManifoldPersistenceTestSupport
+
+@MainActor
+private final class LegacySwiftDataMessageStoreAdapter: MessageStore {
+    private let wrapped: any MessageStore
+
+    init(wrapping wrapped: any MessageStore) {
+        self.wrapped = wrapped
+    }
+
+    func insertMessage(_ message: ChatMessage) async throws {
+        try await wrapped.insertMessage(message)
+    }
+
+    func updateMessage(_ message: ChatMessage) async throws {
+        try await wrapped.updateMessage(message)
+    }
+
+    func deleteMessage(_ messageID: UUID) async throws {
+        try await wrapped.deleteMessage(messageID)
+    }
+
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
+        try await wrapped.fetchMessages(for: sessionID)
+    }
+
+    func deleteMessages(for sessionID: UUID) async throws {
+        try await wrapped.deleteMessages(for: sessionID)
+    }
+}
 
 // MARK: - InMemoryMessageStoreContractTests
 
@@ -29,6 +59,12 @@ final class InMemoryMessageStoreContractTests: XCTestCase, MessageStoreContract 
 
     func test_fetch_ordersByTimestampAscending() async throws {
         try await assertMessageStore_fetchOrdersByTimestampAscending()
+    }
+
+    func test_historyPage_defaultKeepsEqualTimestampsForLegacySwiftDataAdapter() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let legacyStore: any MessageStore = LegacySwiftDataMessageStoreAdapter(wrapping: stack.provider)
+        try await assertMessageStore_historyPageDefaultKeepsEqualTimestamps(store: legacyStore)
     }
 
     func test_update_persistsChanges() async throws {

@@ -401,11 +401,9 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         query.split(whereSeparator: \.isWhitespace).map(String.init)
     }
 
-    /// Absolute safety ceiling for "fetch the whole session" reads
-    /// (``fetchMessages(for:)``). High enough that no realistic conversation is
-    /// truncated, low enough that a pathological session can't load unbounded
-    /// rows into RAM.
-    static let maxSessionMessageFetch = 10_000
+    /// Database work stays bounded while ``fetchMessages(for:)`` assembles its
+    /// complete contractual result one keyset page at a time.
+    private static let messageHistoryPageSize = 500
 
     /// Single builder for every `ChatMessage` *read* fetch. The `limit`
     /// parameter is required, so no read path can construct a message fetch that
@@ -450,22 +448,95 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     }
 
     public func fetchMessages(for sessionID: UUID) async throws -> [ManifoldInference.ChatMessage] {
-        // "Whole session" read. Bounded to the newest `maxSessionMessageFetch`
-        // rows so a pathological session can't load unbounded rows into RAM;
-        // fetched newest-first under the cap then reversed to ascending so that
-        // when the ceiling *is* hit we keep recent context (silently dropping the
-        // oldest beats dropping the newest for chat) — and we log, because a
-        // silently truncated session would corrupt prompt assembly and export.
+        var pages: [[ManifoldInference.ChatMessage]] = []
+        var cursor: MessageHistoryCursor?
+        repeat {
+            try Task.checkCancellation()
+            let page = try await fetchMessageHistoryPage(
+                for: sessionID,
+                cursor: cursor,
+                limit: Self.messageHistoryPageSize
+            )
+            pages.append(page.messages)
+            cursor = page.nextCursor
+        } while cursor != nil
+        return pages.reversed().flatMap(\.self)
+    }
+
+    public func fetchMessageHistoryPage(
+        for sessionID: UUID,
+        cursor: MessageHistoryCursor?,
+        limit: Int
+    ) async throws -> MessageHistoryPage {
+        guard limit > 0, limit < Int.max else {
+            throw MessageHistoryPagingError.invalidLimit(limit)
+        }
+        if let cursor, cursor.sessionID != sessionID {
+            throw MessageHistoryPagingError.cursorSessionMismatch
+        }
+
+        let highWaterTimestamp: Date
+        let highWaterID: UUID
+        if let cursor {
+            highWaterTimestamp = cursor.highWaterTimestamp
+            highWaterID = cursor.highWaterID
+        } else {
+            let highWaterDescriptor = boundedMessageFetch(
+                predicate: #Predicate { $0.sessionID == sessionID },
+                sortBy: [
+                    SortDescriptor(\.timestamp, order: .reverse),
+                    SortDescriptor(\.id, order: .reverse)
+                ],
+                limit: 1
+            )
+            guard let highWater = try modelContext.fetch(highWaterDescriptor).first else {
+                return MessageHistoryPage(messages: [], nextCursor: nil)
+            }
+            highWaterTimestamp = highWater.timestamp
+            highWaterID = highWater.id
+        }
+
+        let beforeTimestamp = cursor?.beforeTimestamp
+        let beforeID = cursor?.beforeID
+        let predicate: Predicate<PersistedChatMessage>
+        if let beforeTimestamp, let beforeID {
+            predicate = #Predicate {
+                $0.sessionID == sessionID &&
+                    ($0.timestamp < highWaterTimestamp ||
+                        ($0.timestamp == highWaterTimestamp && $0.id <= highWaterID)) &&
+                    ($0.timestamp < beforeTimestamp ||
+                        ($0.timestamp == beforeTimestamp && $0.id < beforeID))
+            }
+        } else {
+            predicate = #Predicate {
+                $0.sessionID == sessionID &&
+                    ($0.timestamp < highWaterTimestamp ||
+                        ($0.timestamp == highWaterTimestamp && $0.id <= highWaterID))
+            }
+        }
         let descriptor = boundedMessageFetch(
-            predicate: #Predicate { $0.sessionID == sessionID },
-            sortBy: [SortDescriptor(\.timestamp, order: .reverse)],
-            limit: Self.maxSessionMessageFetch
+            predicate: predicate,
+            sortBy: [
+                SortDescriptor(\.timestamp, order: .reverse),
+                SortDescriptor(\.id, order: .reverse)
+            ],
+            limit: limit + 1
         )
         let results = try modelContext.fetch(descriptor)
-        if results.count == Self.maxSessionMessageFetch {
-            Log.persistence.warning("fetchMessages(for:) hit the \(Self.maxSessionMessageFetch, privacy: .public)-row ceiling for a session; older messages were not loaded. Paginate via fetchMessages(for:before:limit:).")
-        }
-        return results.reversed().map { $0.toRecord() }
+        let page = Array(results.prefix(limit))
+        let nextCursor = results.count > limit ? page.last.map {
+            MessageHistoryCursor(
+                sessionID: sessionID,
+                highWaterTimestamp: highWaterTimestamp,
+                highWaterID: highWaterID,
+                beforeTimestamp: $0.timestamp,
+                beforeID: $0.id
+            )
+        } : nil
+        return MessageHistoryPage(
+            messages: page.reversed().map { $0.toRecord() },
+            nextCursor: nextCursor
+        )
     }
 
     public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ManifoldInference.ChatMessage] {

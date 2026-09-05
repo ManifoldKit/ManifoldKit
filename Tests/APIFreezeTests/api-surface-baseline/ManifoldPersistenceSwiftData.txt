@@ -368,6 +368,7 @@ SwiftDataPersistenceProvider.deleteAll() Func
 SwiftDataPersistenceProvider.deleteMessage(_:) Func
 SwiftDataPersistenceProvider.deleteMessages(for:) Func
 SwiftDataPersistenceProvider.deleteSession(_:) Func
+SwiftDataPersistenceProvider.fetchMessageHistoryPage(for:cursor:limit:) Func
 SwiftDataPersistenceProvider.fetchMessages(for:) Func
 SwiftDataPersistenceProvider.fetchMessages(for:before:limit:) Func
 SwiftDataPersistenceProvider.fetchRecentMessages(for:limit:) Func

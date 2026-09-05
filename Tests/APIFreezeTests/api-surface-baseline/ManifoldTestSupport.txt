@@ -60,6 +60,8 @@ ErrorInjectingPersistenceProvider.deleteMessages(for:) Func
 ErrorInjectingPersistenceProvider.deleteMessagesCallCount Var
 ErrorInjectingPersistenceProvider.deleteSession(_:) Func
 ErrorInjectingPersistenceProvider.deleteSessionCallCount Var
+ErrorInjectingPersistenceProvider.fetchMessageHistoryPage(for:cursor:limit:) Func
+ErrorInjectingPersistenceProvider.fetchMessageHistoryPageCallCount Var
 ErrorInjectingPersistenceProvider.fetchMessages(for:) Func
 ErrorInjectingPersistenceProvider.fetchMessages(for:before:limit:) Func
 ErrorInjectingPersistenceProvider.fetchMessagesBeforeCallCount Var

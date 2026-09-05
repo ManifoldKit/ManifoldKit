@@ -120,6 +120,50 @@ extension MessageStoreContract where Self: XCTestCase {
                        file: file, line: line)
     }
 
+    /// Exercises the compatibility page default through an existential. This
+    /// protects source-compatible external stores that implement only the
+    /// long-standing complete ``MessageStore/fetchMessages(for:)`` contract.
+    public func assertMessageStore_historyPageDefaultKeepsEqualTimestamps(
+        store: any MessageStore,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let sessionID = UUID()
+        let timestamp = Date(timeIntervalSinceReferenceDate: 0)
+        let records = (0..<5).map { index in
+            ChatMessage(
+                id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!,
+                role: .user,
+                content: "equal-\(index)",
+                timestamp: timestamp,
+                sessionID: sessionID
+            )
+        }
+        for record in records {
+            try await store.insertMessage(record)
+        }
+
+        let first = try await store.fetchMessageHistoryPage(for: sessionID, cursor: nil, limit: 3)
+        let second = try await store.fetchMessageHistoryPage(
+            for: sessionID,
+            cursor: first.nextCursor,
+            limit: 3
+        )
+        XCTAssertEqual(second.messages.map(\.id) + first.messages.map(\.id), records.map(\.id), file: file, line: line)
+        XCTAssertNil(second.nextCursor, file: file, line: line)
+    }
+
+    public func assertMessageStore_historyPageDefaultKeepsEqualTimestamps(
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        try await assertMessageStore_historyPageDefaultKeepsEqualTimestamps(
+            store: makeMessageStore(),
+            file: file,
+            line: line
+        )
+    }
+
     // MARK: - Update
 
     /// Asserts that ``updateMessage(_:)`` persists the changed content.

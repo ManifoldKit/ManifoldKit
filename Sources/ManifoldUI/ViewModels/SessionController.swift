@@ -24,7 +24,13 @@ final class SessionController {
     /// always one object that conforms to both protocols. Hosts that wire
     /// genuinely separate stores can pass a small composed adapter.
     var persistence: (any SessionStore & MessageStore)?
-    var activeSession: ChatSession?
+    var activeSession: ChatSession? {
+        didSet {
+            if oldValue?.id != activeSession?.id {
+                invalidateMessageHistory()
+            }
+        }
+    }
     var messages: [ChatMessage] = []
     var systemPrompt: String = ""
     var temperature: Float = defaultTemperature
@@ -35,6 +41,8 @@ final class SessionController {
     var pinnedMessageIDs: Set<UUID> = []
     var hasOlderMessages: Bool = false
     var isLoadingOlderMessages: Bool = false
+    private var messageHistoryCursor: MessageHistoryCursor?
+    private var historyLoadGeneration: UInt = 0
 
     init(selectedPromptTemplate: PromptTemplate = .chatML) {
         self.selectedPromptTemplate = selectedPromptTemplate
@@ -66,7 +74,11 @@ final class SessionController {
 
     @discardableResult
     func activateSession(_ session: ChatSession) -> SessionSelectionState {
+        let isSameSession = activeSession?.id == session.id
         activeSession = session
+        if isSameSession {
+            invalidateMessageHistory()
+        }
         systemPrompt = session.systemPrompt
         temperature = session.temperature ?? Self.defaultTemperature
         topP = session.topP ?? Self.defaultTopP
@@ -118,25 +130,37 @@ final class SessionController {
     func loadMessages() async {
         guard let persistence = persistenceOrLog("loadMessages") else { return }
         guard let sessionID = activeSessionID else {
+            invalidateMessageHistory()
             messages = []
             hasOlderMessages = false
             return
         }
 
+        invalidateMessageHistory()
+        let generation = historyLoadGeneration
+
         do {
-            let page = try await persistence.fetchRecentMessages(for: sessionID, limit: Self.messagePageSize)
+            let page = try await persistence.fetchMessageHistoryPage(
+                for: sessionID,
+                cursor: nil,
+                limit: Self.messagePageSize
+            )
+            guard isCurrentHistoryLoad(generation, sessionID: sessionID) else { return }
             // Heal orphan tool calls before exposing the transcript: a process
             // killed mid-tool leaves a `.toolCall` part with no matching
             // `.toolResult`, which cloud APIs reject on the next turn. The
             // healer synthesises a `.cancelled` ToolResult for each orphan so
             // the next request is well-formed without re-dispatching the
             // (potentially side-effecting) original call. See issue #629.
-            messages = TranscriptHealer.heal(page)
-            hasOlderMessages = page.count >= Self.messagePageSize
-            Log.persistence.info("Loaded \(page.count) messages (hasOlder: \(self.hasOlderMessages))")
+            messages = TranscriptHealer.heal(page.messages)
+            messageHistoryCursor = page.nextCursor
+            hasOlderMessages = page.nextCursor != nil
+            Log.persistence.info("Loaded \(page.messages.count) messages (hasOlder: \(self.hasOlderMessages))")
         } catch {
+            guard isCurrentHistoryLoad(generation, sessionID: sessionID) else { return }
             Log.persistence.error("Failed to load messages: \(error)")
             messages = []
+            messageHistoryCursor = nil
             hasOlderMessages = false
         }
     }
@@ -146,30 +170,48 @@ final class SessionController {
         guard !isLoadingOlderMessages, hasOlderMessages else { return nil }
         guard let persistence else { return nil }
         guard let sessionID = activeSessionID else { return nil }
-        guard let oldestTimestamp = messages.first?.timestamp else { return nil }
+        guard let cursor = messageHistoryCursor else {
+            hasOlderMessages = false
+            return nil
+        }
 
         let anchorID = messages.first?.id
+        let generation = historyLoadGeneration
         isLoadingOlderMessages = true
-        defer { isLoadingOlderMessages = false }
+        defer {
+            if historyLoadGeneration == generation {
+                isLoadingOlderMessages = false
+            }
+        }
 
         do {
-            let older = try await persistence.fetchMessages(
+            let page = try await persistence.fetchMessageHistoryPage(
                 for: sessionID,
-                before: oldestTimestamp,
+                cursor: cursor,
                 limit: Self.messagePageSize
             )
-            if older.isEmpty {
-                hasOlderMessages = false
-                return anchorID
-            }
-            hasOlderMessages = older.count >= Self.messagePageSize
-            messages.insert(contentsOf: older, at: 0)
-            Log.persistence.info("Prepended \(older.count) older messages (hasOlder: \(self.hasOlderMessages))")
+            guard isCurrentHistoryLoad(generation, sessionID: sessionID) else { return nil }
+            messageHistoryCursor = page.nextCursor
+            hasOlderMessages = page.nextCursor != nil
+            messages.insert(contentsOf: page.messages, at: 0)
+            Log.persistence.info("Prepended \(page.messages.count) older messages (hasOlder: \(self.hasOlderMessages))")
         } catch {
+            guard isCurrentHistoryLoad(generation, sessionID: sessionID) else { return nil }
             Log.persistence.error("Failed to load older messages: \(error)")
         }
 
         return anchorID
+    }
+
+    private func isCurrentHistoryLoad(_ generation: UInt, sessionID: UUID) -> Bool {
+        historyLoadGeneration == generation && activeSessionID == sessionID
+    }
+
+    private func invalidateMessageHistory() {
+        historyLoadGeneration &+= 1
+        messageHistoryCursor = nil
+        hasOlderMessages = false
+        isLoadingOlderMessages = false
     }
 
     func saveMessage(_ message: ChatMessage) async throws {
@@ -194,5 +236,9 @@ final class SessionController {
     func deleteMessages(for sessionID: UUID) async throws {
         guard let persistence = persistenceOrLog("deleteMessages") else { return }
         try await persistence.deleteMessages(for: sessionID)
+        if activeSessionID == sessionID {
+            invalidateMessageHistory()
+            messages = []
+        }
     }
 }

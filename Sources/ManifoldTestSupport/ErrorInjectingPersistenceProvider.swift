@@ -2,6 +2,38 @@ import Foundation
 import ManifoldInference
 import ManifoldRuntime
 
+/// Test synchronization for a continuation page that has already been read
+/// from the wrapped store. It lets UI tests invalidate state after a real
+/// SwiftData snapshot exists and before that stale result is returned.
+package actor MessageHistoryPageGate {
+    private var entered = false
+    private var released = false
+    private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    package init() {}
+
+    package func waitUntilEntered() async {
+        guard !entered else { return }
+        await withCheckedContinuation { enteredWaiters.append($0) }
+    }
+
+    fileprivate func waitAfterSnapshot() async {
+        entered = true
+        let waiters = enteredWaiters
+        enteredWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
+        guard !released else { return }
+        await withCheckedContinuation { releaseContinuation = $0 }
+    }
+
+    package func release() {
+        released = true
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+}
+
 /// Test double that wraps any combined ``SessionStore`` + ``MessageStore``
 /// adapter and adds two facilities the real adapter cannot offer: per-method
 /// error injection and call counting.
@@ -23,6 +55,9 @@ public final class ErrorInjectingPersistenceProvider: SessionStore, MessageStore
     public var shouldThrowOnFetchMessages: Error?
     public var shouldThrowOnDeleteMessages: Error?
     public var shouldThrowOnDeleteAll: Error?
+    /// Test-only gate applied after a continuation page is fetched from the
+    /// wrapped store, used to exercise stale UI completions deterministically.
+    package var historyPageGate: MessageHistoryPageGate?
 
     public var insertSessionCallCount = 0
     public var updateSessionCallCount = 0
@@ -34,6 +69,7 @@ public final class ErrorInjectingPersistenceProvider: SessionStore, MessageStore
     public var fetchMessagesCallCount = 0
     public var fetchRecentMessagesCallCount = 0
     public var fetchMessagesBeforeCallCount = 0
+    public var fetchMessageHistoryPageCallCount = 0
     public var deleteMessagesCallCount = 0
     public var deleteAllCallCount = 0
 
@@ -96,6 +132,24 @@ public final class ErrorInjectingPersistenceProvider: SessionStore, MessageStore
         fetchMessagesBeforeCallCount += 1
         if let error = shouldThrowOnFetchMessages { throw error }
         return try await wrapped.fetchMessages(for: sessionID, before: before, limit: limit)
+    }
+
+    public func fetchMessageHistoryPage(
+        for sessionID: UUID,
+        cursor: MessageHistoryCursor?,
+        limit: Int
+    ) async throws -> MessageHistoryPage {
+        fetchMessageHistoryPageCallCount += 1
+        if let error = shouldThrowOnFetchMessages { throw error }
+        let page = try await wrapped.fetchMessageHistoryPage(
+            for: sessionID,
+            cursor: cursor,
+            limit: limit
+        )
+        if cursor != nil, let historyPageGate {
+            await historyPageGate.waitAfterSnapshot()
+        }
+        return page
     }
 
     public func deleteMessages(for sessionID: UUID) async throws {

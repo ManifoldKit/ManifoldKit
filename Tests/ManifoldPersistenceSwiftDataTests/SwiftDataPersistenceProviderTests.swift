@@ -276,6 +276,130 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
         XCTAssertEqual(fetched.map(\.content), ["A", "B", "C"])
     }
 
+    func test_fetchMessageHistoryPage_throughExistential_keepsEqualTimestampRecords() async throws {
+        let session = ManifoldInference.ChatSession(title: "Keyset page")
+        try await provider.insertSession(session)
+        let timestamp = Date(timeIntervalSince1970: 1_000)
+        let ids = [
+            "00000000-0000-0000-0000-000000000001",
+            "10000000-0000-0000-0000-000000000001",
+            "20000000-0000-0000-0000-000000000001",
+            "7fffffff-0000-0000-0000-000000000001",
+            "80000000-0000-0000-0000-000000000001",
+            "a0000000-0000-0000-0000-000000000001",
+            "ffffffff-0000-0000-0000-000000000001"
+        ]
+        let records = ids.enumerated().map { index, value in
+            ManifoldInference.ChatMessage(
+                id: UUID(uuidString: value)!,
+                role: .user,
+                content: "m\(index)",
+                timestamp: timestamp,
+                sessionID: session.id
+            )
+        }
+        try await provider.performMessageMutations(records.map(MessageStoreMutation.insert))
+
+        let store: any MessageStore = provider
+        var cursor: MessageHistoryCursor?
+        var pages: [[ChatMessage]] = []
+        repeat {
+            let page = try await store.fetchMessageHistoryPage(
+                for: session.id,
+                cursor: cursor,
+                limit: 3
+            )
+            pages.append(page.messages)
+            cursor = page.nextCursor
+        } while cursor != nil
+
+        XCTAssertEqual(pages.map { $0.map(\.id) }, [
+            records[4...6].map(\.id),
+            records[1...3].map(\.id),
+            records[0...0].map(\.id)
+        ])
+        XCTAssertEqual(pages.reversed().flatMap(\.self).map(\.id), records.map(\.id))
+    }
+
+    func test_fetchMessages_returnsCompleteHistoryBeyondFormerCeiling() async throws {
+        let session = ManifoldInference.ChatSession(title: "Complete history")
+        try await provider.insertSession(session)
+        let base = Date(timeIntervalSince1970: 1_000)
+        let records = (0...10_000).map { index in
+            ManifoldInference.ChatMessage(
+                role: .user,
+                content: "m\(index)",
+                timestamp: base.addingTimeInterval(Double(index)),
+                sessionID: session.id
+            )
+        }
+        try await provider.performMessageMutations(records.map(MessageStoreMutation.insert))
+
+        let fetched = try await provider.fetchMessages(for: session.id)
+
+        XCTAssertEqual(fetched.map(\.id), records.map(\.id))
+    }
+
+    func test_fetchMessageHistoryPage_rejectsInvalidLimitAndForeignCursor() async throws {
+        let session = ManifoldInference.ChatSession(title: "Invalid page")
+        try await provider.insertSession(session)
+
+        do {
+            _ = try await provider.fetchMessageHistoryPage(for: session.id, cursor: nil, limit: 0)
+            XCTFail("A zero page limit must fail recoverably")
+        } catch let error as MessageHistoryPagingError {
+            XCTAssertEqual(error, .invalidLimit(0))
+        }
+
+        let cursor = MessageHistoryCursor(
+            sessionID: UUID(),
+            highWaterTimestamp: .distantPast,
+            highWaterID: UUID(),
+            beforeTimestamp: .distantPast,
+            beforeID: UUID()
+        )
+        do {
+            _ = try await provider.fetchMessageHistoryPage(for: session.id, cursor: cursor, limit: 1)
+            XCTFail("A cursor cannot cross sessions")
+        } catch let error as MessageHistoryPagingError {
+            XCTAssertEqual(error, .cursorSessionMismatch)
+        }
+    }
+
+    func test_fetchMessageHistoryPage_excludesNewerRowsPastCapturedHighWater() async throws {
+        let session = ManifoldInference.ChatSession(title: "High water")
+        try await provider.insertSession(session)
+        let timestamp = Date(timeIntervalSince1970: 1_000)
+        let initial = (1...4).map { suffix in
+            ManifoldInference.ChatMessage(
+                id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", suffix))!,
+                role: .user,
+                content: "m\(suffix)",
+                timestamp: timestamp,
+                sessionID: session.id
+            )
+        }
+        try await provider.performMessageMutations(initial.map(MessageStoreMutation.insert))
+
+        let first = try await provider.fetchMessageHistoryPage(for: session.id, cursor: nil, limit: 2)
+        let newID = UUID(uuidString: "ffffffff-0000-0000-0000-000000000001")!
+        try await provider.insertMessage(ChatMessage(
+            id: newID,
+            role: .user,
+            content: "later",
+            timestamp: timestamp,
+            sessionID: session.id
+        ))
+        let second = try await provider.fetchMessageHistoryPage(
+            for: session.id,
+            cursor: first.nextCursor,
+            limit: 2
+        )
+
+        XCTAssertEqual(second.messages.map(\.id) + first.messages.map(\.id), initial.map(\.id))
+        XCTAssertFalse(second.messages.contains { $0.id == newID })
+    }
+
     func test_fetchRecentMessages_returnsTailInAscendingOrder() async throws {
         let session = ManifoldInference.ChatSession(title: "Recent Test")
         try await provider.insertSession(session)

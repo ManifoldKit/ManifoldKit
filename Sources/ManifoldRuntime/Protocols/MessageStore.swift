@@ -41,8 +41,25 @@ public protocol MessageStore: AnyObject, Sendable {
 
     /// Fetches messages for a session in timestamp order.
     ///
+    /// This is the complete, chronological transcript. Implementations must
+    /// return every stored record for `sessionID`; bounded UI and prompt reads
+    /// use the paging APIs instead.
+    ///
     /// - Throws: Storage errors from the underlying store.
     func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage]
+
+    /// Fetches one backwards page of a session's history.
+    ///
+    /// `messages` is chronological (oldest first). A page captures the newest
+    /// `(timestamp, id)` key on its first call, then continues below that
+    /// high-water key. In a quiescent store this visits each captured record
+    /// exactly once. It does not promise a transaction snapshot against
+    /// concurrent backdated inserts or deletes.
+    func fetchMessageHistoryPage(
+        for sessionID: UUID,
+        cursor: MessageHistoryCursor?,
+        limit: Int
+    ) async throws -> MessageHistoryPage
 
     /// Fetches the most recent messages for a session, up to `limit`.
     ///
@@ -89,6 +106,60 @@ public protocol MessageStore: AnyObject, Sendable {
     func addPostWriteHook(_ hook: any MessageStorePostWriteHook)
 }
 
+/// Stable continuation state for backwards message-history paging.
+///
+/// The cursor is tied to one session and uses `(timestamp, UUID)` rather than
+/// timestamps alone, so records sharing a timestamp are neither skipped nor
+/// repeated. Its public initializer lets external ``MessageStore`` adapters
+/// implement ``MessageStore/fetchMessageHistoryPage(for:cursor:limit:)``.
+public struct MessageHistoryCursor: Sendable, Hashable {
+    public let sessionID: UUID
+    public let highWaterTimestamp: Date
+    public let highWaterID: UUID
+    public let beforeTimestamp: Date
+    public let beforeID: UUID
+
+    public init(
+        sessionID: UUID,
+        highWaterTimestamp: Date,
+        highWaterID: UUID,
+        beforeTimestamp: Date,
+        beforeID: UUID
+    ) {
+        self.sessionID = sessionID
+        self.highWaterTimestamp = highWaterTimestamp
+        self.highWaterID = highWaterID
+        self.beforeTimestamp = beforeTimestamp
+        self.beforeID = beforeID
+    }
+}
+
+/// One chronological page of message history.
+public struct MessageHistoryPage: Sendable {
+    public let messages: [ChatMessage]
+    public let nextCursor: MessageHistoryCursor?
+
+    public init(messages: [ChatMessage], nextCursor: MessageHistoryCursor?) {
+        self.messages = messages
+        self.nextCursor = nextCursor
+    }
+}
+
+/// Recoverable validation failures for message-history paging.
+public enum MessageHistoryPagingError: Error, LocalizedError, Sendable, Equatable {
+    case invalidLimit(Int)
+    case cursorSessionMismatch
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidLimit(let limit):
+            "Message history page limits must be positive and smaller than Int.max (received \(limit))."
+        case .cursorSessionMismatch:
+            "The message history cursor belongs to a different session."
+        }
+    }
+}
+
 // MARK: - Transactional batch mutations
 
 /// A single message-store mutation that can be grouped with other mutations.
@@ -127,6 +198,56 @@ public protocol TransactionalMessageStore: MessageStore {
 // MARK: - Default pagination
 
 extension MessageStore {
+
+    /// Compatibility implementation for stores that already honour
+    /// ``fetchMessages(for:)``'s complete-history contract. Concrete stores
+    /// with database paging must implement the protocol requirement so calls
+    /// through an `any MessageStore` existential use that witness.
+    public func fetchMessageHistoryPage(
+        for sessionID: UUID,
+        cursor: MessageHistoryCursor?,
+        limit: Int
+    ) async throws -> MessageHistoryPage {
+        guard limit > 0, limit < Int.max else {
+            throw MessageHistoryPagingError.invalidLimit(limit)
+        }
+        if let cursor, cursor.sessionID != sessionID {
+            throw MessageHistoryPagingError.cursorSessionMismatch
+        }
+
+        let newestFirst = try await fetchMessages(for: sessionID).sorted {
+            if $0.timestamp != $1.timestamp { return $0.timestamp > $1.timestamp }
+            return $0.id > $1.id
+        }
+        guard let highWater = newestFirst.first else {
+            return MessageHistoryPage(messages: [], nextCursor: nil)
+        }
+
+        let highWaterTimestamp = cursor?.highWaterTimestamp ?? highWater.timestamp
+        let highWaterID = cursor?.highWaterID ?? highWater.id
+        let candidates = newestFirst.filter { message in
+            let atOrBelowHighWater = message.timestamp < highWaterTimestamp ||
+                (message.timestamp == highWaterTimestamp && message.id <= highWaterID)
+            guard atOrBelowHighWater else { return false }
+            guard let cursor else { return true }
+            return message.timestamp < cursor.beforeTimestamp ||
+                (message.timestamp == cursor.beforeTimestamp && message.id < cursor.beforeID)
+        }
+        let pageNewestFirst = Array(candidates.prefix(limit))
+        let nextCursor = candidates.count > limit ? pageNewestFirst.last.map {
+            MessageHistoryCursor(
+                sessionID: sessionID,
+                highWaterTimestamp: highWaterTimestamp,
+                highWaterID: highWaterID,
+                beforeTimestamp: $0.timestamp,
+                beforeID: $0.id
+            )
+        } : nil
+        return MessageHistoryPage(
+            messages: pageNewestFirst.reversed(),
+            nextCursor: nextCursor
+        )
+    }
 
     /// Default: fetches all messages then returns the last `limit`.
     public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessage] {
