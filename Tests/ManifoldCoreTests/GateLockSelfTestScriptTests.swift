@@ -246,14 +246,34 @@ final class GateLockSelfTestScriptTests: XCTestCase {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = Pipe()
+        let capturedData = OSAllocatedUnfairLock<Data>(initialState: Data())
+        let readCompleted = DispatchSemaphore(value: 0)
+        let processExited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in processExited.signal() }
         do {
             try process.run()
         } catch {
             return nil
         }
-        process.waitUntilExit()
+
+        DispatchQueue.global(qos: .utility).async {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            capturedData.withLock { $0 = data }
+            readCompleted.signal()
+        }
+
+        guard processExited.wait(timeout: .now() + 5) == .success else {
+            process.terminate()
+            if processExited.wait(timeout: .now() + 1) == .timedOut, process.isRunning {
+                _ = kill(process.processIdentifier, SIGKILL)
+                _ = processExited.wait(timeout: .now() + 1)
+            }
+            _ = readCompleted.wait(timeout: .now() + 1)
+            return nil
+        }
+        guard readCompleted.wait(timeout: .now() + 1) == .success else { return nil }
         guard process.terminationStatus == 0 else { return nil }
-        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let output = capturedData.withLock { String(data: $0, encoding: .utf8) ?? "" }
         let value = output.trimmingCharacters(in: .newlines)
         return value.isEmpty ? nil : value
     }
@@ -669,6 +689,41 @@ final class GateLockSelfTestScriptTests: XCTestCase {
             didAttemptSignal = true
         }
         XCTAssertFalse(didAttemptSignal, "cleanup must refuse a live PID whose recorded start identity does not match")
+    }
+
+    /// `ps -o command` can emit more than a pipe buffer when XCTest itself
+    /// was launched with thousands of selected test identifiers. Waiting for
+    /// `ps` to exit before draining its stdout deadlocks both processes.
+    func test_psValue_longCommandDrainsPipeAndCompletes() throws {
+        let sandbox = FileManager.default.temporaryDirectory
+            .appendingPathComponent("manifoldkit-ps-long-command-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+
+        let release = sandbox.appendingPathComponent("release")
+        let script = sandbox.appendingPathComponent("hold.sh")
+        try "while [[ ! -e \"$1\" ]]; do sleep 0.05; done\n".write(to: script, atomically: true, encoding: .utf8)
+
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/bin/bash")
+        child.arguments = [script.path, release.path]
+            + Array(repeating: String(repeating: "long-command-argument-", count: 20), count: 200)
+        try child.run()
+        defer {
+            FileManager.default.createFile(atPath: release.path, contents: Data())
+            let deadline = Date().addingTimeInterval(2)
+            while child.isRunning, Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+            if child.isRunning {
+                _ = kill(child.processIdentifier, SIGKILL)
+            }
+            child.waitUntilExit()
+        }
+
+        let command = try XCTUnwrap(psValue(pid: child.processIdentifier, field: "command"))
+        XCTAssertGreaterThan(command.utf8.count, 65_536, "fixture command must exceed a typical pipe buffer")
+        XCTAssertTrue(command.contains(script.path), "ps must return the held fixture's command")
     }
 
     /// `MANIFOLD_GATE_NO_LOCK=1` is the documented opt-out for a deliberate

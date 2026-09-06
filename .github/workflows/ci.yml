@@ -375,7 +375,7 @@ jobs:
           set -uo pipefail
           files="${ALL_FILES:-[]}"
           # Never let a resolver hiccup fail the cheap changes job; fall back to FULL.
-          affected="$(printf '%s' "$files" | jq -r '.[]?' | bash scripts/affected-suites.sh)" || affected=FULL
+          affected="$(printf '%s' "$files" | jq -r '.[]?' | bash scripts/validation-plan.sh)" || affected=FULL
           [ -z "$affected" ] && affected=FULL
           echo "affected=$affected" >> "$GITHUB_OUTPUT"
           {
@@ -738,6 +738,9 @@ jobs:
       # force-include ManifoldBackendsTests — it routes to a full-bundle
       # compile and can make selective slower than full. merge_group still
       # runs FULL as the hard pre-merge gate.
+      - name: Report validation toolchain
+        run: scripts/validation-plan.sh --report-toolchain --expected-xcode 26.3
+
       - name: Compute test mode (Tier 2 selective or full)
         id: test-mode
         run: |
@@ -749,26 +752,7 @@ jobs:
           # Empty/unset is treated as FULL — never silently skip a real suite.
           [[ "$affected" == "FULL" || "$affected" == "NONE" || -z "$affected" ]] \
             && emit_full "affected=${affected:-unset}"
-          # Fall back to full if total suite count is large (≥8), to avoid
-          # excessive sequential xcodebuild overhead outweighing the compile savings.
-          #
-          # There used to also be a "2+ suites requiring a full swift-test bundle
-          # compile" counter here (ManifoldBackendsTests was the only suite that
-          # qualified). It was removed (#2297): only one case arm ever incremented
-          # it, and `$affected` is deduplicated upstream (affected-suites.sh's
-          # `sort -u`), so the counter could only ever be 0 or 1 — the `>= 2` guard
-          # was structurally unreachable. If a second full-bundle suite is ever
-          # added, reintroduce a real count check rather than resurrecting this one.
-          #
-          # Force-included audit anchors (#2290) must not tip a previously-
-          # selective leaf PR into full. Count non-anchor suites against the
-          # threshold; still *run* the anchors in the selective path.
-          non_anchor_count=$(printf '%s\n' $affected \
-            | grep -vE '^(ManifoldCoreTests|ManifoldInferenceTests)$' \
-            | grep -c '.' || true)
           total_count=$(printf '%s\n' $affected | wc -w | tr -d ' ')
-          [[ $non_anchor_count -ge 8 ]] \
-            && emit_full "${total_count} suites (${non_anchor_count} non-anchor) — xcodebuild overhead exceeds full-run savings"
           echo "mode=selective" >> "$GITHUB_OUTPUT"
           echo "suites=$affected" >> "$GITHUB_OUTPUT"
           echo "Test mode: selective — ${total_count} suite(s): $affected"

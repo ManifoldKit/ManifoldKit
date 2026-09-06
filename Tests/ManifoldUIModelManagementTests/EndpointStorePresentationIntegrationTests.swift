@@ -18,11 +18,21 @@ import AppKit
 @MainActor
 final class EndpointStorePresentationIntegrationTests: XCTestCase {
 
+    private var originalConfiguration: ManifoldConfiguration!
+
+    override func setUp() {
+        super.setUp()
+        originalConfiguration = ManifoldConfiguration.shared
+    }
+
+    override func tearDown() {
+        ManifoldConfiguration.shared = originalConfiguration
+        originalConfiguration = nil
+        super.tearDown()
+    }
+
     #if canImport(AppKit)
     func test_chatViewDirectAPIConfigurationSheet_receivesUsableBootstrapEndpointStore() async throws {
-        let originalConfiguration = ManifoldConfiguration.shared
-        defer { ManifoldConfiguration.shared = originalConfiguration }
-
         let runtime = try ManifoldBootstrap(
             configuration: ManifoldConfiguration(
                 appName: "Endpoint Store Presentation Test",
@@ -59,18 +69,12 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
             observation: observation
         )
 
-        let controller = NSHostingController(rootView: view)
-        let window = NSWindow(contentViewController: controller)
-        window.setContentSize(NSSize(width: 800, height: 600))
-        window.makeKeyAndOrderFront(nil)
-        controller.view.layoutSubtreeIfNeeded()
-        defer {
-            window.close()
-            window.contentViewController = nil
-        }
+        let mounted = MountedHostedContent(view, size: NSSize(width: 800, height: 600))
+        defer { mounted.close() }
 
+        let sheetMounted = try await waitUntil { observation.store != nil }
         XCTAssertTrue(
-            waitUntil { observation.store != nil },
+            sheetMounted,
             "The production ChatView API-configuration sheet must mount its supplied content"
         )
         guard let observedStore = observation.store else { return }
@@ -95,7 +99,7 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
         // explicit re-injection, including iPad's regular-width popover.
     }
 
-    func test_chatAPIConfigurationContent_overridesOuterStoreWithForwardedStore() throws {
+    func test_chatAPIConfigurationContent_overridesOuterStoreWithForwardedStore() async throws {
         let forwardedRuntime = try makeRuntime(suffix: "forwarded")
         let outerRuntime = try makeRuntime(suffix: "outer")
         let observation = EndpointStoreObservation()
@@ -107,7 +111,7 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
         )
         .environment(\.endpointStore, outerRuntime.endpointStore)
 
-        render(content, until: { observation.store != nil })
+        try await render(content, until: { observation.store != nil })
 
         XCTAssertTrue(
             (observation.store as AnyObject?) === (forwardedRuntime.endpointStore as AnyObject),
@@ -115,14 +119,14 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
         )
     }
 
-    func test_sabotage_omittingHelperInjection_exposesOuterStoreInstead() throws {
+    func test_sabotage_omittingHelperInjection_exposesOuterStoreInstead() async throws {
         let forwardedRuntime = try makeRuntime(suffix: "sabotage-forwarded")
         let outerRuntime = try makeRuntime(suffix: "sabotage-outer")
         let observation = EndpointStoreObservation()
         let content = EndpointStoreProbe(observation: observation, onMounted: {})
             .environment(\.endpointStore, outerRuntime.endpointStore)
 
-        render(content, until: { observation.store != nil })
+        try await render(content, until: { observation.store != nil })
 
         XCTAssertTrue(
             (observation.store as AnyObject?) === (outerRuntime.endpointStore as AnyObject)
@@ -192,14 +196,30 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
         return missingRoutes
     }
 
+    func test_mountedContent_timeoutCleanupDetachesController() async throws {
+        let mounted = MountedHostedContent(Color.clear, size: NSSize(width: 20, height: 20))
+        defer { mounted.close() }
+        let originalWindow = try XCTUnwrap(mounted.window)
+
+        let becameReady = try await waitUntil({ false }, timeout: 0.03)
+        XCTAssertFalse(becameReady)
+        mounted.close()
+        mounted.close()
+
+        XCTAssertNil(mounted.window)
+        XCTAssertNil(mounted.controller)
+        XCTAssertNil(originalWindow.contentViewController)
+        XCTAssertFalse(originalWindow.isVisible)
+    }
+
     private func waitUntil(
         _ condition: @escaping () -> Bool,
         timeout: TimeInterval = 2
-    ) -> Bool {
+    ) async throws -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if condition() { return true }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            try await Task.sleep(for: .milliseconds(20))
         }
         return condition()
     }
@@ -217,14 +237,11 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
     private func render<Content: View>(
         _ content: Content,
         until condition: @escaping () -> Bool
-    ) {
-        let controller = NSHostingController(rootView: content)
-        let window = NSWindow(contentViewController: controller)
-        window.setContentSize(NSSize(width: 200, height: 100))
-        window.makeKeyAndOrderFront(nil)
-        controller.view.layoutSubtreeIfNeeded()
-        XCTAssertTrue(waitUntil(condition))
-        window.close()
+    ) async throws {
+        let mounted = MountedHostedContent(content, size: NSSize(width: 200, height: 100))
+        defer { mounted.close() }
+        let contentMounted = try await waitUntil(condition)
+        XCTAssertTrue(contentMounted)
     }
 
     private var chatViewSourceURL: URL {
@@ -236,6 +253,31 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
     }
     #endif
 }
+
+#if canImport(AppKit)
+@MainActor
+private final class MountedHostedContent<Content: View> {
+    private(set) var controller: NSHostingController<Content>?
+    private(set) var window: NSWindow?
+
+    init(_ content: Content, size: NSSize) {
+        let controller = NSHostingController(rootView: content)
+        let window = NSWindow(contentViewController: controller)
+        self.controller = controller
+        self.window = window
+        window.setContentSize(size)
+        window.makeKeyAndOrderFront(nil)
+        controller.view.layoutSubtreeIfNeeded()
+    }
+
+    func close() {
+        window?.contentViewController = nil
+        window?.close()
+        window = nil
+        controller = nil
+    }
+}
+#endif
 
 @MainActor
 private final class EndpointStoreObservation {

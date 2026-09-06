@@ -32,6 +32,11 @@
 #   Regenerate the snapshot (needs Swift + jq, run on macOS / locally):
 #       scripts/affected-suites.sh --generate > scripts/affected-suites-graph.json
 #
+#   Resolve with selection provenance (used by validation-plan.sh):
+#       printf '%s\n' Sources/ManifoldUI/Foo.swift | scripts/affected-suites.sh --roles
+#     Suite records are emitted as `Suite@direct` or `Suite@anchor`. FULL and
+#     NONE are unchanged. The default output above remains backwards compatible.
+#
 # Robustness: the resolve path never exits non-zero for "I don't know" — it
 # falls back to FULL. The CI step treats any hard failure as FULL too. Selective
 # narrowing must never be able to SKIP a suite that should have run.
@@ -40,6 +45,12 @@ set -uo pipefail  # fail-open-ok: NOT -e — the resolver must fail open to FULL
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GRAPH_FILE="${MANIFOLD_GRAPH_FILE:-$SCRIPT_DIR/affected-suites-graph.json}"
+ROLE_MODE=0
+
+if [[ "${1:-}" == "--roles" ]]; then
+  ROLE_MODE=1
+  shift
+fi
 
 # ---------------------------------------------------------------------------
 # Suites the per-PR `test` job actually executes (the hard-coded --filter set in
@@ -443,6 +454,12 @@ if [[ -z "$AFFECTED" ]]; then
   emit NONE
 fi
 
+# Snapshot the complete dependency/readership-derived selection before adding
+# cross-tree audit anchors. Consumers may narrow an anchor only when its suite
+# is absent here; DIRECT_SUITES alone is insufficient because source closure
+# and explicit script-reader mappings can select a suite too.
+PRE_ANCHOR_AFFECTED="$AFFECTED"
+
 # ---- Fail-earlier audit anchors (#2290 / #2326 item 6) -----------------------
 # Cross-cutting audits walk the filesystem (AuditSabotageCoverageAuditTest,
 # SilentCatchAuditTest, TestSuiteSilentSkipAuditTest, ContractTestSupportSplit,
@@ -469,4 +486,15 @@ fi
 result="$(printf '%s\n' $AFFECTED | sort -u | tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
 affected_count=$(printf '%s\n' $AFFECTED | sort -u | grep -c '.')
 log "affected ${affected_count}/${#TEST_JOB_SUITES[@]} test-job suites: $result"
+if [[ $ROLE_MODE -eq 1 ]]; then
+  role_result=""
+  for suite in $(printf '%s\n' $AFFECTED | sort -u); do
+    role="anchor"
+    case " $PRE_ANCHOR_AFFECTED " in
+      *" $suite "*) role="direct" ;;
+    esac
+    role_result="${role_result}${role_result:+ }${suite}@${role}"
+  done
+  emit "$role_result"
+fi
 emit "$result"

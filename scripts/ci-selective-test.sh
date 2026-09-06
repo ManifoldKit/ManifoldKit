@@ -43,10 +43,7 @@ run_xcodebuild() {
   echo ""
   echo "══════ xcodebuild test -scheme $suite ══════"
   local exit_code=0
-  xcodebuild test \
-    -scheme "$suite" \
-    -destination "$DESTINATION" \
-    2>&1 || exit_code=$?
+  xcodebuild test -scheme "$suite" -destination "$DESTINATION" 2>&1 || exit_code=$?
   if [[ $exit_code -eq 0 ]]; then
     PASSED+=("$suite")
   else
@@ -71,7 +68,14 @@ run_swift_test() {
   fi
 }
 
-for suite in "$@"; do
+for record in "$@"; do
+  suite="${record%%@*}"
+  role="direct"
+  if [[ "$record" == *"@"* ]]; then
+    role_part="${record#*@}"
+    role="${role_part%%@*}"
+  fi
+  case "$role" in direct|anchor) ;; *) echo "::error::Unknown suite role: $record"; exit 1 ;; esac
   case "$suite" in
     ManifoldBackendsTests)
       run_swift_test "$suite" --parallel
