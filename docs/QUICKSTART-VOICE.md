@@ -24,7 +24,7 @@ consumer `Package.swift`:
 dependencies: [
     .package(
         url: "https://github.com/ManifoldKit/ManifoldKit.git",
-        from: "0.76.1" // x-release-please-version
+        from: "0.77.0" // x-release-please-version
         // Depending on just the ManifoldVoice product keeps the inference
         // stack out of your app graph — core has no heavy ML deps since v0.48.
     ),

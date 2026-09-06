@@ -1,5 +1,89 @@
 # Changelog
 
+## [0.77.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.76.1...v0.77.0) (2026-09-06)
+
+ManifoldKit 0.77 restores complete history and search results, keeps vector state aligned
+with durable writes, and makes cloud-endpoint management work from every chat configuration
+surface. Image backends can now choose model-specific step counts.
+This pre-1.0 minor includes two API migrations, described below.
+
+### Highlights
+
+#### Read complete transcripts and page reliably
+
+`MessageStore.fetchMessages(for:)` again returns the complete chronological transcript,
+so export and full-history consumers no longer silently lose older messages. The new
+cursor API pages backwards using timestamp and UUID, keeping messages with identical
+timestamps from being skipped or repeated in an unchanged store.
+
+```swift
+import Foundation
+import ManifoldRuntime
+
+@MainActor
+func latestHistoryPage(store: any MessageStore, sessionID: UUID) async throws -> MessageHistoryPage {
+    try await store.fetchMessageHistoryPage(for: sessionID, cursor: nil, limit: 100)
+}
+```
+
+Use the returned `nextCursor` for the preceding page. The cursor bounds newer appends;
+it does not promise a transaction snapshot across concurrent backdated inserts or deletes.
+Custom stores inherit a paging fallback over their existing `fetchMessages` implementation;
+capped implementations must also be updated to return complete history.
+See [#2503](https://github.com/ManifoldKit/ManifoldKit/pull/2503) and
+[the history migration guide](docs/MIGRATION-history-pagination.md).
+
+#### Find matches beyond the old search caps
+
+Message search now scans in bounded, cancellable batches until it finds the requested
+number of matches or reaches the end. Matching sessions are resolved directly, so older
+sessions remain discoverable beyond the former candidate and session limits; a sparse
+query can require more scanning as the store grows.
+
+**Migration:** `SessionManagerViewModel.messageSearchSessionResolveCap` is removed.
+Remove references to that obsolete constant; no replacement setting is needed.
+See [#2504](https://github.com/ManifoldKit/ManifoldKit/pull/2504) and
+[the search migration notes](docs/MIGRATION-history-pagination.md).
+
+#### Let image models choose their preset step count
+
+`ImageGenerationConfig.steps` and `ImageGenerationConfigSnapshot.steps` are now `Int?`.
+The new `nil` default defers to the loaded model: with the compatible MLX companion
+adaptation in [manifold-mlx#191](https://github.com/ManifoldKit/manifold-mlx/pull/191), SDXL Turbo resolves
+to 2 steps, FLUX Schnell to 4, and SD 2.1 base to 50. Explicit values remain explicit,
+and existing saved configurations containing 20 retain that value.
+
+```swift
+import ManifoldKit
+
+let modelDefault = ImageGenerationConfig()
+let explicitBudget = ImageGenerationConfig(steps: 20)
+```
+
+**Migration:** code requiring an `Int` must resolve the optional using the relevant
+model preset. SD 2.1 base's default is now 50 rather than 20, which increases denoising
+work; set an explicit budget if that is intentional for your app.
+See [#2474](https://github.com/ManifoldKit/ManifoldKit/pull/2474) and
+[the image-generation migration guide](docs/MIGRATION-image-generation-steps-optional.md).
+
+### Fixes
+
+- Carry the bootstrap endpoint store into every ChatView API-configuration presentation,
+  so cloud endpoints can be listed and saved from the documented setup. Existing
+  `ManifoldUIModelManagement` imports continue to expose the environment key
+  ([#2498](https://github.com/ManifoldKit/ManifoldKit/pull/2498)).
+- Publish vector state only after durable writes succeed, and surface loading failures
+  instead of treating failed reads as an empty index
+  ([#2500](https://github.com/ManifoldKit/ManifoldKit/pull/2500)).
+- Clarify that generation and tool-hook timeouts request cancellation while still awaiting
+  the direct invocation; an uncooperative hook can keep the turn pending
+  ([#2502](https://github.com/ManifoldKit/ManifoldKit/pull/2502)).
+- Reject missing or invalid coverage measurements instead of reporting a passing result
+  ([#2501](https://github.com/ManifoldKit/ManifoldKit/pull/2501)).
+- Enforce release-readiness checks through the required lint job, including companion
+  compatibility before a core release
+  ([#2462](https://github.com/ManifoldKit/ManifoldKit/pull/2462)).
+
 ## [0.76.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.76.0...v0.76.1) (2026-08-23)
 
 
