@@ -1,5 +1,6 @@
 @preconcurrency import XCTest
 import SwiftUI
+import SwiftData
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
@@ -19,6 +20,9 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
 
     #if canImport(AppKit)
     func test_chatViewDirectAPIConfigurationSheet_receivesUsableBootstrapEndpointStore() async throws {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
         let runtime = try ManifoldBootstrap(
             configuration: ManifoldConfiguration(
                 appName: "Endpoint Store Presentation Test",
@@ -26,13 +30,32 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
             ),
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
         )
+        let endpoint = APIEndpointRecord(
+            name: "Presentation Test Endpoint",
+            provider: .ollama,
+            modelName: "test-model"
+        )
+        try await runtime.endpointStore.insertEndpoint(endpoint)
+
         let chatViewModel = ChatViewModel(inferenceService: runtime.inferenceService)
         chatViewModel.configure(bootstrap: runtime)
+        await chatViewModel.endpointRefreshTask?.value
+        XCTAssertEqual(
+            chatViewModel.availableEndpoints.map(\.id),
+            [endpoint.id],
+            "The initial endpoint refresh must finish while its bootstrap container is alive"
+        )
 
+        let viewRefreshCompleted = expectation(description: "APIConfigurationView completed its initial endpoint fetch")
+        let presentedStore = FetchObservingEndpointStore(
+            bootstrap: runtime,
+            onFetchCompleted: { viewRefreshCompleted.fulfill() }
+        )
         let observation = EndpointStoreObservation()
         let view = EndpointStoreChatViewHost(
             chatViewModel: chatViewModel,
-            endpointStore: runtime.endpointStore,
+            modelContainer: runtime.modelContainer,
+            endpointStore: presentedStore,
             observation: observation
         )
 
@@ -41,7 +64,10 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
         window.setContentSize(NSSize(width: 800, height: 600))
         window.makeKeyAndOrderFront(nil)
         controller.view.layoutSubtreeIfNeeded()
-        defer { window.close() }
+        defer {
+            window.close()
+            window.contentViewController = nil
+        }
 
         XCTAssertTrue(
             waitUntil { observation.store != nil },
@@ -49,18 +75,19 @@ final class EndpointStorePresentationIntegrationTests: XCTestCase {
         )
         guard let observedStore = observation.store else { return }
         XCTAssertTrue(
-            (observedStore as AnyObject) === (runtime.endpointStore as AnyObject),
-            "Presented API-configuration content must receive the bootstrap endpoint store"
+            (observedStore as AnyObject) === (presentedStore as AnyObject),
+            "Presented API-configuration content must receive the bootstrap-backed endpoint store"
         )
+        await fulfillment(of: [viewRefreshCompleted], timeout: 2)
 
-        let endpoint = APIEndpointRecord(
-            name: "Presentation Test Endpoint",
+        let presentedEndpoint = APIEndpointRecord(
+            name: "Presented Store Endpoint",
             provider: .ollama,
-            modelName: "test-model"
+            modelName: "presented-model"
         )
-        try await observedStore.insertEndpoint(endpoint)
+        try await observedStore.insertEndpoint(presentedEndpoint)
         let stored = try await runtime.endpointStore.fetchEndpoints()
-        XCTAssertEqual(stored.map(\.id), [endpoint.id],
+        XCTAssertEqual(Set(stored.map(\.id)), Set([endpoint.id, presentedEndpoint.id]),
             "The store received by the presented content must remain usable for endpoint writes")
 
         // The macOS sheet currently inherits this custom key; the following
@@ -215,6 +242,39 @@ private final class EndpointStoreObservation {
     var store: (any EndpointStore)?
 }
 
+@MainActor
+private final class FetchObservingEndpointStore: EndpointStore {
+    private let bootstrap: ManifoldBootstrap
+    private let onFetchCompleted: () -> Void
+    private var hasObservedFetch = false
+
+    init(bootstrap: ManifoldBootstrap, onFetchCompleted: @escaping () -> Void) {
+        self.bootstrap = bootstrap
+        self.onFetchCompleted = onFetchCompleted
+    }
+
+    func fetchEndpoints() async throws -> [APIEndpointRecord] {
+        let endpoints = try await bootstrap.endpointStore.fetchEndpoints()
+        if !hasObservedFetch {
+            hasObservedFetch = true
+            onFetchCompleted()
+        }
+        return endpoints
+    }
+
+    func insertEndpoint(_ record: APIEndpointRecord) async throws {
+        try await bootstrap.endpointStore.insertEndpoint(record)
+    }
+
+    func updateEndpoint(_ record: APIEndpointRecord) async throws {
+        try await bootstrap.endpointStore.updateEndpoint(record)
+    }
+
+    func deleteEndpoint(_ id: UUID) async throws {
+        try await bootstrap.endpointStore.deleteEndpoint(id)
+    }
+}
+
 private struct EndpointStoreProbe: View {
     @Environment(\.endpointStore) private var endpointStore
     let observation: EndpointStoreObservation
@@ -232,6 +292,7 @@ private struct EndpointStoreProbe: View {
 
 private struct EndpointStoreChatViewHost: View {
     let chatViewModel: ChatViewModel
+    let modelContainer: ModelContainer
     let endpointStore: any EndpointStore
     let observation: EndpointStoreObservation
     @State private var isAPIConfigurationPresented = true
@@ -241,7 +302,7 @@ private struct EndpointStoreChatViewHost: View {
             VStack {
                 EndpointStoreProbe(
                     observation: observation,
-                    onMounted: { isAPIConfigurationPresented = false }
+                    onMounted: {}
                 )
                 APIConfigurationView()
             }
@@ -249,5 +310,6 @@ private struct EndpointStoreChatViewHost: View {
         .presentingAPIConfigurationForTesting($isAPIConfigurationPresented)
         .environment(chatViewModel)
         .environment(\.endpointStore, endpointStore)
+        .modelContainer(modelContainer)
     }
 }
