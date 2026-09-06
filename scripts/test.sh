@@ -2590,7 +2590,11 @@ if [[ -n "$PROFILE" ]]; then
             BANNER_TRAITS="$PROFILE_LOCAL_TRAITS"
         fi
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  PROFILE: $PROFILE (three-invocation pre-push gate)"
+        if [[ "$PROFILE" == "ci" ]]; then
+            echo "  PROFILE: ci (full CI path; selective CI uses validation-plan.sh)"
+        else
+            echo "  PROFILE: $PROFILE (three-invocation pre-push gate)"
+        fi
         echo "  Traits:  $BANNER_TRAITS"
         printf "  XCTest filters (%d): %s\n" "${#FILTERS[@]}" "${FILTERS[*]}"
         echo "  Backends filter: $PROFILE_BACKENDS_FILTER (own process + --parallel — #681 isolation, mirrors ci.yml)"
