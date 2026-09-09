@@ -80,7 +80,7 @@ public final class ScenarioRunner {
             StructuredMessage(role: "user", content: scenario.userPrompt)
         ]
 
-        let allDefinitions = registry?.definitions ?? []
+        let allDefinitions = registry?.registeredDefinitionsSnapshot ?? []
         // When passAllRegisteredTools is true (decoy-pressure mode) every
         // registered tool is advertised to the model so distractors are visible.
         // Otherwise only required tools are forwarded — preserves the baseline
@@ -93,6 +93,8 @@ public final class ScenarioRunner {
                 scenario.requiredTools.isEmpty || scenario.requiredTools.contains($0.name)
             }
         }
+
+        registry?.warnIfTooManyTools(definitions)
 
         logger?.append(.prompt(
             scenarioId: scenario.id,

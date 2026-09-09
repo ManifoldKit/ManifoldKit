@@ -31,9 +31,11 @@ public struct Scenario: Codable, Sendable, Equatable {
         /// One of:
         /// - `"containsLiteral"` — final-answer text must contain `value` as a substring.
         /// - `"equalsLiteral"` — final-answer text must equal `value` exactly.
-        /// - `"containsAll"` — final-answer text must contain every string in `values` as substrings.
+        /// - `"containsAll"` — final-answer text must contain every string in `values` as
+        ///   case-insensitive substrings.
         /// - `"containsAny"` — final-answer text must contain at least one string in `values` as a
-        ///   substring. Use this for behavioural contracts a correct model can phrase many ways
+        ///   case-insensitive substring. Use this for behavioural contracts a correct model can
+        ///   phrase many ways
         ///   (e.g. "acknowledge the size policy") so paraphrase isn't scored as failure — a literal
         ///   `containsAll` over one canonical wording mis-fails every model that paraphrases.
         /// - `"toolInvoked"` — the scenario must have dispatched the tool named `value` at least once.
@@ -136,7 +138,8 @@ public enum AssertionEvaluator {
             guard let values = assertion.values, !values.isEmpty else {
                 return AssertionOutcome(passed: false, message: "containsAll missing 'values'")
             }
-            let passed = values.allSatisfy { finalAnswer.contains($0) }
+            let foldedAnswer = finalAnswer.lowercased()
+            let passed = values.allSatisfy { foldedAnswer.contains($0.lowercased()) }
             let label = assertion.message ?? "contains all of \(values)"
             return AssertionOutcome(passed: passed, message: label)
 
@@ -144,7 +147,8 @@ public enum AssertionEvaluator {
             guard let values = assertion.values, !values.isEmpty else {
                 return AssertionOutcome(passed: false, message: "containsAny missing 'values'")
             }
-            let passed = values.contains { finalAnswer.contains($0) }
+            let foldedAnswer = finalAnswer.lowercased()
+            let passed = values.contains { foldedAnswer.contains($0.lowercased()) }
             let detail = passed ? "found" : "none present"
             let label = assertion.message ?? "contains any of \(values)"
             return AssertionOutcome(passed: passed, message: "\(label) — \(detail)")

@@ -33,6 +33,14 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertFalse(outcome.passed, "evaluator should fail when literal is absent")
     }
 
+    func test_literalAssertions_remainCaseSensitive() {
+        let contains = Scenario.Assertion(kind: "containsLiteral", value: "streaming tools", values: nil, message: nil)
+        let equals = Scenario.Assertion(kind: "equalsLiteral", value: "streaming tools", values: nil, message: nil)
+
+        XCTAssertFalse(AssertionEvaluator.evaluate(contains, finalAnswer: "Streaming tools").passed)
+        XCTAssertFalse(AssertionEvaluator.evaluate(equals, finalAnswer: "Streaming tools").passed)
+    }
+
     func test_containsAllAssertion_requiresEveryValue() {
         let assertion = Scenario.Assertion(
             kind: "containsAll",
@@ -42,6 +50,46 @@ final class ScenarioRunnerTests: XCTestCase {
         )
         XCTAssertTrue(AssertionEvaluator.evaluate(assertion, finalAnswer: "a.txt b.txt").passed)
         XCTAssertFalse(AssertionEvaluator.evaluate(assertion, finalAnswer: "a.txt only").passed)
+    }
+
+    func test_containsAllAssertion_ignoresCapitalizationButStillRequiresEveryValue() {
+        // Sabotage-evidence:
+        //   M1: restore case-sensitive `contains` matching → the sentence-case assertion fails.
+        //   M2: remove "Batch tools" from the passing answer → the every-value assertion fails.
+        //   M3: N/A — this pure evaluator has no capability gate and always runs.
+        let assertion = Scenario.Assertion(
+            kind: "containsAll",
+            value: nil,
+            values: ["streaming tools", "batch tools"],
+            message: nil
+        )
+
+        XCTAssertTrue(
+            AssertionEvaluator.evaluate(
+                assertion,
+                finalAnswer: "Backend A uses Streaming tools and Backend B uses Batch tools."
+            ).passed
+        )
+        XCTAssertFalse(
+            AssertionEvaluator.evaluate(assertion, finalAnswer: "Backend A uses Streaming tools.").passed,
+            "case-insensitive matching must not turn a genuinely missing value into a pass"
+        )
+    }
+
+    func test_containsAnyAssertion_ignoresCapitalizationButStillRequiresOneValue() {
+        // Sabotage-evidence:
+        //   M1: restore case-sensitive `contains` matching → the sentence-case assertion fails.
+        //   M2: replace "Batch tools" with an unrelated phrase → the positive assertion fails.
+        //   M3: N/A — this pure evaluator has no capability gate and always runs.
+        let assertion = Scenario.Assertion(
+            kind: "containsAny",
+            value: nil,
+            values: ["streaming tools", "batch tools"],
+            message: nil
+        )
+
+        XCTAssertTrue(AssertionEvaluator.evaluate(assertion, finalAnswer: "The model used Batch tools.").passed)
+        XCTAssertFalse(AssertionEvaluator.evaluate(assertion, finalAnswer: "The model used neither mode.").passed)
     }
 
     func test_toolInvokedAssertion_passesWhenToolDispatched() {
@@ -649,6 +697,64 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
         XCTAssertTrue(outcome.toolCallsExecuted.isEmpty)
         XCTAssertFalse(outcome.finalAnswer.contains("```"), "structured JSON scenario should not need markdown fences")
+    }
+
+    func test_runner_warnsForForwardedToolsNotUnfilteredRegistry() async throws {
+        // Sabotage-evidence:
+        //   M1: read `registry.definitions` before filtering → the captured six-tool warning makes this fail.
+        //   M2: forward all six definitions → both the config and quiet-warning assertions fail.
+        //   M3: release builds compile out this DEBUG warning; the branch below pins that behavior.
+        let registry = ToolRegistry(tools: [NowTool.makeExecutor()] + DecoyTools.executors(5))
+        let backend = ScriptedBackend(turns: [.tokens(["done"])])
+        let scenario = Scenario(
+            id: "filtered-warning",
+            description: "",
+            systemPrompt: "sys",
+            userPrompt: "answer",
+            requiredTools: ["now"],
+            assertions: [Scenario.Assertion(kind: "containsLiteral", value: "done", values: nil, message: nil)],
+            backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
+        )
+        let runner = makeRunner(backend: backend, registry: registry)
+        var warnings: [String] = []
+        registry.localBackendToolWarningReporter = { warnings.append($0) }
+
+        _ = try await runner.run(scenario)
+
+        XCTAssertEqual(backend.receivedConfigs.first?.tools.map(\.name), ["now"])
+        XCTAssertTrue(warnings.isEmpty, "a one-tool request must stay quiet even when the registry contains six tools")
+    }
+
+    func test_runner_passAllRegisteredTools_warnsForActualOverLimitRequest() async throws {
+        // Sabotage-evidence:
+        //   M1: remove the post-filter warning call → the DEBUG warning-count assertion fails.
+        //   M2: forward only five definitions → the config count and warning text assertions fail.
+        //   M3: release builds compile out this DEBUG warning; the branch below pins that behavior.
+        let registry = ToolRegistry(tools: [NowTool.makeExecutor()] + DecoyTools.executors(5))
+        let backend = ScriptedBackend(turns: [.tokens(["done"])])
+        let scenario = Scenario(
+            id: "unfiltered-warning",
+            description: "",
+            systemPrompt: "sys",
+            userPrompt: "answer",
+            requiredTools: ["now"],
+            assertions: [Scenario.Assertion(kind: "containsLiteral", value: "done", values: nil, message: nil)],
+            backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
+        )
+        let service = InferenceService(backend: backend, name: "scripted", toolRegistry: registry)
+        let runner = ScenarioRunner(service: service, passAllRegisteredTools: true)
+        var warnings: [String] = []
+        registry.localBackendToolWarningReporter = { warnings.append($0) }
+
+        _ = try await runner.run(scenario)
+
+        XCTAssertEqual(backend.receivedConfigs.first?.tools.count, 6)
+        #if DEBUG
+        XCTAssertEqual(warnings.count, 1)
+        XCTAssertTrue(warnings.first?.contains("6 tools in this request") == true)
+        #else
+        XCTAssertTrue(warnings.isEmpty, "release builds do not emit the DEBUG-only tool-count warning")
+        #endif
     }
 
     func test_runner_honoursMaxIterationsOnLoopingTool() async throws {
