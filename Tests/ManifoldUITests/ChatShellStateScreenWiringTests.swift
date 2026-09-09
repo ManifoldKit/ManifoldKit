@@ -159,6 +159,28 @@ final class ChatShellStateScreenWiringTests: XCTestCase {
         )
     }
 
+    // MARK: - Device Info host content
+
+    func test_deviceInfoPopover_withoutHostContent_keepsFrameworkDetails() throws {
+        let view = ChatDeviceInfoPopover(viewModel: ChatViewModel())
+
+        _ = try view.inspect().find(text: "Device Info")
+    }
+
+    func test_deviceInfoPopover_appendsHostSuppliedContent() throws {
+        let view = ChatDeviceInfoPopover(
+            viewModel: ChatViewModel(),
+            hostContentBuilder: {
+                AnyView(
+                    Text("Sample Chat 1.2.3 (45)")
+                        .accessibilityIdentifier("host-app-build-identity")
+                )
+            }
+        )
+
+        _ = try view.inspect().find(viewWithAccessibilityIdentifier: "host-app-build-identity")
+    }
+
     // MARK: - Pin glyph moved into the metadata row
 
     func test_messageBubble_pinGlyph_rendersInMetadataRow_whenPinned() throws {

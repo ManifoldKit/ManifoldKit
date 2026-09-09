@@ -385,6 +385,7 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
     @Binding var isSettingsPresented: Bool
     @Binding var isExportPresented: Bool
     @Binding var showClearConfirmation: Bool
+    let deviceInfoContentBuilder: (() -> AnyView)?
     let apiConfigurationBuilder: () -> APIConfig
 
     init(
@@ -394,6 +395,7 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
         isSettingsPresented: Binding<Bool>,
         isExportPresented: Binding<Bool>,
         showClearConfirmation: Binding<Bool>,
+        deviceInfoContentBuilder: (() -> AnyView)?,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
         self.viewModel = viewModel
@@ -402,6 +404,7 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
         self._isSettingsPresented = isSettingsPresented
         self._isExportPresented = isExportPresented
         self._showClearConfirmation = showClearConfirmation
+        self.deviceInfoContentBuilder = deviceInfoContentBuilder
         self.apiConfigurationBuilder = apiConfiguration
     }
 
@@ -472,7 +475,10 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
             Label("Device Info", systemImage: "info.circle")
         }
         .popover(isPresented: $isDeviceInfoExpanded) {
-            ChatDeviceInfoPopover(viewModel: viewModel)
+            ChatDeviceInfoPopover(
+                viewModel: viewModel,
+                hostContentBuilder: deviceInfoContentBuilder
+            )
         }
     }
 
@@ -511,6 +517,15 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
 struct ChatDeviceInfoPopover: View {
     @Environment(\.manifoldTheme) private var theme
     let viewModel: ChatViewModel
+    let hostContentBuilder: (() -> AnyView)?
+
+    init(
+        viewModel: ChatViewModel,
+        hostContentBuilder: (() -> AnyView)? = nil
+    ) {
+        self.viewModel = viewModel
+        self.hostContentBuilder = hostContentBuilder
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -543,6 +558,10 @@ struct ChatDeviceInfoPopover: View {
                 LabeledContent("Backend") {
                     Text(backend)
                 }
+            }
+
+            if let hostContentBuilder {
+                hostContentBuilder()
             }
         }
         .padding()

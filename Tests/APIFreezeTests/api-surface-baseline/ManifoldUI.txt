@@ -149,6 +149,7 @@ ChatView.chatAPIConfiguration(_:) Func
 ChatView.chatComposerAccessory(_:) Func
 ChatView.chatContextMenuItems(_:) Func
 ChatView.chatCustomKindRenderer(_:) Func
+ChatView.chatDeviceInfoContent(_:) Func
 ChatView.chatEmptyState(_:) Func
 ChatView.chatModelSwitcher(_:) Func
 ChatView.init(showModelManagement:linkPreviewProvider:) Constructor

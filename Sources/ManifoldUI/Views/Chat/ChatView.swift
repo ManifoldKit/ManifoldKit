@@ -31,6 +31,8 @@ import ManifoldInference
 ///   (memory, annotation, tool-result, custom) that are hidden by default.
 /// - ``chatAPIConfiguration(_:)`` — switches the API configuration view after
 ///   construction (an alternative to passing `apiConfiguration:` at init).
+/// - ``chatDeviceInfoContent(_:)`` — appends host-owned identity details to
+///   the built-in Device Info popover.
 ///
 /// **Composition is LAST-WINS.** Applying the same modifier more than once
 /// replaces the previous closure entirely — there is no merging of two
@@ -114,6 +116,13 @@ public struct ChatView<APIConfig: View>: View {
     /// depends on UI, never the reverse).
     private var modelSwitcherBuilder: (() -> AnyView)?
 
+    /// Optional host-supplied content appended to the built-in Device Info
+    /// popover, set via ``chatDeviceInfoContent(_:)``. App version and build
+    /// identity belong to the consuming app's bundle, not to ManifoldKit, so
+    /// the host supplies that information without replacing the framework's
+    /// device details or duplicating its toolbar button.
+    private var deviceInfoContentBuilder: (() -> AnyView)?
+
     public init(
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
@@ -184,6 +193,7 @@ public struct ChatView<APIConfig: View>: View {
         copy.contextMenuItemsBuilder = contextMenuItemsBuilder
         copy.customKindRenderer = customKindRenderer
         copy.modelSwitcherBuilder = modelSwitcherBuilder
+        copy.deviceInfoContentBuilder = deviceInfoContentBuilder
         return copy
     }
 
@@ -291,6 +301,36 @@ public struct ChatView<APIConfig: View>: View {
         return copy
     }
 
+    /// Appends host-supplied content inside the existing Device Info popover.
+    ///
+    /// Use this seam for consumer-app identity that ManifoldKit cannot know,
+    /// such as an app version, build number, or distribution channel. The
+    /// framework continues to own the Device Info toolbar button and its
+    /// built-in device/model details; this modifier adds content below those
+    /// details instead of creating a second presentation.
+    ///
+    /// The closure is evaluated when the popover renders, so values derived
+    /// from live host state resolve at presentation time. Obtain app-specific
+    /// version/build values in the host app; ManifoldKit deliberately does not
+    /// read or interpret the consumer's bundle identity.
+    ///
+    /// **LAST-WINS:** calling this modifier more than once replaces the
+    /// previous content builder entirely; there is no merging.
+    ///
+    /// **Ordering:** like the other chat seams, this method chains on the
+    /// concrete `ChatView` type — apply it together with
+    /// `chatEmptyState`/`chatComposerAccessory`/`chatAPIConfiguration`,
+    /// *before* any generic `View` modifier (`.chatTheme(_:)`,
+    /// `.chatMessageRenderer(_:)`, `.toolbar { }`, …) erases the chain to
+    /// `some View`, after which this method no longer resolves.
+    public func chatDeviceInfoContent<Content: View>(
+        @ViewBuilder _ builder: @escaping () -> Content
+    ) -> ChatView<APIConfig> {
+        var copy = self
+        copy.deviceInfoContentBuilder = { AnyView(builder()) }
+        return copy
+    }
+
     // MARK: - Body
 
     public var body: some View {
@@ -354,6 +394,7 @@ public struct ChatView<APIConfig: View>: View {
                 isSettingsPresented: $isSettingsPresented,
                 isExportPresented: $isExportPresented,
                 showClearConfirmation: $showClearConfirmation,
+                deviceInfoContentBuilder: deviceInfoContentBuilder,
                 apiConfiguration: apiConfiguration
             )
             #if DEBUG
