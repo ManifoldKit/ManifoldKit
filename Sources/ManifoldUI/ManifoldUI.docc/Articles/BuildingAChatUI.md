@@ -407,6 +407,37 @@ Hosts that don't use `ManifoldUIModelManagement` (e.g. cloud-only builds or apps
 
 **LAST-WINS:** applying `.chatAPIConfiguration(_:)` more than once replaces the previous closure entirely — there is no merging. The closure is invoked at sheet/popover presentation time, not when the modifier is applied, so any `@Environment` or `@Bindable` lookups inside `APIConfigurationView` resolve against the live view tree rather than the value captured at construction. `ChatView` forwards its `endpointStore` value explicitly because custom environment keys do not reliably inherit across this presentation boundary.
 
+### Adding app identity to Device Info
+
+`ChatView` owns one Device Info toolbar button and its popover of framework
+details. Consumer apps can append their own version/build identity inside that
+same popover with `.chatDeviceInfoContent(_:)`; that identity belongs to the
+host app's bundle and is intentionally not inferred by ManifoldKit.
+
+```swift
+import SwiftUI
+import ManifoldUI
+
+struct DeviceInfoExample: View {
+    @State private var showModelManagement = false
+    let appVersionAndBuild = "1.2.0 (42)"
+
+    var body: some View {
+        ChatView(showModelManagement: $showModelManagement)
+            .chatDeviceInfoContent {
+                LabeledContent("App Build") {
+                    Text(appVersionAndBuild)
+                }
+            }
+    }
+}
+```
+
+The closure is evaluated when the popover renders. Omitting the modifier leaves
+the existing Device Info button and framework-provided contents unchanged. As
+with other `ChatView` customization seams, applying it more than once is
+last-wins rather than additive.
+
 ## Next Steps
 
 - See [`docs/SWIFTUI-MULTI-SESSION.md`](../../../../docs/SWIFTUI-MULTI-SESSION.md) for the single canonical guide to multi-session UI, relaunch restore, `APIConfigurationView`, local SwiftPM path, and a complete end-to-end recipe covering everything in one place.

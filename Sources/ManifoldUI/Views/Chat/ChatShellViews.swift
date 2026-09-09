@@ -385,6 +385,8 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
     @Binding var isSettingsPresented: Bool
     @Binding var isExportPresented: Bool
     @Binding var showClearConfirmation: Bool
+    let deviceInfoContentBuilder: (() -> AnyView)?
+    let endpointStore: (any EndpointStore)?
     let apiConfigurationBuilder: () -> APIConfig
 
     init(
@@ -394,6 +396,8 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
         isSettingsPresented: Binding<Bool>,
         isExportPresented: Binding<Bool>,
         showClearConfirmation: Binding<Bool>,
+        deviceInfoContentBuilder: (() -> AnyView)?,
+        endpointStore: (any EndpointStore)?,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
         self.viewModel = viewModel
@@ -402,6 +406,8 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
         self._isSettingsPresented = isSettingsPresented
         self._isExportPresented = isExportPresented
         self._showClearConfirmation = showClearConfirmation
+        self.deviceInfoContentBuilder = deviceInfoContentBuilder
+        self.endpointStore = endpointStore
         self.apiConfigurationBuilder = apiConfiguration
     }
 
@@ -472,7 +478,11 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
             Label("Device Info", systemImage: "info.circle")
         }
         .popover(isPresented: $isDeviceInfoExpanded) {
-            ChatDeviceInfoPopover(viewModel: viewModel)
+            ChatDeviceInfoPopover(
+                viewModel: viewModel,
+                hostContentBuilder: deviceInfoContentBuilder,
+                endpointStore: endpointStore
+            )
         }
     }
 
@@ -511,6 +521,18 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
 struct ChatDeviceInfoPopover: View {
     @Environment(\.manifoldTheme) private var theme
     let viewModel: ChatViewModel
+    let hostContentBuilder: (() -> AnyView)?
+    let endpointStore: (any EndpointStore)?
+
+    init(
+        viewModel: ChatViewModel,
+        hostContentBuilder: (() -> AnyView)? = nil,
+        endpointStore: (any EndpointStore)? = nil
+    ) {
+        self.viewModel = viewModel
+        self.hostContentBuilder = hostContentBuilder
+        self.endpointStore = endpointStore
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -543,6 +565,13 @@ struct ChatDeviceInfoPopover: View {
                 LabeledContent("Backend") {
                     Text(backend)
                 }
+            }
+
+            if let hostContentBuilder {
+                chatDeviceInfoContent(
+                    hostContentBuilder,
+                    endpointStore: endpointStore
+                )
             }
         }
         .padding()
@@ -612,6 +641,15 @@ private struct ChatAPIConfigurationPresentationModifier<APIConfig: View>: ViewMo
 /// from the host hierarchy into ChatView's sheet/popover content.
 func chatAPIConfigurationContent<Content: View>(
     _ builder: @escaping () -> Content,
+    endpointStore: (any EndpointStore)?
+) -> AnyView {
+    AnyView(builder().environment(\.endpointStore, endpointStore))
+}
+
+/// Applies the custom environment values that SwiftUI does not reliably carry
+/// from the host hierarchy into Device Info popover content.
+func chatDeviceInfoContent(
+    _ builder: @escaping () -> AnyView,
     endpointStore: (any EndpointStore)?
 ) -> AnyView {
     AnyView(builder().environment(\.endpointStore, endpointStore))
