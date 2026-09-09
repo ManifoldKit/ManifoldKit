@@ -176,7 +176,7 @@ conversation runtime, and the model container in the right order. Because it
 is `async`, wire it from a `.task { }` on the launch view — **not** from
 `App.init()`, which is synchronous and would deadlock:
 
-```swift,no-build:defines the app entry point; `ContentView` is defined in the next block, so this one cannot compile in isolation
+```swift,no-build:defines the app entry point; ContentView is defined in the next block, so this one cannot compile in isolation
 import SwiftUI
 import SwiftData
 import ManifoldKit
