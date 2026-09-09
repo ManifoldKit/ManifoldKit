@@ -414,13 +414,23 @@ details. Consumer apps can append their own version/build identity inside that
 same popover with `.chatDeviceInfoContent(_:)`; that identity belongs to the
 host app's bundle and is intentionally not inferred by ManifoldKit.
 
-```swift,no-build
-ChatView(showModelManagement: $showModelManagement)
-    .chatDeviceInfoContent {
-        LabeledContent("App Build") {
-            Text(appVersionAndBuild)
-        }
+```swift
+import SwiftUI
+import ManifoldUI
+
+struct DeviceInfoExample: View {
+    @State private var showModelManagement = false
+    let appVersionAndBuild = "1.2.0 (42)"
+
+    var body: some View {
+        ChatView(showModelManagement: $showModelManagement)
+            .chatDeviceInfoContent {
+                LabeledContent("App Build") {
+                    Text(appVersionAndBuild)
+                }
+            }
     }
+}
 ```
 
 The closure is evaluated when the popover renders. Omitting the modifier leaves
