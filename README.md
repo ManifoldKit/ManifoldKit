@@ -194,7 +194,7 @@ The same backend, model-management, persistence, and download infrastructure tha
 - **On-device image generation** — `FluxDiffusionBackend` (FLUX.1 Schnell, 1024×1024 in 4 steps) and `MLXDiffusionBackend` (SDXL Turbo) conform to `ImageGenerationBackend` and stream `ImageGenerationEvent`s exactly like text inference streams `GenerationEvent`. The diffusion backends ship in the [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) companion package; the `ImageGenerationBackend` protocol and records stay in core. See [docs/QUICKSTART-IMAGE-GEN.md](docs/QUICKSTART-IMAGE-GEN.md) for the end-to-end walkthrough (download → load → generate).
 - **Cloud video generation** — Any cloud service that conforms to `VideoGenerationBackend` wires into `VideoGenerationService` and `VideoGenerationRuntime`, which persist the result via `MessageStore` and expose real-time progress through `ChatViewModel.videoGenerationProgress`. The same `ManifoldBootstrap` init that accepts an `imageGenerationService` also accepts a `videoGenerationService`, so adding video is one extra parameter:
 
-  ```swift,no-build
+  ```swift,no-build:host-defined video backend wiring; illustrative integration fragment
   let backend = MyVideoBackend()
   backend.configure(baseURL: videoAPIURL, tokenProvider: tokenProvider, modelName: "my-video-model")
   let service = VideoGenerationService(backend: backend)

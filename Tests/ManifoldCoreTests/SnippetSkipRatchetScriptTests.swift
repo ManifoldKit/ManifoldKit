@@ -1,10 +1,10 @@
 import XCTest
 
-/// Integration test for the policy half of `scripts/extract-snippets.sh` — the
-/// three checks that need no compiler and therefore run in the **required**
-/// `lint` job: the `no-build:<reason>` requirement, the per-doc ">=1 compiled
-/// block" assertion, and the per-doc skip **ratchet**
-/// (`scripts/snippet-skip-baseline.tsv`).
+/// Integration tests for fenced-block parsing and the policy half of
+/// `scripts/extract-snippets.sh` — the checks that need no compiler and
+/// therefore run in the **required** `lint` job: the `no-build:<reason>`
+/// requirement, the per-doc ">=1 compiled block" assertion, and the per-doc
+/// skip **ratchet** (`scripts/snippet-skip-baseline.tsv`).
 ///
 /// ## Why this test exists
 ///
@@ -53,6 +53,34 @@ final class SnippetSkipRatchetScriptTests: XCTestCase {
         )
         XCTAssertTrue(
             output.contains("bare"), "The error must name the bare-tag budget. Output:\n\(output)"
+        )
+    }
+
+    /// Regression for #2444: list indentation used to make a bare tag entirely
+    /// invisible, so neither the reason rule nor either ratchet column saw it.
+    /// Keep total skips flat to prove the bare-tag arm itself catches the defect.
+    func test_ratchet_rejectsANewIndentedBareNoBuildTag() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t1",
+            guideBody: """
+            - A list-hosted recipe:
+
+              ```swift
+              let compiles = 1
+              ```
+
+              ```swift,no-build
+              let hiddenBareTag = 2
+              ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, policyFailure, "The indented bare tag must be visible. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("bare `swift,no-build` count rose"),
+            "The planted defect must fire the bare-tag ratchet itself. Output:\n\(output)"
         )
     }
 
@@ -127,6 +155,177 @@ final class SnippetSkipRatchetScriptTests: XCTestCase {
             status, policyFailure,
             "`no-build:wip` is a marker, not a reason — a bare suppression with a token attached. Output:\n\(output)"
         )
+    }
+
+    // MARK: - Markdown fence parsing
+
+    func test_indentedFenceInsideNestedList_isExtractedAndDeindented() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t0",
+            guideBody: """
+            - Outer item
+              - Inner item
+
+                  ```swift
+                  func answer() -> Int {
+                      42
+                  }
+                ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, 0, "A valid list-nested fence must be extracted. Output:\n\(output)")
+        let snippet = try String(
+            contentsOf: repo.appendingPathComponent("out/guide-001.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(snippet.contains("\nfunc answer() -> Int {\n    42\n}"), snippet)
+        XCTAssertFalse(snippet.contains("\n      func"), "Markdown container indent leaked into Swift:\n\(snippet)")
+    }
+
+    func test_fourSpaceIndentedFenceOutsideAList_isNotTreatedAsFencedCode() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t0",
+            guideBody: """
+                ```swift
+                let thisIsAnIndentedCodeBlock = true
+                ```
+
+            ```swift
+            let actualFence = true
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, 0, "The real top-level fence must still extract. Output:\n\(output)")
+        let outputs = try FileManager.default.contentsOfDirectory(
+            at: repo.appendingPathComponent("out"),
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "swift" }
+        XCTAssertEqual(outputs.count, 1, "A four-space indented code block is not a CommonMark fence")
+        let snippet = try String(contentsOf: outputs[0], encoding: .utf8)
+        XCTAssertTrue(snippet.contains("let actualFence = true"), snippet)
+        XCTAssertFalse(snippet.contains("thisIsAnIndentedCodeBlock"), snippet)
+    }
+
+    func test_shortAndInfoBearingBacktickRuns_doNotCloseFence() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t1",
+            guideBody: """
+            ````swift,no-build:mismatched-fence fixture is intentionally non-compiling
+            let before = 1
+            ```
+            let afterShortRun = 2
+            ```` trailing-info
+            let afterInfoRun = 3
+            ````
+
+            ```swift
+            let compiles = 4
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, 0, "Only the valid four-backtick closer may end the first block. Output:\n\(output)")
+        let skipped = try String(
+            contentsOf: repo.appendingPathComponent("out/guide-001.skip"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(skipped.contains("```\nlet afterShortRun"), skipped)
+        XCTAssertTrue(skipped.contains("```` trailing-info\nlet afterInfoRun"), skipped)
+    }
+
+    func test_nonSwiftOuterFences_hideLiteralSwiftFenceExamples() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t0",
+            guideBody: """
+            ````markdown
+            ```swift
+            let shownAsMarkdown = 1
+            ```
+            ````
+
+            ~~~text
+            ```swift
+            let shownAsText = 2
+            ```
+            ~~~
+
+            ```swift
+            let actualSnippet = 3
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, 0, "The actual Swift fence must extract. Output:\n\(output)")
+        let snippet = try String(
+            contentsOf: repo.appendingPathComponent("out/guide-001.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(snippet.contains("actualSnippet"), snippet)
+        XCTAssertFalse(snippet.contains("shownAsMarkdown"), snippet)
+        XCTAssertFalse(snippet.contains("shownAsText"), snippet)
+    }
+
+    func test_nonSwiftFenceEndsWithItsListContainer_andLaterBareTagIsRejected() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t1",
+            guideBody: """
+            ```swift
+            let firstSnippet = 1
+            ```
+
+            - A fenced-syntax example:
+
+              ```text
+              ```swift
+
+            Outside paragraph ends the list and its unclosed text fence.
+
+            ```swift,no-build
+            let newlyVisibleBareTag = 2
+            ```
+
+            ```swift
+            let finalSnippet = 3
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, policyFailure, "The later top-level bare tag must be visible. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("bare `swift,no-build` count rose"),
+            "The bare-tag ratchet must fire after the enclosing list ends. Output:\n\(output)"
+        )
+    }
+
+    func test_eofTerminatedSwiftFence_extractsThroughEOF() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t0",
+            guideBody: """
+            ```swift
+            let retainedThroughEOF = 2
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, 0, "CommonMark closes a still-open fence at EOF. Output:\n\(output)")
+        let snippet = try String(
+            contentsOf: repo.appendingPathComponent("out/guide-001.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(snippet.contains("retainedThroughEOF"), snippet)
     }
 
     // MARK: - Per-doc coverage

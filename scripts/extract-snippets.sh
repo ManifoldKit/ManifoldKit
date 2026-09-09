@@ -318,34 +318,189 @@ extract_one() {
     # self-contained.
     local awk_out
     awk_out=$(awk '
-        BEGIN { in_block = 0; block_num = 0; start_line = 0; tag = ""; }
-        # Detect opening fence. Case-insensitive match on "swift" after ```.
-        # Tolerates ```swift, ```swift,no-build, ```Swift, ```swift foo, etc.
-        /^```/ {
-            if (in_block == 0) {
-                # Lowercase the line for tag matching without disturbing the
-                # captured fence tag itself.
-                lower = tolower($0)
-                # Strip the leading ``` then check the language token.
-                rest = substr(lower, 4)
-                # Match "swift" at the start, optionally followed by ,/space/EOL.
-                if (rest ~ /^swift([,[:space:]]|$)/) {
-                    in_block = 1
-                    block_num += 1
-                    start_line = NR + 1
-                    tag = rest
-                    print "$$$START$$$" block_num "|" start_line "|" tag
-                    next
+        # Markdown permits at most three spaces before a fence after its active
+        # container prefix. A list prefix can make the RAW indentation deeper,
+        # so keep the content indent of each active list level. This is enough
+        # container parsing for fenced blocks without treating an ordinary
+        # four-space-indented line containing ```swift as a fence.
+        function leading_spaces(s,    i, n) {
+            n = 0
+            for (i = 1; i <= length(s) && substr(s, i, 1) == " "; i++) n++
+            return n
+        }
+        function list_marker_width(s, pos,    i, c, digits) {
+            c = substr(s, pos, 1)
+            if ((c == "-" || c == "+" || c == "*") &&
+                (substr(s, pos + 1, 1) == " " || substr(s, pos + 1, 1) == "\t")) return 1
+            digits = 0
+            for (i = pos; i <= length(s) && index("0123456789", substr(s, i, 1)) > 0 && digits < 9; i++) digits++
+            c = substr(s, pos + digits, 1)
+            if (digits > 0 && (c == "." || c == ")") &&
+                (substr(s, pos + digits + 1, 1) == " " || substr(s, pos + digits + 1, 1) == "\t")) return digits + 1
+            return 0
+        }
+        # BSD awk under C.UTF-8 can fail inside tolower() when a fence reason
+        # contains a valid non-ASCII character. Tags are ASCII syntax; fold
+        # only ASCII letters and preserve every other byte verbatim.
+        function ascii_lower(s,    upper, lower, out, i, c, p) {
+            upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            lower = "abcdefghijklmnopqrstuvwxyz"
+            out = ""
+            for (i = 1; i <= length(s); i++) {
+                c = substr(s, i, 1)
+                p = index(upper, c)
+                out = out (p > 0 ? substr(lower, p, 1) : c)
+            }
+            return out
+        }
+        function container_for_indent(indent,    d) {
+            for (d = list_depth; d >= 1; d--)
+                if (indent >= list_content[d] && indent - list_content[d] <= 3)
+                    return list_content[d]
+            return (indent <= 3 ? 0 : -1)
+        }
+        function update_list_context(line,    indent, pos, width, after, spaces, base, d) {
+            if (line ~ /^[ ]*$/) { previous_blank = 1; return }
+            indent = leading_spaces(line)
+            pos = indent + 1
+            width = list_marker_width(line, pos)
+            if (width > 0) {
+                base = container_for_indent(indent)
+                if (base >= 0) {
+                    while (list_depth > 0 && list_content[list_depth] > indent) {
+                        delete list_content[list_depth]
+                        list_depth--
+                    }
+                    # A marker at a current containers content indent opens a
+                    # child; a marker before it replaces/exits that level.
+                    if (list_depth == 0 || indent >= list_content[list_depth]) list_depth++
+                    else {
+                        while (list_depth > 0 && indent < list_content[list_depth]) {
+                            delete list_content[list_depth]
+                            list_depth--
+                        }
+                        list_depth++
+                    }
+                    after = pos + width
+                    spaces = 0
+                    while (substr(line, after + spaces, 1) == " ") spaces++
+                    # CommonMark treats 1-4 spaces after a marker as padding;
+                    # five or more leaves one space as padding and the rest as
+                    # content indentation.
+                    if (spaces < 1 || spaces > 4) spaces = 1
+                    list_content[list_depth] = indent + width + spaces
+                    for (d = list_depth + 1; d in list_content; d++) delete list_content[d]
+                    previous_blank = 0
+                    return
                 }
-            } else {
-                # Closing fence.
+            }
+            # After a blank line, non-indented prose exits any list containers
+            # it can no longer belong to. Lazy paragraph continuations before a
+            # blank deliberately retain the current list context.
+            if (previous_blank) {
+                while (list_depth > 0 && indent < list_content[list_depth]) {
+                    delete list_content[list_depth]
+                    list_depth--
+                }
+            }
+            previous_blank = 0
+        }
+        function fence_count(s, pos, character,    n) {
+            n = 0
+            while (substr(s, pos + n, 1) == character) n++
+            return n
+        }
+        function deindent(s, count,    n) {
+            n = leading_spaces(s)
+            if (n > count) n = count
+            return substr(s, n + 1)
+        }
+        BEGIN {
+            in_block = 0; capture_swift = 0; block_num = 0; start_line = 0; tag = ""
+            list_depth = 0; previous_blank = 0
+        }
+        {
+            indent = leading_spaces($0)
+            # A fenced block nested in a list cannot outlive that container.
+            # When a nonblank line loses the opening container prefix, close
+            # the block and reprocess this line in the enclosing context. This
+            # matters for non-Swift fences too: otherwise an unclosed example
+            # fence can hide every later top-level Swift block in the document.
+            if (in_block == 1 && open_container_indent > 0 &&
+                $0 !~ /^[ ]*$/ && indent < open_container_indent) {
                 in_block = 0
-                print "$$$END$$$" block_num
+                if (capture_swift) print "$$$END$$$" block_num
+                capture_swift = 0
                 tag = ""
+                while (list_depth > 0 && list_content[list_depth] >= open_container_indent) {
+                    delete list_content[list_depth]
+                    list_depth--
+                }
+                previous_blank = 0
+            }
+            if (in_block == 0) {
+                container = container_for_indent(indent)
+                if (container >= 0) {
+                    fence_pos = indent + 1
+                    fence_character = substr($0, fence_pos, 1)
+                    fence_len = (fence_character == "`" || fence_character == "~") \
+                        ? fence_count($0, fence_pos, fence_character) : 0
+                    if (fence_len >= 3) {
+                        # A backtick in the info string invalidates a backtick
+                        # fence under CommonMark; do not turn prose/examples of
+                        # fence syntax into extracted Swift accidentally.
+                        raw_rest = substr($0, fence_pos + fence_len)
+                        lower = ascii_lower(raw_rest)
+                        sub(/^[ \t]*/, "", lower)
+                        if (fence_character == "~" || raw_rest !~ /`/) {
+                            in_block = 1
+                            open_fence_len = fence_len
+                            open_fence_character = fence_character
+                            open_container_indent = container
+                            open_raw_indent = indent
+                            # The extractor intentionally captures the documented
+                            # ```swift shape only. Still track every surrounding
+                            # Markdown fence so a literal ```swift inside a
+                            # ````markdown or ~~~text example is not extracted.
+                            capture_swift = (fence_character == "`" && lower ~ /^swift([,[:space:]]|$)/)
+                            if (capture_swift) {
+                                block_num += 1
+                                start_line = NR + 1
+                                tag = lower
+                                print "$$$START$$$" block_num "|" start_line "|" tag
+                            }
+                            next
+                        }
+                    }
+                }
+                update_list_context($0)
                 next
             }
+
+            # Closing fences use the same character, are at least as long as
+            # the opener, carry no info string, and may be indented by at most
+            # three spaces after the opening blocks container prefix.
+            if (indent >= open_container_indent && indent - open_container_indent <= 3) {
+                fence_pos = indent + 1
+                fence_len = fence_count($0, fence_pos, open_fence_character)
+                rest = substr($0, fence_pos + fence_len)
+                if (substr($0, fence_pos, 1) == open_fence_character &&
+                    fence_len >= open_fence_len && rest ~ /^[ \t]*$/) {
+                    in_block = 0
+                    if (capture_swift) print "$$$END$$$" block_num
+                    capture_swift = 0
+                    tag = ""
+                    next
+                }
+            }
+            if (capture_swift)
+                print "$$$BODY$$$" block_num "|" deindent($0, open_raw_indent)
         }
-        in_block == 1 { print "$$$BODY$$$" block_num "|" $0 }
+        END {
+            # CommonMark lets a fence run through EOF. Close a captured Swift
+            # block here so that valid EOF-terminated examples are not dropped.
+            if (in_block == 1 && capture_swift) print "$$$END$$$" block_num
+        }
     ' "$abs_path")
 
     # Reconstruct blocks in shell. We iterate the awk output, buffering

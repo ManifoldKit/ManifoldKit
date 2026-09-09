@@ -293,6 +293,11 @@ for p in "${CHANGED[@]}"; do
       log "changed: $p → target ManifoldInferenceTests (AgentsMdAuditTest runs it)"
       continue
       ;;
+    scripts/extract-snippets.sh|scripts/local-integration-sweep.sh)
+      changed_targets_add "ManifoldCoreTests"
+      log "changed: $p → target ManifoldCoreTests (script contract tests run it)"
+      continue
+      ;;
     # scripts/demo-coverage.sh itself is a `.sh` file, so it's already caught
     # by the blanket scripts/*.sh force-include below. These two `.tsv` data
     # files are NOT `.sh`, so without this case they'd fall through to the
