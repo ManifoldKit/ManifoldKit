@@ -169,7 +169,7 @@ question.
 | `ManifoldVoice` | Speech I/O adapters, voice composer accessory. | Explicitly confirmed stable-tier in `API-DESIGN.md` § 7b: "a shipping first-party app pins and imports it, verified 2026-07-13" — the one product whose Tier 2 status is externally verified by the same adopter bar that keeps its siblings in Tier 3. |
 | `ManifoldFuzz` | Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic. | Not on `API-DESIGN.md` § 7's five-product semver-exemption roster, even though it looks like adjacent developer tooling — that roster is a curated, named list, not a blanket rule for anything test/fuzz-shaped. Its `Package.swift` product comment explains why it was published as a real `.library` in the first place: `manifold-mlx`'s `fuzz-mlx` driver needs to `import ManifoldFuzz` cross-package (a load-bearing dependency, not a test-target-only import), and doing so "re-widens the api-digester gate's product surface" — i.e. it is tracked by the same public-surface baseline as every other non-exempt product, the same gating `ManifoldFoundation`/`ManifoldOllama`/`ManifoldCloudSaaS` get. |
 | `ManifoldServerKit` (module `ManifoldServer`) | Embeddable OpenAI-compatible server library — `ManifoldServer.serve(configuration:backendProvider:)`. | A real public seam shipped in #2242, not test/dev tooling; absent from § 7's exemption list. **Caveat:** its api-digester coverage is structurally broken by a SwiftPM tooling limitation (traits don't reach the scratch-checkout build the digester dumps), not a scoping choice — see [Qualification gaps](#qualification-gaps). |
-| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. | Graduated from Tier 3a on the first-real-adopter rule (`AGENTS.md`; `API-DESIGN.md` § 7b) — the same adopter bar that keeps `ManifoldVoice` at this tier. Two real adopters: fireside declares the product for Sources+Tests (`Packages/FiresideEval/Package.swift`) and drives `GoldenTaskRunner` via `FiresideGoldenTaskAdapter`/`FiresideGraphCheckpointScorer`, exercised per-PR by fireside's `macos-ci.yml`; idlewick is a second adopter (its `iwk` CLI target imports the product from non-test code, with `AppEvalReportBuilderTests` CI-executed). See the `app-eval` row in `scripts/demo-coverage-manifest.tsv` for the full evidence chain. **Caveat:** it has no in-repo demo-app vehicle yet (`vehicle: none` pending an example-app wire-up), and its core-main release evidence remains a pending registry-derived canary in the [release-health ledger](RELEASE-1.0.md#release-health--qualification-ledger). |
+| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. | Graduated from Tier 3a on the first-real-adopter rule (`AGENTS.md`; `API-DESIGN.md` § 7b) — the same adopter bar that keeps `ManifoldVoice` at this tier. Two real adopters: fireside declares the product for Sources+Tests (`Packages/FiresideEval/Package.swift`) and drives `GoldenTaskRunner` via `FiresideGoldenTaskAdapter`/`FiresideGraphCheckpointScorer`, exercised per-PR by fireside's `macos-ci.yml`; idlewick is a second, **partial report-layer adopter** (its `iwk` CLI target imports the product from non-test code, with `AppEvalReportBuilderTests` CI-executed); this does not claim adoption of `GoldenTaskRunner`. See the `app-eval` row in `scripts/demo-coverage-manifest.tsv` for the full evidence chain. **Caveat:** it has no in-repo demo-app vehicle yet (`vehicle: none` pending an example-app wire-up), and its core-main release evidence remains a pending registry-derived canary in the [release-health ledger](RELEASE-1.0.md#release-health--qualification-ledger). |
 
 **Executables in this tier:** `ManifoldServer` (the `Server`-trait-gated
 OpenAI-compatible HTTP server CLI — pairs with `ManifoldServerKit` above) and
@@ -193,6 +193,15 @@ that already owns that distinction. See sub-tiers 3a and 3b below.
 when a shipping app or companion pins it **and** imports it from non-test
 code — verified by grep, not documentation or intent. Each carries a
 graduate-or-delete decision point at 1.0 + 2 minors or its named milestone.
+
+**Adopter spotcheck — 2026-09-09:** no known adopters of the five products
+below were found in source and build configuration across three first-party
+apps, the two backend companions, and `manifold-eval`. This is a bounded
+first-party survey, not a claim about every external consumer. Recheck this
+roster manually when an adoption is reported and before the graduation/deletion
+milestone; record the pin, non-test caller, and exercised CI path. Keep this
+cross-repository check manual: core CI cannot assume access to private consumer
+repositories. The in-repo tier-manifest audit still guards roster consistency.
 
 <!-- TIER-MANIFEST:experimental-zero-adopter -->
 - `ManifoldMCP`

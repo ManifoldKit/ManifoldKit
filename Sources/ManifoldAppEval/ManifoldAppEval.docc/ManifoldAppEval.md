@@ -86,15 +86,18 @@ and context-slot payloads. For anything beyond that,
 assert on `result.trace.events` directly in Swift. The schema is not a wall —
 it is the common path, not the only path.
 
-## Experimental tier
+## Supported integration
 
-`ManifoldAppEval` is in ManifoldKit's **experimental tier** (declared
-2026-07-13) — it may break in any minor release, always migration-noted,
-until it graduates. Graduation requires a real adopter: a shipping app or
-companion that pins ManifoldKit and imports this module from non-test code.
-Documentation and examples don't count as adoption. See
-[docs/API-DESIGN.md § 7b](https://github.com/ManifoldKit/ManifoldKit/blob/main/docs/API-DESIGN.md)
-for the full policy.
+`ManifoldAppEval` graduated to **Tier 2 — Supported first-party integration**
+on 2026-08-09. Fireside exercises the golden-scenario runner in its eval package
+and per-PR CI. Idlewick also adopts the report layer in its CLI; that is partial
+adoption, not evidence that it runs `GoldenTaskRunner`.
+
+Compatibility tier and release qualification are separate. The missing in-repo
+demonstration vehicle and core-main canary remain qualification gaps; graduation
+does not clear them. See the normative
+[production-readiness roster](https://github.com/ManifoldKit/ManifoldKit/blob/main/docs/PRODUCTION-READINESS.md)
+and [release-health ledger](https://github.com/ManifoldKit/ManifoldKit/blob/main/docs/RELEASE-1.0.md#release-health--qualification-ledger).
 
 ## Topics
 

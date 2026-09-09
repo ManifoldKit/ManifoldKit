@@ -196,6 +196,19 @@ paths whose evidence is actually clear.
 | Cleared | Scope | Terminal evidence |
 |---|---|---|
 | 2026-09-05 | Tier 1 bootstrap recipe and Tier 2 `ManifoldUIModelManagement` endpoint configuration ([#2476](https://github.com/ManifoldKit/ManifoldKit/issues/2476)) | `EndpointStorePresentationIntegrationTests` presents the real `ChatView` API-configuration sheet, receives the bootstrap's live store, and writes an endpoint through it. The presentation path executed in the [terminal green CI job](https://github.com/ManifoldKit/ManifoldKit/actions/runs/31932009577/job/95128187395); the implementation, canonical recipe, and runnable Advanced example are carried forward on [#2498](https://github.com/ManifoldKit/ManifoldKit/pull/2498). |
+| 2026-09-09 | Tier 1 cold-start cache/diagnostic qualification ([#2423](https://github.com/ManifoldKit/ManifoldKit/issues/2423)) | [#2482](https://github.com/ManifoldKit/ManifoldKit/pull/2482) replaced stale prefix restoration with exact daily keys and fail-closed provenance. The [PR cache-hit job](https://github.com/ManifoldKit/ManifoldKit/actions/runs/31931507051/job/95126943685) recorded key/ref/creation provenance; the [September 7 run](https://github.com/ManifoldKit/ManifoldKit/actions/runs/34073084988) passed with an intentional clean miss. The clean consumer diagnostic recheck below clears the remaining divergence. |
+
+**Diagnostic recheck (2026-09-09).** Against core commit
+`4679ce26cff9249024ca276bae960b238b8cd215`, a fresh SwiftPM library consumer
+(tools version 6.2, macOS 15 floor, explicitly named local `ManifoldKit`
+dependency and umbrella product) built `import ManifoldKit` successfully with
+`swift build --package-path /tmp/mk-2423-proof --jobs 4` (exit 0). Its build
+directory was newly created; no cold-start build cache was restored. Adding
+`import ManifoldLlama` to that same consumer and repeating the command returned
+exit 1 with `Consumer.swift:2:8: error: no such module 'ManifoldLlama'`, without
+`missing required module 'llama'`. This isolates the retired import from the
+old restored-module contamination. The negative probe is expected to fail:
+local inference now requires the separate companion package.
 
 ### Open Tier 1/2 blockers — claims withheld from v0.77
 
@@ -205,7 +218,6 @@ assignments remain unchanged; only these scoped release claims are withheld.
 
 | Order | Scope affected | Blocker | Evidence required to clear |
 |---:|---|---|---|
-| 1 | Tier 1 cold-start release gate | [#2423](https://github.com/ManifoldKit/ManifoldKit/issues/2423) is **blocked**: `cold-start-human` can restore a stale main-scoped cache and report diagnostics not reproducible from source. | A PR run records either a current-generation cache hit or intentional cold miss, including cache `createdAt`/key provenance; no multi-week-old restored build directory is accepted; and the `llama`/`ManifoldLlama` diagnostic divergence is rechecked from the corrected run. |
 | 2 | Tier 1 `ManifoldContract`; every Tier 2 backend | [#2409](https://github.com/ManifoldKit/ManifoldKit/issues/2409) is **blocked**: cancellation and immediate reuse have no shared, non-vacuous contract tripwire. | `BackendContractChecks` proves a generation is in flight before cancelling, then asserts synchronous `isGenerating == false` and successful immediate reuse; its test demonstrably fails on a known violating backend; and every in-tree backend passes or publishes a deliberate deviation. |
 | 3 | Tier 2 `ManifoldOllama`; terminal-turn behaviour in Tier 1 Runtime/UI | [#2376](https://github.com/ManifoldKit/ManifoldKit/issues/2376) remains **unqualified**: bounded production mitigations now include a five-minute stream-idle timeout, terminal drain, and visible diagnostics, but the reported live iOS Ollama tool-continuation path has no terminal-state evidence. | A regression test drives an Ollama tool round-trip to a terminal state, and a real iOS-simulator/Ollama CI or release-gate run records either a completed continuation or the explicit bounded error. If request shape is causal, pin it with a request-body test; a runner timeout is failure. |
 
