@@ -375,7 +375,7 @@ final class ScenarioRunnerTests: XCTestCase {
                 (name: "read_file", arguments: #"{"path":"readmes/backend-a.md"}"#),
                 (name: "read_file", arguments: #"{"path":"readmes/backend-b.md"}"#)
             ]),
-            .tokens(["DEMO-README-NONCE appears in both; Backend A uses streaming tools and Backend B uses batch tools."])
+            .tokens(["DEMO-README-NONCE appears in both; Backend A uses Streaming tools and Backend B uses Batch tools."])
         ])
 
         let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)

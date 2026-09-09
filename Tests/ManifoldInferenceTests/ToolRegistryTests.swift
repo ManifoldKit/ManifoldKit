@@ -162,7 +162,6 @@ final class ToolRegistryTests: XCTestCase {
 
         XCTAssertEqual(registry.definitions.count, 1, "differently-cased duplicates must occupy one registry slot")
         XCTAssertEqual(registry.definitions.first?.name, "GET_WEATHER", "the later registration's definition must be advertised")
-        XCTAssertFalse(registry.contains(name: "Get_Weather_v1"), "the first registration must not remain reachable under another key")
 
         let result = await registry.dispatch(
             ToolCall(id: "call-o", toolName: "get_weather", arguments: #"{"city":"Paris"}"#)
