@@ -24,8 +24,10 @@ does not yet offer Apple's decoded-instance ergonomics.
 
 Apple's `FoundationModels` framework provides a clean session API and, on iOS
 27/macOS 27, a public `LanguageModel` / `LanguageModelExecutor` provider seam.
-Apple also publishes first-party integrations for MLX and Core AI plus cloud
-chat-completions utilities. ManifoldKit does not claim to be the only provider
+Published integrations include
+[`MLXFoundationModels`](https://github.com/ml-explore/mlx-swift-lm/tree/main/Libraries/MLXFoundationModels),
+[`CoreAILanguageModel`](https://github.com/apple/coreai-models), and
+[`ChatCompletionsLanguageModel`](https://github.com/apple/foundation-models-utilities#chatcompletionslanguagemodel). ManifoldKit does not claim to be the only provider
 abstraction on Apple platforms.
 
 ManifoldKit **wraps Apple's system model** as one backend (`FoundationBackend`,
@@ -34,6 +36,16 @@ loop across local and cloud engines, drop-in SwiftUI, tool approval, RAG, model
 management, and backend-independent operations. Use ManifoldKit when you need
 that sustained app surface; stay on raw `FoundationModels` when its session and
 provider ecosystem are sufficient.
+
+Apple's [Foundation Models utilities](https://github.com/apple/foundation-models-utilities#history-management)
+also provide rolling-window, summarization, and completed-tool-call history
+modifiers. These overlap with context-management concerns; ManifoldKit adds
+persisted sessions and backend-independent runtime policy. The utilities'
+[Skills](https://github.com/apple/foundation-models-utilities#skills) load task
+instructions into a session on demand. ManifoldKit's `ManifoldAgentInstructions`
+discovers ambient `AGENTS.md` instructions; it is a different mechanism, not an
+equivalent Skills implementation. Publication of these utilities does not mean
+the entire Foundation Models framework is open source.
 
 ManifoldKit no longer wraps AnyLanguageModel as a dependency — the bridge
 product (`ManifoldAnyLanguageModel`) was retired in #2435 for zero adoption.
@@ -99,8 +111,10 @@ it owns `send`/`regenerate`/`edit`/`branch`/`cancel` through a single
 
 ## 2. Picking the model = picking the backend
 
-`FoundationModels` gives you exactly one model. ManifoldKit's `FoundationBackend`
-wraps that same model, but it's one registrar among several:
+`SystemLanguageModel` provides Apple's system model; the OS 27 provider seam
+also supports other models through Apple's session API. ManifoldKit's
+`FoundationBackend` wraps the system model specifically, as one registrar among
+several:
 
 ```swift,no-build
 import ManifoldKit
@@ -173,8 +187,8 @@ let getWeather = ToolDefinition(
 ```
 
 Register the definition with an executor in the `ToolRegistry`, and the turn loop
-calls it automatically — the same multi-step tool loop you'd hand-roll around
-`session.respond(to:)`. See [QUICKSTART-TOOLS.md](QUICKSTART-TOOLS.md) for the
+calls it automatically. Apple's session also orchestrates tool calls;
+ManifoldKit adds its shared runtime and approval policy around backend execution. See [QUICKSTART-TOOLS.md](QUICKSTART-TOOLS.md) for the
 end-to-end registry + executor wiring, and [LOCAL-TOOL-CALLING.md](LOCAL-TOOL-CALLING.md)
 for how local GGUF/MLX models emit tool calls.
 
