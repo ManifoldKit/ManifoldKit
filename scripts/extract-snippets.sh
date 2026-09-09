@@ -421,6 +421,23 @@ extract_one() {
         }
         {
             indent = leading_spaces($0)
+            # A fenced block nested in a list cannot outlive that container.
+            # When a nonblank line loses the opening container prefix, close
+            # the block and reprocess this line in the enclosing context. This
+            # matters for non-Swift fences too: otherwise an unclosed example
+            # fence can hide every later top-level Swift block in the document.
+            if (in_block == 1 && open_container_indent > 0 &&
+                $0 !~ /^[ ]*$/ && indent < open_container_indent) {
+                in_block = 0
+                if (capture_swift) print "$$$END$$$" block_num
+                capture_swift = 0
+                tag = ""
+                while (list_depth > 0 && list_content[list_depth] >= open_container_indent) {
+                    delete list_content[list_depth]
+                    list_depth--
+                }
+                previous_blank = 0
+            }
             if (in_block == 0) {
                 container = container_for_indent(indent)
                 if (container >= 0) {

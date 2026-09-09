@@ -275,6 +275,40 @@ final class SnippetSkipRatchetScriptTests: XCTestCase {
         XCTAssertFalse(snippet.contains("shownAsText"), snippet)
     }
 
+    func test_nonSwiftFenceEndsWithItsListContainer_andLaterBareTagIsRejected() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t1",
+            guideBody: """
+            ```swift
+            let firstSnippet = 1
+            ```
+
+            - A fenced-syntax example:
+
+              ```text
+              ```swift
+
+            Outside paragraph ends the list and its unclosed text fence.
+
+            ```swift,no-build
+            let newlyVisibleBareTag = 2
+            ```
+
+            ```swift
+            let finalSnippet = 3
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, policyFailure, "The later top-level bare tag must be visible. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("bare `swift,no-build` count rose"),
+            "The bare-tag ratchet must fire after the enclosing list ends. Output:\n\(output)"
+        )
+    }
+
     func test_eofTerminatedSwiftFence_extractsThroughEOF() throws {
         let repo = try plantRepo(
             baseline: "docs/GUIDE.md\t0\t0",
