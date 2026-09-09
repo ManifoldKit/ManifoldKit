@@ -64,6 +64,8 @@ public struct ChatView<APIConfig: View>: View {
     @State private var showAPIConfiguration: Bool = false
     @Binding private var apiConfigurationPresentationTestingBinding: Bool
     private var usesAPIConfigurationPresentationTestingBinding = false
+    @Binding private var deviceInfoPresentationTestingBinding: Bool
+    private var usesDeviceInfoPresentationTestingBinding = false
     @State private var showModelSwitcher: Bool = false
     #if DEBUG
     @State private var showArchitectView: Bool = false
@@ -130,6 +132,7 @@ public struct ChatView<APIConfig: View>: View {
     ) {
         self._showModelManagement = showModelManagement
         self._apiConfigurationPresentationTestingBinding = .constant(false)
+        self._deviceInfoPresentationTestingBinding = .constant(false)
         self.linkPreviewProvider = linkPreviewProvider
         self.apiConfigurationBuilder = apiConfiguration
     }
@@ -207,6 +210,19 @@ public struct ChatView<APIConfig: View>: View {
         var copy = self
         copy._apiConfigurationPresentationTestingBinding = isPresented
         copy.usesAPIConfigurationPresentationTestingBinding = true
+        return copy
+    }
+
+    /// Test-only state driver for the existing Device Info popover. Production
+    /// enters this state through the toolbar button; keeping this internal
+    /// lets liveness tests mount the real presentation without exposing a
+    /// second consumer-facing presentation API.
+    func presentingDeviceInfoForTesting(
+        _ isPresented: Binding<Bool>
+    ) -> ChatView<APIConfig> {
+        var copy = self
+        copy._deviceInfoPresentationTestingBinding = isPresented
+        copy.usesDeviceInfoPresentationTestingBinding = true
         return copy
     }
 
@@ -346,10 +362,18 @@ public struct ChatView<APIConfig: View>: View {
             if usesAPIConfigurationPresentationTestingBinding {
                 showAPIConfiguration = apiConfigurationPresentationTestingBinding
             }
+            if usesDeviceInfoPresentationTestingBinding {
+                isDeviceInfoExpanded = deviceInfoPresentationTestingBinding
+            }
         }
         .onChange(of: apiConfigurationPresentationTestingBinding) { _, isPresented in
             if usesAPIConfigurationPresentationTestingBinding {
                 showAPIConfiguration = isPresented
+            }
+        }
+        .onChange(of: deviceInfoPresentationTestingBinding) { _, isPresented in
+            if usesDeviceInfoPresentationTestingBinding {
+                isDeviceInfoExpanded = isPresented
             }
         }
         // Cmd+Shift+M opens Model Management from anywhere in the chat view.
@@ -395,6 +419,7 @@ public struct ChatView<APIConfig: View>: View {
                 isExportPresented: $isExportPresented,
                 showClearConfirmation: $showClearConfirmation,
                 deviceInfoContentBuilder: deviceInfoContentBuilder,
+                endpointStore: endpointStore,
                 apiConfiguration: apiConfiguration
             )
             #if DEBUG
