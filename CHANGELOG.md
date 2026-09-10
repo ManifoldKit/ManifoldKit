@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.78.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.77.0...v0.78.0) (2026-09-10)
+
+ManifoldKit 0.78 lets host apps add their own support details to the existing
+Device Info popover. It also tightens tool-scenario diagnostics and makes the
+release validation scripts reliable in linked worktrees and indented Markdown.
+
+### Highlights
+
+#### Add app-owned details to Device Info
+
+Apps can now place version, build, source revision, or other host-owned support
+metadata beneath ManifoldKit's built-in device and model details. The new
+`chatDeviceInfoContent` modifier keeps the existing Info button as the single
+entry point and composes with `chatAPIConfiguration`.
+
+```swift
+import ManifoldKit
+import SwiftUI
+
+@MainActor
+func supportChat(viewModel: ChatViewModel, showModelManagement: Binding<Bool>) -> some View {
+    ChatView(showModelManagement: showModelManagement)
+        .chatDeviceInfoContent {
+            LabeledContent("App Build", value: "0.1.0 (2)")
+        }
+        .environment(viewModel)
+}
+```
+
+See [#2514](https://github.com/ManifoldKit/ManifoldKit/pull/2514).
+
+### Fixes
+
+- Recognise list-indented Swift fences during snippet validation and accept linked Git worktrees in the eval sweep ([#2513](https://github.com/ManifoldKit/ManifoldKit/pull/2513)).
+- Make semantic multi-value tool assertions insensitive to sentence capitalisation, report the definitions actually forwarded, and pin duplicate tool registration to last-wins ([#2512](https://github.com/ManifoldKit/ManifoldKit/pull/2512)).
+
+### Documentation
+
+- Reconcile adopter maturity tiers and cold-start qualification guidance ([#2511](https://github.com/ManifoldKit/ManifoldKit/pull/2511)).
+
+### Tests
+
+- Improve validation reliability across the release candidate ([#2507](https://github.com/ManifoldKit/ManifoldKit/pull/2507)).
+
 ## [0.77.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.76.1...v0.77.0) (2026-09-06)
 
 ManifoldKit 0.77 restores complete history and search results, keeps vector state aligned
