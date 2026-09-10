@@ -5,7 +5,7 @@
 
 > Written for both humans and coding agents. If a PR adds a public symbol, overload, or
 > knob, it must be justifiable against this page — not against what compiled cleanly.
-> Grounded in `docs/plans/api-review-2026-07.md` (Part A root causes, Phase 0, decision
+> Grounded in the [July API review](https://github.com/ManifoldKit/ManifoldKit/blob/8d67614566f037ff265387f2dcde09c76434944e/docs/plans/api-review-2026-07.md) (Part A root causes, Phase 0, decision
 > queue). This is the consolidation artifact for those decisions — read the plan for the
 > evidence, read this page to decide.
 

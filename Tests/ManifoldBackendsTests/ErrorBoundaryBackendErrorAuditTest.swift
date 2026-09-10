@@ -3,7 +3,8 @@ import ManifoldInference
 import ManifoldRuntime
 import ManifoldUI
 
-/// Checklist guard for the error-boundary audit (docs/plans/api-review-2026-07.md
+/// Checklist guard for the error-boundary audit (July API review
+/// https://github.com/ManifoldKit/ManifoldKit/blob/8d67614566f037ff265387f2dcde09c76434944e/docs/plans/api-review-2026-07.md
 /// item 1.2 / symptom S6) — see the DocC article "Error handling at the
 /// boundary" (`ManifoldRuntime.docc/Articles/ErrorHandlingAtTheBoundary.md`)
 /// for the full escape-path trace.

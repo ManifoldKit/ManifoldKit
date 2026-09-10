@@ -1,7 +1,8 @@
 import XCTest
 
 /// Structural tripwire for the member-aware public-surface baseline
-/// (originated as the 0.2b prototype in `docs/plans/api-review-2026-07.md`;
+/// (originated as the 0.2b prototype in the July API review;
+/// https://github.com/ManifoldKit/ManifoldKit/blob/8d67614566f037ff265387f2dcde09c76434944e/docs/plans/api-review-2026-07.md
 /// made load-bearing and expanded to full module coverage by
 /// `docs/plans/api-review-wave2-2026-07.md` item 0.A).
 ///

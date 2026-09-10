@@ -84,7 +84,8 @@ ManifoldHuggingFace/PendingDownloadStore.swift:private nonisolated(unsafe) stati
 
 # `ManifoldCloudCore/URLSessionProvider.swift`'s `networkDisabled` used to be
 # allowlisted here under this "write-once boot flag" exception. Plan item 1.3
-# (docs/plans/api-review-2026-07.md) found the premise false: the property's
+# (the July API review) found the premise false: the property's
+# https://github.com/ManifoldKit/ManifoldKit/blob/8d67614566f037ff265387f2dcde09c76434944e/docs/plans/api-review-2026-07.md
 # own doc explicitly supports flipping it after startup (not just once before
 # any reader), and `URLSessionProviderNetworkDisabledTests` toggles it
 # repeatedly across test methods — the opposite of write-once. It is now

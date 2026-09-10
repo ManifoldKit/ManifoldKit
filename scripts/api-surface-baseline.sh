@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # scripts/api-surface-baseline.sh — member-aware public-surface tripwire
 #
-# Originated as a 7-module prototype (docs/plans/api-review-2026-07.md item
+# Originated as a 7-module prototype (July API review item
+# https://github.com/ManifoldKit/ManifoldKit/blob/8d67614566f037ff265387f2dcde09c76434944e/docs/plans/api-review-2026-07.md
 # 0.2b). Made load-bearing in docs/plans/api-review-wave2-2026-07.md item
 # 0.A: full coverage of every `.library()` product in Package.swift (27 as
 # of 2026-07-10), wired into nightly-slow-tests.yml via `--check`. No

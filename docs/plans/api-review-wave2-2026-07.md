@@ -9,7 +9,7 @@ D2 = rename `Score`→`EvalScore` WITH a pre-staged manifold-eval adapt draft.
 D3 = keep `Log` as-is; document module-qualification as the collision workaround.
 D4 (#2128 adjudication) remains open and decoupled — does not gate the wave.
 
-Successor to `api-review-2026-07.md` (v2), which is ~80% executed (Phases 0–1 + most of
+Successor to the [July API review](https://github.com/ManifoldKit/ManifoldKit/blob/8d67614566f037ff265387f2dcde09c76434944e/docs/plans/api-review-2026-07.md) (v2), which is ~80% executed (Phases 0–1 + most of
 Phase 2 shipped in v0.67.0). Covers: the residue of that plan, the 2026-07-10 independent
 review findings (N1–N8 below), and the process gaps the execution audit exposed.
 
