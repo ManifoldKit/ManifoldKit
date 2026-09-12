@@ -78,6 +78,7 @@ on:
       #   docs-header-lint    → docs/*.md, scripts/lint-docs-headers.sh
       #   doc-claims-lint     → *.md, docs/**, Sources/**/*.docc/**, scripts/lint-doc-claims.sh
       #   snippet-policy-lint → *.md, docs/**, Sources/**/*.docc/**, scripts/extract-snippets.sh, scripts/snippet-skip-baseline.tsv
+      #   plan-status-lint    → docs/plans/**, scripts/lint-plan-status.sh
       #   readme-lint         → README.md, version.txt, scripts/check-readme.sh
       #   availability-audit  → Sources/**, scripts/audit-availability.sh
       #   secret-scan         → Sources/**, Tests/**, .github/workflows/**
@@ -101,6 +102,7 @@ on:
       - "scripts/audit-availability.sh"
       - "scripts/lint-docs-headers.sh"
       - "scripts/lint-doc-claims.sh"
+      - "scripts/lint-plan-status.sh"
       - "scripts/extract-snippets.sh"
       - "scripts/snippet-skip-baseline.tsv"
   # Merge queue: `lint` is a required check, so it MUST report on the queue's
@@ -541,12 +543,13 @@ jobs:
       # the PR head — so without this the first failure lands in the merge
       # queue and poisons the batch (#2306 / #2212, 2026-07).
       #
-      # The symbol-existence check is deliberately NOT mirrored: it can only be
-      # broken by a *source* change, and a source change always triggers
-      # ci.yml where the authoritative Swift audit runs. See the script header.
-      - name: "doc-claims-lint — verify doc links, anchors, index coverage"
+      - name: "doc-claims-lint — verify symbols, links, anchors, reachability"
         if: always()
         run: bash scripts/lint-doc-claims.sh
+
+      - name: "plan-status-lint — reject terminal live plans"
+        if: always()
+        run: bash scripts/lint-plan-status.sh
 
       # ── snippet-policy-lint ───────────────────────────────────────────────
       # extract-snippets.sh enforces three policies that need no compiler:

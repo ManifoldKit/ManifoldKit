@@ -201,7 +201,8 @@ await sessionVM.configureAndLoad(bootstrap: bootstrap)
 if let restored = await sessionVM.selectInitialSession() {
     sessionVM.activeSession = restored
     await chatVM.switchToSession(restored)
-} else if let fresh = try? await sessionVM.createSession() {
+} else {
+    let fresh = try await sessionVM.createSession()
     sessionVM.activeSession = fresh
     await chatVM.switchToSession(fresh)
 }
@@ -466,7 +467,8 @@ struct MyChatApp: App {
             if let restored = await sessionVM.selectInitialSession() {
                 sessionVM.activeSession = restored
                 await chatVM.switchToSession(restored)
-            } else if let fresh = try? await sessionVM.createSession() {
+            } else {
+                let fresh = try await sessionVM.createSession()
                 sessionVM.activeSession = fresh
                 await chatVM.switchToSession(fresh)
             }

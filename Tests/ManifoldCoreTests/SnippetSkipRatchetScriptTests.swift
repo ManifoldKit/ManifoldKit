@@ -463,6 +463,33 @@ final class SnippetSkipRatchetScriptTests: XCTestCase {
         )
     }
 
+    func test_reportSeparatesKeptSkippedAndWholeFileOptOutFenceDebt() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t1",
+            guideBody: """
+            ```swift
+            let kept = 1
+            ```
+
+            ```swift,no-build:partial illustrative fragment
+            let skipped = 2
+            ```
+            """,
+            optedOutBody: """
+            ```swift
+            let hiddenDebt = 3
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, 0, "Report fixture should be otherwise healthy. Output:\n\(output)")
+        XCTAssertTrue(output.contains("kept/extracted fences=1 across docs=1"), "Kept fence/doc count missing: \(output)")
+        XCTAssertTrue(output.contains("skipped fences=1 across docs=1"), "Skipped fence/doc count missing: \(output)")
+        XCTAssertTrue(output.contains("whole-file opt-out docs=1 (Swift fences=1)"), "Whole-file hidden fence debt missing: \(output)")
+    }
+
     // MARK: - Harness
 
     /// Builds a minimal repo the script can run against: its own copy of the
@@ -471,7 +498,8 @@ final class SnippetSkipRatchetScriptTests: XCTestCase {
     private func plantRepo(
         baseline: String,
         guideBody: String,
-        otherBody: String? = nil
+        otherBody: String? = nil,
+        optedOutBody: String? = nil
     ) throws -> URL {
         let fm = FileManager.default
         let root = fm.temporaryDirectory
@@ -494,6 +522,13 @@ final class SnippetSkipRatchetScriptTests: XCTestCase {
         if let otherBody {
             try ("# Other\n\n" + otherBody + "\n")
                 .write(to: root.appendingPathComponent("docs/OTHER.md"), atomically: true, encoding: .utf8)
+        }
+        if let optedOutBody {
+            // TESTING.md is an existing reasoned whole-file opt-out in the
+            // real script, so this exercises the actual classification rather
+            // than adding a test-only bypass.
+            try ("# Testing\n\n" + optedOutBody + "\n")
+                .write(to: root.appendingPathComponent("TESTING.md"), atomically: true, encoding: .utf8)
         }
         return root
     }

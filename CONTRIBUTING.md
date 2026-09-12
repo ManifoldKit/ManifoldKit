@@ -4,7 +4,8 @@ Thank you for your interest in contributing.
 
 This guide is **indexed by change type** — find the section that matches the change
 you're making and follow the gates listed there. Cross-references point at
-[CLAUDE.md](CLAUDE.md), the authoritative dev reference, rather than duplicating it.
+[AGENTS.md](AGENTS.md), the canonical contributor authority; [CLAUDE.md](CLAUDE.md)
+is only a harness stub.
 
 ## Table of contents
 
@@ -47,7 +48,7 @@ core build. Opt-in traits are `Server` and `Macros` — see
 [SECURITY.md § Supported Build Modes](SECURITY.md#supported-build-modes) for the
 blessed configurations and what each one guarantees.
 
-For repo-developer build workflow, see [CLAUDE.md](CLAUDE.md).
+For repo-developer build workflow, see [AGENTS.md](AGENTS.md).
 Swift 6 concurrency pitfalls that can compile while racing or deadlocking are
 covered in
 [AGENTS.md § Swift 6 concurrency gotchas](AGENTS.md#swift-6-concurrency-gotchas);
@@ -102,8 +103,9 @@ keeps them honest, plus DX walkthroughs and cold-start conformance gates — see
 
 ## Pre-push checklist
 
-**Run before every push.** CI is macOS-only with a 10× billing multiplier; each
-failed push wastes ~25 billed minutes.
+**Run before every push.** Use the full local gate before pushing; CI is the last
+check, not the iteration loop. See [`AGENTS.md`](AGENTS.md) for the current gate
+shape and latency rationale.
 
 ```bash
 scripts/test.sh --profile local
@@ -125,7 +127,7 @@ directory for references — not just the obvious test file:
 grep -r "functionOrTypeName" Tests/
 ```
 
-See [CLAUDE.md](CLAUDE.md) for the canonical test conventions, hardware constraints,
+See [AGENTS.md](AGENTS.md) for the canonical test conventions, hardware constraints,
 and the `withKnownIssue` policy.
 
 ## Adding a new backend
@@ -418,7 +420,7 @@ real money and reviewer attention.
   the current PR or leave a `// TODO:` in the code. The issue tracker is for
   things that need cross-session memory **and** external visibility.
 
-For the full PR-hygiene rationale, see [CLAUDE.md § Issue & PR hygiene](CLAUDE.md).
+For the full PR-hygiene rationale, see [AGENTS.md § Issue & PR hygiene](AGENTS.md).
 
 ## Reporting bugs
 

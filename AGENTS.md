@@ -127,7 +127,7 @@ ManifoldKit is a Swift package. Install via SwiftPM:
 ```
 
 > **Pre-1.0.** Minor versions can introduce breaking changes. For production,
-> pin to a specific tag (`exact: "0.64.0"`) and read [CHANGELOG.md](CHANGELOG.md)
+> pin with `exact:` to a tag you have validated and read [CHANGELOG.md](CHANGELOG.md)
 > before bumping. The `0.x` line stabilises pieces incrementally; `1.0.0` will
 > be the freeze point.
 
@@ -252,7 +252,8 @@ struct MyChatApp: App {
             if let restored = await sessions.selectInitialSession() {
                 sessions.activeSession = restored
                 await vm.switchToSession(restored)
-            } else if let fresh = try? await sessions.createSession() {
+            } else {
+                let fresh = try await sessions.createSession()
                 sessions.activeSession = fresh
                 await vm.switchToSession(fresh)
             }
@@ -313,9 +314,10 @@ struct ContentView: View {
 `Example/Examples/MinimalExample/` is the runnable version of this — keep it
 open while you wire the real app.
 
-> For a single-session surface without a sidebar, `ManifoldKit.quickStart()`
-> collapses the `start()` method above into one call. See
-> [`docs/QUICKSTART.md`](docs/QUICKSTART.md) for that path.
+> `ManifoldKit.quickStart()` provides the standard bootstrap for both single-
+> and multi-session apps, including a session manager. See
+> [`docs/QUICKSTART.md`](docs/QUICKSTART.md) for its backend registration,
+> selection and loading behaviour; use manual bootstrap when you need custom wiring.
 >
 > For the complete end-to-end recipe (local SwiftPM path, Ollama seeding,
 > `ManifoldUIModelManagement` optionality), see
@@ -769,7 +771,7 @@ Use `scripts/test.sh` — it runs configured suites and prints an honest summary
 
 For trait conventions, suite layout, classification (Unit / Integration / E2E), and the per-backend conformance walkthrough, see [`Tests/README.md`](Tests/README.md). It is the canonical entry point for "how do I add a backend / test / suite?".
 
-Four cross-cutting QA practices live outside the unit/integration/E2E pyramid — DX walkthroughs, audit tests, the audit sabotage suite, and cold-start conformance gates. See [`docs/QA-PRACTICES.md`](docs/QA-PRACTICES.md) for what each one catches, how to run it, and how to extend it.
+Cross-cutting QA practices complement the unit/integration/E2E pyramid: DX walkthroughs, audit tests, the audit sabotage suite, cold-start conformance gates, real-model integration sweeps, and demo coverage. See [`docs/QA-PRACTICES.md`](docs/QA-PRACTICES.md) for what each one catches, how to run it, and how to extend it.
 
 - Use `XCTestCase` for new tests; match `@Suite`/`@Test` in files that already use Swift Testing.
 - A test that hits SwiftData is an integration test — name and place it accordingly.
@@ -923,15 +925,30 @@ Shell scripts are held to the same standard: `ScriptFailOpenAuditTest` (in `Mani
 
 ## Documentation gates
 
-Docs are held to the same tripwire standard as code (Principle 4). Three layers,
-each with a different failure mode:
+Docs are held to the same tripwire standard as code (Principle 4).
+Complementary gates catch different failure modes:
 
 | Layer | Authoritative audit | Catches | Blocks a merge? |
 |---|---|---|---|
 | **Form** | `DocsAudienceStatusAuditTest` | missing `**Audience:**` / `**Status:**` header | **yes** — required `test`, mirrored on docs-only PRs by `scripts/lint-docs-headers.sh` under required `lint` |
-| **Claims** | `DocClaimsAuditTest` | a `` ``Symbol`` `` that no longer exists, a broken relative `.md` link, a dead `#anchor`, a `docs/*.md` nothing references | **yes** — same shape, mirrored by `scripts/lint-doc-claims.sh` |
+| **Claims** | `DocClaimsAuditTest` | an unresolved double-backtick identifier, a broken relative `.md` link or `#anchor`, a top-level doc unreachable from maintained entry points | **yes** — including symbol checks on docs-only PRs, mirrored by `scripts/lint-doc-claims.sh` |
+| **Plan lifecycle** | `AgentsMdPlansStatusAuditTest` | missing status or a completed, superseded or rejected plan left in `docs/plans/` | **yes** — lifecycle checks mirrored by `scripts/lint-plan-status.sh`; history-based age checks remain in the Swift audit |
 | **Snippets — policy** | `scripts/extract-snippets.sh` | a bare `no-build`, a doc where every block is skipped, a skip-budget change | **yes** — `snippet-policy-lint` under required `lint` |
 | **Snippets — compile** | `scripts/extract-snippets-test.sh` | a fenced `swift` block that does not compile as published | **no — advisory** (see below) |
+
+The claims corpus includes maintained Markdown under `Tests/`, `scripts/` and
+`Example/`, as well as root docs, `docs/` and `Sources/`; fixture, generated and
+historical-run trees are excluded explicitly. Reachability follows actual links
+from the README, documentation index, contributor guide, this file and DocC
+catalog landing pages, rather than accepting any filename mention. The symbol
+check is conservative token existence, not proof of public visibility or runtime
+behaviour. Its script-parity fixtures exercise real and invented identifiers.
+
+Keep detailed behavioural guidance in its canonical recipe and link to it from
+summaries. Existing behaviour tests (for example `QuickStartBackendsTests`) are
+the evidence for defaults and failure conditions; a compiling snippet alone does
+not establish those promises. The extractor reports kept/skipped fences and
+whole-file exclusions separately; only the compile gate proves compilation.
 
 **Why each doc-driven audit needs a `lint` mirror.** `ci.yml`'s macOS `test` job
 is paths-filtered and excludes `docs/**`, and `scripts/affected-suites.sh` keeps

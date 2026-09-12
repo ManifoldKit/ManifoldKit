@@ -1150,7 +1150,7 @@ surface changes. See [#2175](https://github.com/ManifoldKit/ManifoldKit/issues/2
 
 ### Internal
 
-**Wave-2 API plan committed** — the adversarially-reviewed execution plan for the final pre-1.0 breaking wave lives at `docs/plans/api-review-wave2-2026-07.md` ([#2187](https://github.com/ManifoldKit/ManifoldKit/issues/2187)).
+**Wave-2 API plan committed** — the adversarially-reviewed execution plan for the final pre-1.0 breaking wave was committed in [#2187](https://github.com/ManifoldKit/ManifoldKit/issues/2187) ([historical plan](https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/api-review-wave2-2026-07.md)).
 
 **Instruction-file consolidation** — `.cursorrules` reduced to an `AGENTS.md` pointer; `.claude/` local files documented ([#2180](https://github.com/ManifoldKit/ManifoldKit/issues/2180)).
 

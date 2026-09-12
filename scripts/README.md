@@ -11,6 +11,29 @@ Derived by reading each script's header comment plus `git grep -l '<script>' .gi
   before every push (see the repo `CLAUDE.md` "Pre-push checklist").
 - **Manual / operational** — run by hand, ad hoc, when a maintainer needs it. Never wired into CI.
 
+Less frequently used helpers are included here too; keep a new executable listed
+even when it has no workflow caller.
+
+| Script | Purpose | Invocation context |
+|---|---|---|
+| `api-demotion-screen.sh` | Evidence screen for a public-to-package API demotion. | Manual / operational |
+| `api-digester-targets.sh` | Resolves the API-digester target set. | CI-only |
+| `api-surface-baseline.sh` | Compares public API surface against the checked-in baseline. | CI-only |
+| `changelog-coverage-check.sh` | Checks generated release notes cover releasable commits before rewrite. | Manual / operational |
+| `changelog-lint.sh` | Validates release-note headings and generated-bullet shape. | CI-only |
+| `changelog-parser-check.sh` | Exercises release-please's parser against releasable commits. | CI-only |
+| `companion-release-notes.sh` | Produces companion release-note coordination data. | Manual / operational |
+| `demo-coverage.sh` | Validates capability-to-demo manifest coverage. | CI-only + manual |
+| `example-local-inference.sh` | Builds/runs the local-inference example path. | Manual / operational |
+| `example-server.sh` | Builds and probes the compiled server example. | Manual / operational |
+| `large-file-guard.sh` | Flags unexpectedly large tracked files. | CI-only |
+| `lint-doc-claims.sh` | Checks symbol references, relative links, anchors and rooted documentation reachability, including docs-only changes. | CI + manual |
+| `lint-plan-status.sh` | Rejects missing/terminal statuses in live plans; `--self-test` exercises failing and healthy fixtures. | CI + manual |
+| `overnight-sweep.sh` | Coordinates long-running local integration checks. | Manual / operational |
+| `release-train-check.sh` | Checks coordinated core/companion release state. | Manual / operational |
+| `validation-plan-selftest.sh` | Self-tests validation-plan machinery. | CI-only |
+| `validation-plan.sh` | Runs the repository validation plan. | Manual / operational |
+
 ## Conventions (audit-enforced)
 
 `ScriptFailOpenAuditTest` (in `ManifoldCoreTests`) scans every `*.sh` here for
@@ -64,7 +87,7 @@ snippet. At the next UTC day, an old build directory is ineligible.
 
 | Script | Purpose | Invocation context |
 |--------|---------|---------------------|
-| `test.sh` | Runs `swift test` and prints an honest summary (swift test's own summary silently drops signal-11 crashes and XCTSkip counts). The load-bearing pre-push gate — see `CLAUDE.md` "Pre-push checklist". | Local pre-push + CI (`ci.yml`, `ci-required-test-shim.yml`, `build-modes.yml`, `readme-snippets.yml`, `nightly-slow-tests.yml`) |
+| `test.sh` | Runs `swift test` and prints an honest summary (swift test's own summary silently drops signal-11 crashes and XCTSkip counts). The load-bearing pre-push gate — see `AGENTS.md` "Pre-push checklist". | Local pre-push + CI (`ci.yml`, `ci-required-test-shim.yml`, `build-modes.yml`, `readme-snippets.yml`, `nightly-slow-tests.yml`) |
 | `ci-test-with-watchdog.sh` | Runs `test.sh` under a stall watchdog — `swift test --parallel` parks every worker if one test hangs, and the job-level `timeout-minutes` is too coarse to localize which suite stalled. Reused by `test.sh --profile local` (480s) and `--profile ci` (240s); CI never sets `WATCHDOG_POLL_INTERVAL` so its 15s default is unchanged. | Local pre-push (`test.sh --profile local\|ci`) + CI (`ci.yml`, `ci-required-test-shim.yml`) |
 | `affected-suites.sh` | Tier 0 selective-testing resolver: maps changed paths to the subset of per-PR test-job suites that could be affected, using a committed SwiftPM target-dependency-graph snapshot (`affected-suites-graph.json`). | CI-only (`ci.yml`, `ci-required-test-shim.yml`) |
 | `ci-selective-test.sh` | Tier 2 compile-pruned selective CI runner — receives Tier 0's affected-suite list and routes each suite to the fastest correct test path (scheme vs. `swift test --filter`). | CI-only (`ci.yml`, `ci-required-test-shim.yml`) |
@@ -79,13 +102,13 @@ snippet. At the next UTC day, an old build directory is ineligible.
 | `check-readme.sh` | Lints the README's API references against the current package — the tripwire that stops stale snippets from creeping back in. | CI-only (`readme-snippets.yml`, `lint.yml`) |
 | `check-swift-toolchain.sh` | Parses `swift-tools-version` from `Package.swift` and cross-checks it against the installed `swift`/`xcrun swift` version. | CI-only (`release-provenance.yml`, `release-provenance-rehearsal.yml`) |
 | `extract-snippets.sh` | Extracts fenced ` ```swift ` blocks from README.md, `docs/QUICKSTART*.md`, `docs/WHY-MANIFOLDKIT.md`, and DocC catalogs into standalone `.swift` files for downstream compilation. | CI-only (`readme-snippets.yml`) |
-| `extract-snippets-test.sh` | Companion to `extract-snippets.sh` — scaffolds a single SwiftPM consumer package with one executable target per kept snippet and runs `swift build` once (batches the doc-snippet gate; see `CLAUDE.md` "Doc-snippet gate batching"). | CI-only (`readme-snippets.yml`, `nightly-slow-tests.yml`) |
+| `extract-snippets-test.sh` | Companion to `extract-snippets.sh` — scaffolds a single SwiftPM consumer package with one executable target per kept snippet and runs `swift build` once (batches the doc-snippet gate; see `AGENTS.md` "Doc-snippet gate batching"). | CI-only (`readme-snippets.yml`, `nightly-slow-tests.yml`) |
 
 ## Release & provenance
 
 | Script | Purpose | Invocation context |
 |--------|---------|---------------------|
-| `demo-apps-build.sh` | Pre-release gate: builds both example apps (Advanced iOS, Minimal iOS + macOS) and prints a pass/fail summary. Mandatory before bumping the release version (`CLAUDE.md` "Pre-bump demo-app gate"). | Manual / operational (release-time only, not per-PR) |
+| `demo-apps-build.sh` | Pre-release gate: builds both example apps (Advanced iOS, Minimal iOS + macOS) and prints a pass/fail summary. Mandatory before bumping the release version (`AGENTS.md` "Pre-bump demo-app gate"). | Manual / operational (release-time only, not per-PR) |
 | `companion-canary-check.sh` | Pre-release gate: whether manifold-mlx / manifold-llama still build against this repo's `main` tip, graded landing-relative (a canary that started before the tip merged is STALE). `--dispatch` triggers fresh companion runs and waits. Wired into the required `lint` job on a detected release (`pull_request` only — a queue re-check ejects the batch). Needs `COMPANION_DISPATCH_TOKEN` with Actions:read+write on the companions **and** contents:read on this repo. | **CI — required `lint` job**, release-only, `pull_request` only. |
 | `release-context-check.sh` | Strict SemVer comparator for `lint.yml`'s release-context step. It reports whether `version.txt` is strictly newer than the latest published release, and rejects malformed values rather than treating string inequality as a release. | **CI helper** — invoked by required `lint`; XCTest exercises older/equal/newer, prerelease, and malformed fixtures. |
 | `generate-sbom.sh` | Emits a CycloneDX 1.5 SBOM for the ManifoldKit Swift package (hand-rolled — SwiftPM has no machine-readable dependency surface `cyclonedx-bom`/`swift-sbom-action` can consume directly). | CI-only (`release-provenance.yml`, `release-provenance-rehearsal.yml`) |
@@ -138,7 +161,7 @@ These aren't top-level scripts but self-contained tool directories, each with it
 
 | Directory | Purpose |
 |-----------|---------|
-| [`dx-walkthrough/`](dx-walkthrough/README.md) | DX walkthrough harness — one of the four cross-cutting QA practices (see `docs/QA-PRACTICES.md`). |
+| [`dx-walkthrough/`](dx-walkthrough/README.md) | DX walkthrough harness — one of the cross-cutting QA practices (see `docs/QA-PRACTICES.md`). |
 | [`perf-audit/`](perf-audit/README.md) | Performance-audit summarization tooling. |
 | `bench/` | `http-bench.py` — ad hoc HTTP benchmarking helper. |
 | `migrate-uimm-imports-tests/` | Fixture-driven tests for `migrate-uimm-imports.sh`. |

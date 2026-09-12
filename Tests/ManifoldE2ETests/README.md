@@ -1,8 +1,9 @@
 # ManifoldE2ETests
 
-Hardware-gated end-to-end tests. **These do not run in CI** (`.github/workflows/ci.yml`
-runs only the mock-friendly suites). They exist for developer pre-push verification
-and skip cleanly when the required hardware/fixtures are missing.
+End-to-end tests. This target contains mock-backed pipeline coverage as well as
+hardware/server-gated live backend cases. It is not selected by the per-PR
+`ci.yml` test job; run it locally for end-to-end verification. Live
+Ollama/Foundation/Cloud cases skip when prerequisites are unavailable.
 
 Each test guards itself with one of:
 
@@ -59,3 +60,8 @@ OLLAMA_TEST_MODEL=qwen3.5:latest swift test --filter ManifoldE2ETests
 ```
 
 The tests skip automatically when `localhost:11434` is unreachable.
+
+The target intentionally mixes XCTest and Swift Testing files. The profile runner
+keeps the Swift Testing invocation separate from the XCTest batch to avoid the
+known mixed-runner `libmalloc` abort; use `scripts/test.sh --profile local` for
+the complete three-invocation gate.

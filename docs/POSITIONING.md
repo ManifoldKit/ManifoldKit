@@ -396,15 +396,18 @@ pretending otherwise:
 - **Breaking changes between minor versions are expected** while the public
   surface settles. The BaseChatKit → ManifoldKit rename in v0.20 reset local
   SwiftData stores deliberately rather than carry migration debt pre-1.0.
-- **RAG reranking is pending** — retrieval and citations ship today; the
-  reranking stage is tracked in open issue
-  [#1637](https://github.com/ManifoldKit/ManifoldKit/issues/1637), not yet
-  implemented.
-- **Vision/multimodal input is not shipped** ([#416](https://github.com/ManifoldKit/ManifoldKit/issues/416)
-  is blocked upstream). Competitors are not ahead here in practice — the
-  nearest Swift analog labels multimodal experimental, and the broadest
-  multimodal matrix in Swift (LLMFarm) is near-dormant — but the gap is real
-  and named.
+- **RAG reranking is optional** — retrieval and citations ship by default, and
+  the `Reranker` seam supports the on-device `LlamaReranker` companion and the
+  cloud `CloudReranker` implementation. Hosts must opt in and provide a ready
+  reranker; otherwise retrieval remains on the first-stage path. See
+  [`RAG-TUNING.md`](RAG-TUNING.md) for the trade-offs and wiring.
+- **Vision/multimodal input is capability-gated, not universal** — image paths
+  are implemented for supported OpenAI, Ollama, and Claude models (and selected
+  companion backends), while Foundation Models and text-only models do not
+  accept image parts. Hosts should consult backend capabilities rather than
+  assuming every model supports vision; the maintained capability matrix is in
+  [`FeatureMatrix.md`](FeatureMatrix.md), with the UI gate exposed as
+  `BackendCapabilities.supportsVision`.
 - **No hybrid local→cloud auto-routing** — backend choice is explicit today.
   Cactus ships this via its hosted service; a self-hosted equivalent is open
   design space for ManifoldKit, not a shipped feature.

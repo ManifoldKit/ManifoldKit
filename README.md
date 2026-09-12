@@ -18,7 +18,7 @@ ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS
 
 ## Hello World
 
-Add **ManifoldKit** (core), then drop this into your app entry point. `ManifoldKit.quickStart()` builds the SwiftData container and registers the compiled-in backends. On devices with an available Foundation Model, a stored local model that a registered backend can load, or a saved endpoint it selects that model; otherwise, configure a backend or use the optional GGUF starter below. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
+Add **ManifoldKit** (core), then drop this into your app entry point. `ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, restores or creates a session, and selects a usable model or endpoint when one is available. It dispatches the selected load before returning, but loading may still be in flight; observe the view model's load state before assuming the first turn is ready. Otherwise, configure a backend or use the optional GGUF starter below. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```text
 .package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.78.0"), // x-release-please-version
@@ -85,7 +85,7 @@ func oneShot(using kit: QuickStartResult) async throws -> String {
 }
 ```
 
-> **About `seed:`** — with the `manifold-llama` companion's `LlamaBackends` registrar, `.recommendedSmallModel()` downloads Qwen3-0.6B (~484 MB) in the background before returning, so the composer is generating the moment the view appears. Without that registrar the GGUF seed is skipped. The download is also skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
+> **About `seed:`** — with the `manifold-llama` companion's `LlamaBackends` registrar, `.recommendedSmallModel()` downloads Qwen3-0.6B (~484 MB) before returning, then selects it and dispatches its load. The load may still be in flight when the view appears, so observe the view model's load state before sending. Without that registrar the GGUF seed is skipped. The download is also skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
 >
 > **No starter download?** `quickStart` registers the backends but loads none when no Foundation Model, compatible stored local model, or saved endpoint is available, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or pass the `LlamaBackends` registrar with `seed:`. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
 
@@ -329,7 +329,7 @@ The backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSa
 
 | Type | Backend | Format | Source | Image input |
 |------|---------|--------|--------|-------------|
-| GGUF | `LlamaBackend` (llama.cpp, via [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama)) | Single `.gguf` file | HuggingFace, local | Not yet; tracked in [#416](https://github.com/ManifoldKit/ManifoldKit/issues/416) |
+| GGUF | `LlamaBackend` (llama.cpp, via [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama)) | Single `.gguf` file | HuggingFace, local | Depends on the companion model/projector capability |
 | MLX | `MLXBackend` (mlx-swift, via [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx)) | Directory with `config.json` + `.safetensors` | HuggingFace, local | Vision models only |
 | Foundation | `FoundationBackend` | `ModelInfo.builtInFoundation` (built-in, no download) | Apple Intelligence | No public FoundationModels image-input API yet |
 | OpenAI | `OpenAIBackend` | Cloud API | api.openai.com | Vision-capable models |

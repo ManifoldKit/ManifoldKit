@@ -145,7 +145,7 @@ SNIPPET_GATE_OPT_OUT=(
     "CODE_OF_CONDUCT.md:policy text; no Swift"
     "CONTRIBUTING.md:contributor prose; no Swift"
     "RELEASE.md:release runbook; no Swift"
-    "TESTING.md:untriaged — 12 fences, contributor test recipes"
+    "TESTING.md:redirect to Tests/README.md; no Swift"
     "SECURITY.md:untriaged — 4 fences"
     "FUZZING.md:untriaged — 2 fences"
 
@@ -171,7 +171,6 @@ SNIPPET_GATE_OPT_OUT=(
     "docs/MIGRATION-INDEX.md:index page; no Swift"
     "docs/AppStoreSubmission.md:submission checklist; single plist-shaped fence"
     "docs/UI-REFRESH-2026.md:design rationale; no consumer Swift"
-    "docs/UI-REFRESH-2026-PLAN.md:internal delivery plan; no consumer Swift"
     "docs/wwdc-2026-trait-stubs.md:stubs for unshipped Apple API — cannot compile by construction"
     "docs/COMPANION-BACKENDS.md:companion-authoring guide; snippets target another package's module"
     "docs/APP-EVAL.md:ManifoldAppEval is not linked by the gate's test target"
@@ -682,6 +681,47 @@ for docc_rel in ${docc_files[@]+"${docc_files[@]}"}; do
     extract_one "$docc_rel" "$(docc_slug_for "$docc_rel")"
 done
 
+# Report fences and documents separately. A high skipped-fence count is a
+# different smell from a whole-file opt-out; combining them hid that distinction
+# in CI summaries and made an opt-out look like ordinary fragment debt.
+kept_docs=0
+skipped_docs=0
+whole_file_optouts=0
+whole_file_optout_fences=0
+# One inventory with a checked producer; never use `find | grep -q` here.
+# `grep -q` can close early, SIGPIPE find under pipefail, and conflates a
+# producer failure with a zero count. The inventory is then counted in memory.
+output_inventory="$(find "$OUT_DIR" -maxdepth 1 -type f \( -name '*.swift' -o -name '*.skip' \) -print | LC_ALL=C sort)"
+for doc_rel in ${gated_docs[@]+"${gated_docs[@]}"} ${docc_files[@]+"${docc_files[@]}"}; do
+    if is_opted_out "$doc_rel"; then
+        whole_file_optouts=$((whole_file_optouts + 1))
+        fence_count="$(awk '
+            BEGIN { count = 0 }
+            tolower($0) ~ /^[[:space:]]*```[[:space:]]*swift([,[:space:]]|$)/ { count++ }
+            END { print count }
+        ' "$REPO_ROOT/$doc_rel")"
+        if [[ ! "$fence_count" =~ ^[0-9]+$ ]]; then
+            echo "::error file=${doc_rel}::could not count Swift fences in whole-file opt-out" >&2
+            exit 2
+        fi
+        whole_file_optout_fences=$((whole_file_optout_fences + fence_count))
+        continue
+    fi
+    doc_slug="$(slug_for "$doc_rel")"
+    case "$doc_rel" in Sources/*) doc_slug="$(docc_slug_for "$doc_rel")" ;; esac
+    doc_kept=0
+    doc_skipped=0
+    while IFS= read -r output_file || [[ -n "$output_file" ]]; do
+        [[ -n "$output_file" ]] || continue
+        case "$output_file" in
+            "$OUT_DIR/${doc_slug}-"*.swift) doc_kept=1 ;;
+            "$OUT_DIR/${doc_slug}-"*.skip) doc_skipped=1 ;;
+        esac
+    done <<<"$output_inventory"
+    kept_docs=$((kept_docs + doc_kept))
+    skipped_docs=$((skipped_docs + doc_skipped))
+done
+echo "Snippet report: kept/extracted fences=${total} across docs=${kept_docs}; skipped fences=${total_skipped} across docs=${skipped_docs}; whole-file opt-out docs=${whole_file_optouts} (Swift fences=${whole_file_optout_fences})"
 echo "Extracted ${total} Swift snippet(s) and skipped ${total_skipped} fragment(s) into ${OUT_DIR}"
 
 # ── Per-doc coverage: a triaged doc must compile at least one block ───────

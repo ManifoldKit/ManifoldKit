@@ -104,8 +104,9 @@ public enum ManifoldKit {
     /// first launch when no model is available.
     ///
     /// This overload extends ``quickStart(configuration:)`` with an opt-in
-    /// first-launch download so developers can reach a *live, generating* chat
-    /// in one call — no model management UI required.
+    /// first-launch download so developers can reach a chat with a selected
+    /// model in one call — no model management UI required. The selected load
+    /// is dispatched before return but may still be in flight.
     ///
     /// ### What changes versus `quickStart(configuration:)`
     ///
@@ -113,7 +114,8 @@ public enum ManifoldKit {
     /// model and no on-disk GGUF / MLX), `quickStart` downloads the curated
     /// model **before** the backend-selection policy runs. After a successful
     /// download the model registry is refreshed and the selection policy picks
-    /// the new model automatically — the chat is live.
+    /// the new model automatically — its load is then dispatched. Observe the
+    /// view model's load state before assuming generation is ready.
     ///
     /// The download is **skipped** (with a log entry, never an error) when any
     /// of the following is true:
@@ -136,7 +138,7 @@ public enum ManifoldKit {
     ///         print("Downloading: \(Int(progress * 100))%")
     ///     }
     /// )
-    /// // kit.viewModel is live — generating chat ready on first launch
+    /// // kit.viewModel has selected the seeded model; its load may still be in flight
     /// ```
     ///
     /// - Parameters:

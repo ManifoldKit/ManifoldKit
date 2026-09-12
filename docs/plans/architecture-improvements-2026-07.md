@@ -33,7 +33,8 @@ P4 (MediaGeneration generify), the #1593 streaming-parser unification, and P7 (s
 What this plan is **not**: a re-litigation of any of that. It is (a) the residue the executed
 plan left behind, (b) defects and structural debt the survey found that no existing plan covers,
 and (c) a consolidated decision queue for items already written down elsewhere
-(`inert-code-audit-2026-07.md`, `tool-calling-architecture.md` #2038, #1957).
+(`tool-calling-architecture.md` #2038, #1957; the closed inert-code campaign
+is retained in history and its remaining work is tracked by #1903).
 
 ## Healthy — verified, leave alone
 
@@ -286,7 +287,8 @@ The residue of the executed migration plan's P6 plus survey findings. Mostly S i
 
 ## Decision queue (needs Rory — blocks the items noted)
 
-1. **Inert-code decision list** (`inert-code-audit-2026-07.md`): 13 wire-or-cut surfaces + 21
+1. **Inert-code decision list** (closed campaign; see the immutable
+   [2026-07 audit snapshot](https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10/docs/plans/inert-code-audit-2026-07.md)): 13 wire-or-cut surfaces + 21
    seams. One sit-down; unblocks a batch of S-sized honesty PRs (including 5.6).
 2. **Resumable runs: adopt or annotate.** Built, wired, tested, live-inert — `enableResumableRuns:
    true` appears only in one test (`ManifoldBootstrap.swift:301`; #1957 Tier 4). Recommendation:
