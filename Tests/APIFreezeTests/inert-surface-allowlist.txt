@@ -15,11 +15,11 @@
 #
 # Format: <SymbolName>  # reason: <one line>
 APIConfigurationView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
-AppEvalHistoryLedger  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
-AppEvalLedgerEntry  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
-AppEvalMarkdownRenderer  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
-AppEvalRunner  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
-AppEvalStarterCorpus  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+AppEvalHistoryLedger  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
+AppEvalLedgerEntry  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
+AppEvalMarkdownRenderer  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
+AppEvalRunner  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
+AppEvalStarterCorpus  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
 AskManifoldHandler  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
 AskManifoldIntent  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
 AsyncSignal  # reason: dev-tool (ManifoldFuzz) — fuzz-harness surface exercised by fuzz-chat / fuzz tests, not a .library consumer.
@@ -27,7 +27,7 @@ BackendBuildProfile  # reason: host-facing introspection — which backend famil
 BackendBuildTrait  # reason: host-facing introspection — compiled-backend trait descriptor; queried by hosts, not in-repo.
 BackendLoadOptions  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
 BootstrapLoadingView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
-CachingJudge  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+CachingJudge  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
 CancellationStyle  # reason: host-facing capability vocabulary — `BackendCapabilities.cancellationStyle` value enum read by hosts.
 CardMessageBubbleStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
 CardToolInvocationStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
@@ -37,7 +37,7 @@ ChatViewModelAudioError  # reason: host-facing error — thrown by a public view
 ChatViewModelImageError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
 ChatViewModelVideoError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
 ChatViewModelWebSearchError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
-CheckpointOutcome  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+CheckpointOutcome  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
 CloudProviderDescriptor  # reason: host-facing descriptor — cloud provider metadata consumed by hosts building endpoint pickers.
 CloudReranker  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
 ComposerStyle  # reason: host-facing style protocol — hosts supply conformers to theme the chat UI; no in-repo external conformer.
@@ -45,7 +45,7 @@ ConnectedServicesView  # reason: host-facing SwiftUI view — instantiated by co
 ContentFilteringDisclosure  # reason: host-facing model-selection disclosure enum; consumed downstream.
 ContextBudget  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
 ContextBudgetEntry  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
-ContextWindowPreTurnCompressionPolicy  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+ContextWindowPreTurnCompressionPolicy  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
 ConversationExportError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
 ConversationImportWriteError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
 ConversationImporter  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
@@ -69,11 +69,11 @@ GenerationEventTrace  # reason: host-facing library surface — public value typ
 GenerationParameter  # reason: host-facing capability vocabulary — `supportedParameters` element enum read by hosts to gate controls.
 GenerativeContextMenuItems  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 GlassComposerStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
-GoldenExpectedCompression  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
-GoldenExpectedContextSlots  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
-GoldenExpectedToolCall  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
-GoldenScriptedToolCall  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
-GoldenTaskLoader  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+GoldenExpectedCompression  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
+GoldenExpectedContextSlots  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
+GoldenExpectedToolCall  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
+GoldenScriptedToolCall  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
+GoldenTaskLoader  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
 GrammarPhaseGate  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
 HandoffSourceError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
 HandoffToolSource  # reason: host-facing library surface — public reference type consumed downstream or via tests; no in-repo (Sources/) reference.
@@ -89,8 +89,8 @@ InlineXMLToolCallMarkers  # reason: companion-consumed — a `LocalToolCallShape
 IntentEnumParameter  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
 JSONLImportError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
 JSONLImportFormat  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
-JudgeCacheKey  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
-JudgedCheckpointScorer  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+JudgeCacheKey  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
+JudgedCheckpointScorer  # reason: host-facing ManifoldAppEval surface; readiness is documented canonically in docs/PRODUCTION-READINESS.md; no in-tree consumer by design.
 LinkPreviewMetadata  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
 LlamaDRYSamplerOptions  # reason: companion-consumed — llama.cpp DRY sampler options constructed by manifold-llama's GenerationConfig wiring.
 LlamaMirostatV2SamplerOptions  # reason: companion-consumed — llama.cpp Mirostat-v2 sampler options constructed by manifold-llama.

@@ -5,7 +5,7 @@ import SwiftUI
 
 /// Companion to `Tests/ManifoldUITests/DefaultAppearanceCharacterizationTests.swift`
 /// for the `ManifoldUIModelManagement`-module anchors named in issue #2307
-/// §1.1 (`docs/UI-REFRESH-2026-PLAN.md`): `ModelPicker.swift:256-259` and
+/// §1.1 (`https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/UI-REFRESH-2026-PLAN.md`): `ModelPicker.swift:256-259` and
 /// `DownloadableModelRow.swift:165-229`. Split into its own file/target
 /// because `ManifoldUITests` cannot import `ManifoldUIModelManagement`
 /// (dependency direction: mmgmt depends on UI, never the reverse).

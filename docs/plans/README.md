@@ -11,19 +11,27 @@ docs/plans/<name>.md` and read the last version before deletion.
 1. **Every plan carries a `Status:` line** near the top (first ~20 lines),
    e.g. `**Status:** Awaiting sign-off (Rory)` or `**Status:** Active —
    Phase 1 shipped, Phase 2 open.` `AgentsMdPlansStatusAuditTest` (in
-   `Tests/ManifoldInferenceTests/`) fails CI if a tracked `docs/plans/*.md`
-   file is missing one.
+   `Tests/ManifoldInferenceTests/`) checks this, and
+   [`scripts/lint-plan-status.sh`](../../scripts/lint-plan-status.sh) mirrors
+   it in required PR-time lint, including docs-only changes.
 2. **Delete, don't archive, once a plan is done.** A plan that is fully
    executed, explicitly superseded, or rejected gets `git rm`'d in the same
    PR that closes it out — not moved to an `archive/` subfolder. This mirrors
    the repo's pre-1.0 "delete, don't deprecate" API policy (see AGENTS.md
    Part 2).
+   Terminal statuses are rejected by both checks; "Active — Phase 1 done,
+   Phase 2 open" is still a live plan. An empty plans directory is valid.
 3. **`runs/` output is gitignored, never committed.** Per-run artifacts
    (raw JSONL, sweep logs, per-cell CSVs, transcripts) under
    `docs/plans/runs/` are ephemeral and regenerable from source data — commit
    only curated markdown summaries (e.g. `SUMMARY.md`, `MATRIX.md`) if a plan
    explicitly calls for one. See the `.gitignore` entries for the exact
    ignore/un-ignore pattern.
+
+The Swift audit also checks the age of non-active plans when full Git history
+is available. Unknown age is reported explicitly, not evidence of freshness.
+Neither a recent edit nor an `Active` label proves the remaining work is live:
+reconcile the scope with shipped code and successor plans before retaining it.
 
 ## Why
 

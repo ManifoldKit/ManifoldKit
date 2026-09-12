@@ -21,7 +21,7 @@ This directory contains the test suites that gate every PR to ManifoldKit. CI ru
 | `ManifoldVoiceTests` | Voice composer + STT/TTS adapters | Skips without microphone. |
 | `ManifoldAppIntentsTests` | App Intent → tool dispatch | iOS 26 / macOS 26 only. |
 | `ManifoldServerTests` | ManifoldServer SSE bridge | `#if Server`-gated. |
-| `ManifoldE2ETests` | Real-model end-to-end on Ollama / Foundation / Cloud | Requires a live Ollama server or iOS 26 / macOS 26. The Llama/MLX real-model E2E suites moved to the companion repos. |
+| `ManifoldE2ETests` | Mock-backed pipeline coverage plus live Ollama/Foundation/Cloud lanes | Not selected by the per-PR test job; run locally. Live cases skip when their server, OS, or fixture is unavailable. The Llama/MLX real-model suites moved to the companion repos. |
 | `APIFreezeTests` | Public-API surface freeze | Compilation IS the assertion (T1.5). |
 
 ## Trait conventions
@@ -32,7 +32,7 @@ Since v0.48 there are **no default traits** — plain `swift test` builds and ru
 |---|---|---|
 | `Server` | no | ManifoldServer (Hummingbird) and `ManifoldServerTests` |
 | `Macros` | no | `@ToolSchema` macro plugin (swift-syntax) |
-| `Operational` | (planned, T4) | Nightly soak/migration/throughput |
+| *(no `Operational` trait)* | — | Nightly operational coverage is selected with `RUN_OPERATIONAL_TESTS=1`; it is not a SwiftPM trait. |
 
 The retired local-backend traits (`MLX`, `Llama`, `HuggingFace`, `Fuzz`, `FoundationOnly`) died with the v0.48 companion-package split — the MLX and llama.cpp backend test suites (including the Xcode-hosted MLX integration tests) now live in [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) and [manifold-llama](https://github.com/ManifoldKit/manifold-llama). Family-backend test conventions are documented in those repos.
 
@@ -42,7 +42,7 @@ The retired local-backend traits (`MLX`, `Llama`, `HuggingFace`, `Fuzz`, `Founda
 # Fastest — single suite, no remote refresh:
 scripts/test.sh --filter ManifoldBackendsTests --skip-update
 
-# Whole pre-push (mirrors CI's two-call shape):
+# Whole pre-push (mirrors CI's three-invocation shape):
 scripts/test.sh --profile local
 ```
 
@@ -54,9 +54,9 @@ scripts/test.sh --profile local
 |---|---|---|
 | **Unit** | `Manifold<Module>Tests/` | One module under test, mocks at the module boundary. No SwiftData, no Metal, no real network. |
 | **Integration** | `Manifold<Module>Tests/` (named `…IntegrationTests` or `…E2ETests`) | Two or more modules wired together. May hit SwiftData via `InMemoryPersistenceHarness`. |
-| **End-to-end** | `ManifoldE2ETests/` | Full chain through a real backend. Requires Metal / a model file / a network endpoint. |
+| **End-to-end** | `ManifoldE2ETests/` | Full component chain. The target contains mock-backed CI coverage and live backend cases; “E2E” does not imply every case uses a real model. |
 
-If your test hits SwiftData, it's an integration test — name and place it accordingly. Per CLAUDE.md: "Do not mock the persistence layer. Use in-memory SwiftData stores."
+If your test hits SwiftData, it's an integration test — name and place it accordingly. Per AGENTS.md: "Do not mock the persistence layer. Use in-memory SwiftData stores."
 
 ## Per-protocol contract mixins
 
@@ -191,7 +191,7 @@ not coverage, and "0 skipped" is part of the expected outcome, not noise.
 
 - **MCP E2E**: `RUN_MCP_E2E=1 swift test --filter ManifoldMCPE2ESmokeTests` — gated by env var (the target compiles unconditionally since the MCP trait was retired in v0.48). The `everything-server` smoke has hung in past runs; filter to the streamable subset.
 - **Ollama**: requires `localhost:11434` (backend always compiled since v0.48).
-- **Operational tier** (planned): nightly trait `Operational` for soak/migration/throughput/quality baseline.
+- **Operational coverage**: nightly selection uses `RUN_OPERATIONAL_TESTS=1` for soak/migration/throughput checks; `Operational` is not a SwiftPM trait.
 
 ### Local fixture manifest
 
@@ -199,7 +199,7 @@ The shared model-fixture manifest (`~/Library/Caches/ManifoldKit/test-models/man
 
 ### Cross-cutting QA practices
 
-Beyond the unit/integration/E2E pyramid below, ManifoldKit ships four cross-cutting QA practices: **DX walkthroughs** ([`scripts/dx-walkthrough/`](../scripts/dx-walkthrough/README.md)), **audit tests** (the files matching `Tests/*/*AuditTest*.swift`), **in-file audit sabotage tests** (a `test_sabotage_*` method in every audit file, enforced by `AuditSabotageCoverageAuditTest`), and **cold-start conformance gates** (described below). For the discovery doc — what each catches, why it exists, how to run, how to extend — see [`docs/QA-PRACTICES.md`](../docs/QA-PRACTICES.md).
+Beyond the unit/integration/E2E pyramid below, ManifoldKit ships cross-cutting QA practices: **DX walkthroughs**, **audit tests**, **in-file audit sabotage tests**, **cold-start conformance gates**, **local real-model integration/perf sweeps**, and **demo coverage**. For the discovery doc — what each catches, why it exists, how to run, how to extend — see [`docs/QA-PRACTICES.md`](../docs/QA-PRACTICES.md).
 
 ### Cold-start conformance gates
 
@@ -246,11 +246,42 @@ guidance from historical record without opening every file:
 
 | Audience | Suite |
 |---|---|
-| Per-PR CI | All suites (the two-call shape above) |
-| Nightly | `ManifoldE2ETests`, `Operational` (planned T4) |
-| Pre-push (local) | `scripts/test.sh --profile local` (the two-call shape) |
+| Per-PR CI | CI-selected core suites; `ManifoldE2ETests` live lanes are local/nightly only |
+| Nightly | Selected live E2E and operational suites; operational selection uses `RUN_OPERATIONAL_TESTS=1` |
+| Pre-push (local) | `scripts/test.sh --profile local` (the three-invocation shape) |
 | Backend-hardware E2E | Companion repos (manifold-mlx / manifold-llama) |
 
 ## Pre-push checklist
 
-Before every push: run `scripts/test.sh --profile local`. CI runs on macOS (10× billing). One failed push wastes ~25 billed minutes — test locally first.
+Before every push, run `scripts/test.sh --profile local`; it is the canonical
+three-invocation gate. See [`AGENTS.md`](../AGENTS.md) for the latency rationale
+and full pre-push policy.
+
+## Async and AI-flow patterns
+
+Prefer real `async`/`await`; use `XCTestExpectation` only for callback-based
+APIs. Do not use `Thread.sleep`, fixed long sleeps, or semaphores in async
+tests. Streaming tests should assert meaningful transitions, including partial
+content on cancellation/error and empty-stream cleanup. Use `SlowMockBackend`
+for deterministic cancellation and timing control. Context-window tests should
+use `CharTokenizer` and deliberately small budgets so boundaries are predictable.
+
+## Mock infrastructure and test design
+
+Shared fakes live in `Sources/ManifoldTestSupport/`: `MockInferenceBackend` for
+normal turns, `SlowMockBackend` for cancellation, `MidStreamErrorBackend` for
+partial failures, `TokenTrackingMockBackend` for usage assertions, and
+`CharTokenizer` for deterministic token counts. Use in-memory SwiftData through
+`ManifoldPersistenceTestSupport`; do not replace persistence with a mock.
+`MockURLProtocol` is for HTTP boundary tests and must use UUID-isolated
+hostnames when suites run in parallel.
+
+Choose the lowest honest layer: unit for isolated logic, integration for real
+SwiftData plus a boundary fake, end-to-end for the full component chain, and
+XCUITest only for user-visible simulator journeys. New suites use XCTest unless
+the surrounding file already uses Swift Testing. Prove assertions are
+value-sensitive by temporarily sabotaging the production path, then remove the
+sabotage before committing. Link a `FIXME` above every `withKnownIssue`; never
+use it to mask a critical E2E path. For a new scenario, choose a boundary that
+matters to users, exercise the real component chain available at that layer, and
+assert the observable failure and recovery behavior rather than only completion.

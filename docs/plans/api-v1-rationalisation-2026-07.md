@@ -14,7 +14,7 @@ here; its adaptation work is planned in its own private repo. "First-party consu
 apps" refers to the three private apps surveyed alongside the public companions
 (manifold-mlx, manifold-llama) and manifold-eval.
 
-**Supersedes:** `api-review-wave2-2026-07.md` (executed: D1–D3 shipped via v0.69.0).
+**Supersedes:** [the wave-2 API plan](https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/api-review-wave2-2026-07.md) (executed: D1–D3 shipped via v0.69.0).
 Absorbs: Track 3 seal (#2156 — Phase C below) and the origin-app-coupled subset of
 #2128 (Phase B.5). Wave-2's **0.G local-app migration sweep is NOT dropped**: it
 carries forward as the same decoupled, non-gating stream it always was (retired-shim

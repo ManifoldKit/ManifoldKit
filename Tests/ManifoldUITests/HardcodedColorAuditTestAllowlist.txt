@@ -1,4 +1,4 @@
-# HardcodedColorAuditTest allowlist (issue #2307, docs/UI-REFRESH-2026-PLAN.md §1.4)
+# HardcodedColorAuditTest allowlist (issue #2307, https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/UI-REFRESH-2026-PLAN.md §1.4)
 #
 # Format: one fingerprint (relative/path.swift:trimmed line) per module
 # section, mirroring silent_catch_allowlist.txt. `#`-prefixed lines and blank

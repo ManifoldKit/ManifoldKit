@@ -65,10 +65,10 @@ file can contain the `"skillInvoked"` raw value, so this is safe under
 nothing written to disk relied on it.
 
 The product, target, and test target are gone from `Package.swift`; the
-`ManifoldSkills.docc` catalog is gone; `docs/plans/inert-code-audit-2026-07.md`
-and `docs/plans/api-v1-rationalisation-2026-07.md` are left as-is (closed,
-historical planning records — not rewritten to describe a state that didn't
-exist when they were written).
+`ManifoldSkills.docc` catalog is gone. The completed
+[inert-code audit](https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/inert-code-audit-2026-07.md)
+is retained in Git history; the remaining API work is tracked in
+[the API rationalisation plan](plans/api-v1-rationalisation-2026-07.md).
 
 ## What was deliberately NOT removed
 

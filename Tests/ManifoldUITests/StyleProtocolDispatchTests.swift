@@ -11,7 +11,7 @@ import ManifoldRuntime
 /// the ``ChatMessagePartRenderer`` seam. Each recording style below proves the
 /// dispatch actually reaches the style with the correct `Configuration` for
 /// every typed state — the plan's "tool ×4, composer ×4, thinking ×3" bar
-/// (`docs/UI-REFRESH-2026-PLAN.md` §L2).
+/// (`https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/UI-REFRESH-2026-PLAN.md` §L2).
 ///
 /// ## What is proven, and how
 ///

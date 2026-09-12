@@ -3,16 +3,17 @@
 **Audience:** contributor
 **Status:** living
 
-Five cross-cutting QA practices guard ManifoldKit beyond its unit / integration / E2E test pyramid. Each one catches a class of regression that ordinary tests miss. This page is the discovery doc — what each practice is, why it exists, how to run it, and how to extend it.
+Cross-cutting QA practices guard ManifoldKit beyond its unit / integration / E2E test pyramid. Each one catches a class of regression that ordinary tests miss. This page is the discovery doc — what each practice is, why it exists, how to run it, and how to extend it.
 
-For day-to-day test conventions (suites, traits, layering), see [`Tests/README.md`](../Tests/README.md). For module/architecture rules and pre-push gates, see [`CLAUDE.md`](../CLAUDE.md).
+For day-to-day test conventions (suites, traits, layering), see [`Tests/README.md`](../Tests/README.md). For module/architecture rules and pre-push gates, see [`AGENTS.md`](../AGENTS.md).
 
 | Practice | Scope | Lives at | Doc |
 |---|---|---|---|
 | DX walkthroughs | Forced-blindness fresh-developer DX regression | [`scripts/dx-walkthrough/`](../scripts/dx-walkthrough/) | [README](../scripts/dx-walkthrough/README.md) |
-| Audit tests | File-walking discipline rules (19 files) | `Tests/*/Manifold*AuditTest*.swift` | this doc |
+| Audit tests | File-walking discipline rules | `Tests/*/Manifold*AuditTest*.swift` | this doc |
 | In-file sabotage tests | Verify the audit tests still catch what they claim | `test_sabotage_*` methods in each `Tests/**/*Audit*.swift` file | this doc |
 | Cold-start conformance gates | Public-surface tests run from a fresh consumer outside the repo | [`scripts/cold-start-*.sh`](../scripts/) | [Tests/README § Cold-start](../Tests/README.md#cold-start-conformance-gates) |
+| Local real-model integration + perf sweep | Hardware-backed behavior and performance across core and companion packages | [`scripts/local-integration-sweep.sh`](../scripts/local-integration-sweep.sh) | § 5 below |
 | Demo coverage gate | Every capability has a runnable vehicle, a live doc link, and a declared (method-bound where testable) execution route | [`scripts/demo-coverage.sh`](../scripts/demo-coverage.sh) | [DEMO-COVERAGE.md](DEMO-COVERAGE.md) |
 
 ---
@@ -43,7 +44,7 @@ Heuristic markdown diff; groups findings into Disappeared, Persisted, New.
 
 ## 2. Audit tests
 
-**What.** A pattern: a single XCTest file walks `Sources/` (or `Package.swift`, or `.docc` articles) and grep-asserts a discipline rule. Each one bans an entire class of regression. As of writing there are 20 such files. Representative examples:
+**What.** A pattern: a single XCTest file walks `Sources/` (or `Package.swift`, or `.docc` articles) and grep-asserts a discipline rule. Each one bans an entire class of regression. Representative examples:
 
 | Audit | Rule it enforces | Origin |
 |---|---|---|
@@ -55,7 +56,7 @@ Heuristic markdown diff; groups findings into Disappeared, Persisted, New.
 | `UserDefaultsStandardAuditTest` | Production code must accept an injected `UserDefaults`, not touch `.standard` | #734 / #761 (parallel-test flake) |
 | `SessionConstructionAuditTest` | `URLSession(` constructor only inside `URLSessionProvider.swift` |  |
 | `DNSRebindingCoverageAuditTest` | Cloud backends must route through `DNSRebindingGuard` |  |
-| `AgentsMdAuditTest` | `AGENTS.md` ↔ `CLAUDE.md` stay aligned |  |
+| `AgentsMdAuditTest` | `AGENTS.md` preserves required public-API/type-kind claims and hallucination guardrails |  |
 | `TestSuiteSilentSkipAuditTest` | XCTSkip without an explicit reason is banned |  |
 
 **Why.** A reviewer's eye is the wrong layer to catch "did this PR add a new `URLSession(...)` outside the allowlist", "did anyone import `ManifoldBackends` from UI again", or "is there a fresh `try?` swallowing errors in production". Each audit codifies a rule that bled into a real bug (or is one Swift compile away from a real bug), then plants a tripwire. The cost is one test file per rule; the payoff is the rule never silently rots back in.
@@ -221,7 +222,7 @@ The model inventory itself is now recursive: GGUF live nested as `Models/gguf/<F
 
 **What's uncovered.** `ManifoldFoundation`'s entire test surface — `FoundationBackendUnitTests`, `FoundationBackendToolCallingTests`, `FoundationLocalBackendContractTests`, `FoundationBackendMetricEmissionTests`, `Conformance/FoundationBackendContractTests`, `FoundationModelE2ETests`, plus the Foundation-gated slices of `BackendBenchmarkE2ETests` and `ManifoldFuzzTests/FoundationFuzzFactoryTests` — compiles in CI but has never asserted a real pass/fail. Every test method's `setUp()` throws `XCTSkip("FoundationModels requires iOS 26 / macOS 26")` before touching `FoundationBackend`.
 
-**Why.** `FoundationBackend` is `@available(iOS 26, macOS 26, *)` per CLAUDE.md's platform policy (current-OS floor `n`). Every `runs-on:` across all CI workflows is `macos-15` (or `ubuntu-latest`, or the `fuzz-weekly.yml` self-hosted `macos, arm64` box) — there is no GitHub-hosted macOS 26 runner, and the self-hosted box is not provisioned for one either. The tests key off the *running* OS version (`ProcessInfo.isOperatingSystemAtLeast`), not just SDK availability, so an Xcode 26 SDK on a macOS 15 host still skips at runtime. This is a compile-time-covered, runtime-never-executed gap, not a missing-target gap — `ManifoldFoundation` links into the default `ManifoldKit` umbrella build, so the code itself is exercised by every other suite; only its own assertions never run.
+**Why.** `FoundationBackend` is `@available(iOS 26, macOS 26, *)` per AGENTS.md's platform policy (current-OS floor `n`). Every `runs-on:` across all CI workflows is `macos-15` (or `ubuntu-latest`, or the `fuzz-weekly.yml` self-hosted `macos, arm64` box) — there is no GitHub-hosted macOS 26 runner, and the self-hosted box is not provisioned for one either. The tests key off the *running* OS version (`ProcessInfo.isOperatingSystemAtLeast`), not just SDK availability, so an Xcode 26 SDK on a macOS 15 host still skips at runtime. This is a compile-time-covered, runtime-never-executed gap, not a missing-target gap — `ManifoldFoundation` links into the default `ManifoldKit` umbrella build, so the code itself is exercised by every other suite; only its own assertions never run.
 
 **Decision.** Accepted as a permanent local-only gap (issue #2096, option (c) — document, do not stand up a runner). `ManifoldFoundation`'s suite is verified by hand on Apple Silicon running macOS 26, the same way `ManifoldFuzz`'s campaigns and the local-integration-sweep lanes above are: a developer-run check, not a CI gate. This mirrors the MLX/llama.cpp treatment (§5) in spirit, but is intentionally **not** folded into `scripts/local-integration-sweep.sh` — that script's premise is real-model integration/perf on hardware CI can't reach; this gap is an OS-floor problem, not a hardware or model-weights problem, so bolting it onto the sweep script would conflate two different reasons for "doesn't run in CI."
 

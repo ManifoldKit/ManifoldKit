@@ -4,7 +4,7 @@ Replace a bare spinner with ``BootstrapLoadingView`` so a slow first launch tell
 
 ## Overview
 
-`ManifoldBootstrap.build(configuration:)` is async and returns a `(progress:, task:)` tuple — the `progress` stream emits ``RuntimeBootstrapMilestone`` values (`installingConfiguration` → `resolvingInferenceService` → `buildingModelContainer` → `wiringPersistence` → `complete`) as bootstrap advances. The canonical launch-scene recipe (see `AGENTS.md`'s bootstrap recipe) drains that stream with `for await _ in progress { }` and shows a bare `ProgressView("Starting…")` for the whole span.
+`ManifoldBootstrap.build(configuration:)` is async and returns a `(progress:, task:)` tuple — the `progress` stream emits ``RuntimeBootstrapMilestone`` values (`installingConfiguration` → `resolvingInferenceService` → `buildingModelContainer` → `wiringPersistence` → `complete`) as bootstrap advances. The canonical launch-scene recipe (see `AGENTS.md`'s bootstrap recipe) captures the latest milestone and renders ``BootstrapLoadingView`` for the whole span.
 
 ``BootstrapLoadingView`` is the drop-in replacement: capture each milestone into `@State` and hand it straight to the view — no translation layer, since it consumes ``RuntimeBootstrapMilestone`` directly.
 
@@ -14,7 +14,7 @@ import ManifoldKit
 
 /// Renders the milestone-named loading screen for one bootstrap phase.
 /// In a real launch scene this is the view shown in place of
-/// `ProgressView("Starting…")` while `@State private var milestone`
+/// the launch loading view while `@State private var milestone`
 /// tracks the live progress stream (see `start()` below).
 @MainActor
 func launchScreen(for milestone: RuntimeBootstrapMilestone) -> some View {
@@ -46,17 +46,31 @@ A host's actual `App.body` wires this the same way as the plain-`ProgressView` r
 
 ```swift,no-build
 @State private var milestone: RuntimeBootstrapMilestone = .installingConfiguration
+@State private var startupError: Error?
 
 var body: some Scene {
     WindowGroup {
         if let bootstrap, let chatVM {
             // ... the real chat UI, unchanged ...
+        } else if let startupError {
+            ContentUnavailableView(
+                "Failed to start",
+                systemImage: "exclamationmark.triangle",
+                description: Text(startupError.localizedDescription)
+            )
         } else {
             BootstrapLoadingView(milestone: milestone)
                 .task {
                     let (progress, task) = ManifoldBootstrap.build(configuration: configuration)
                     for await m in progress { milestone = m }
-                    bootstrap = try? await task.value
+                    do {
+                        let ready = try await task.value
+                        // Configure the chat/session view models as in the
+                        // canonical manual bootstrap recipe before publishing.
+                        bootstrap = ready
+                    } catch {
+                        startupError = error
+                    }
                 }
         }
     }

@@ -510,7 +510,7 @@ let package = Package(
                 "ManifoldRuntime",
                 "ManifoldInference",
                 "ManifoldHuggingFace",
-                // New edge (Unit 2 §L4, docs/UI-REFRESH-2026-PLAN.md): the
+                // New edge (Unit 2 §L4, https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/UI-REFRESH-2026-PLAN.md): the
                 // promoted Connected Services settings surface
                 // (`Views/Settings/ConnectedServicesView.swift`) reuses
                 // `MCPToolCountView` rather than re-implement the Foundation
@@ -609,7 +609,7 @@ let package = Package(
             ]
         ),
         // Persistence-dependent test mocks split out of ManifoldTestSupport
-        // (arch-plan 4.4, docs/plans/api-review-wave2-2026-07.md Track 2 P2):
+        // (arch-plan 4.4, https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/api-review-wave2-2026-07.md Track 2 P2):
         // GlassBoxDemoRAG, InMemoryPersistenceHarness, and makeInMemoryContainer()
         // are the only 3 of ManifoldTestSupport's ~41 files that needed SwiftData
         // + ManifoldPersistenceSwiftData — split out so pure-engine consumers

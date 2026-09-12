@@ -141,7 +141,8 @@ struct MyApp: App {
                 sessionVM.activeSession = restored
                 await chatVM.switchToSession(restored)
                 chatVM.dispatchSelectedLoad()
-            } else if let fresh = try? await sessionVM.createSession() {
+            } else {
+                let fresh = try await sessionVM.createSession()
                 sessionVM.activeSession = fresh
                 await chatVM.switchToSession(fresh)
                 chatVM.dispatchSelectedLoad()
@@ -157,7 +158,7 @@ struct MyApp: App {
 }
 ```
 
-If you only need a single-session chat surface, prefer `ManifoldKit.quickStart()` — it collapses steps 1–5 above (minus the second view model) into one call. Drop into `ManifoldBootstrap.build(...)` directly when you need session management, a custom `InferenceService`, a custom model container, or progress-bar UI driven by ``ManifoldPersistenceSwiftData/RuntimeBootstrapMilestone``.
+If you only need a single-session chat surface, prefer `ManifoldKit.quickStart()` — it collapses steps 1–5 above into one call and returns a configured ``ManifoldUI/SessionManagerViewModel`` in its ``ManifoldKit/QuickStartResult``. That result is also suitable for a multi-session layout when paired with the sidebar pattern below. Drop into `ManifoldBootstrap.build(...)` directly when you need a custom `InferenceService`, a custom model container, or progress-bar UI driven by ``ManifoldPersistenceSwiftData/RuntimeBootstrapMilestone``.
 
 ### Root layout with NavigationSplitView
 
@@ -237,8 +238,11 @@ struct SessionListView: View {
             Button("New Chat", systemImage: "square.and.pencil") {
                 // Both calls are async; the button action closure is not.
                 Task {
-                    if let session = try? await sessionVM.createSession() {
+                    do {
+                        let session = try await sessionVM.createSession()
                         await chatVM.switchToSession(session)
+                    } catch {
+                        Log.ui.error("Unable to create session: \(error.localizedDescription)")
                     }
                 }
             }
@@ -323,6 +327,7 @@ struct ModernApp: App {
     @State private var bootstrap: ManifoldBootstrap?
     @State private var chatViewModel: ChatViewModel?
     @State private var sessionManager: SessionManagerViewModel?
+    @State private var startupError: Error?
 
     var body: some Scene {
         WindowGroup {
@@ -331,6 +336,12 @@ struct ModernApp: App {
                     .environment(chatViewModel)
                     .environment(sessionManager)
                     .modelContainer(bootstrap.modelContainer)
+            } else if let startupError {
+                ContentUnavailableView(
+                    "Failed to start",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(startupError.localizedDescription)
+                )
             } else {
                 ProgressView("Starting…")
                     .task { await start() }
@@ -340,34 +351,42 @@ struct ModernApp: App {
 
     @MainActor
     private func start() async {
-        let (progress, task) = ManifoldBootstrap.build(
-            configuration: ManifoldConfiguration(
-                appName: "Modern Chat",
-                bundleIdentifier: "com.example.modern"
+        do {
+            let (progress, task) = ManifoldBootstrap.build(
+                configuration: ManifoldConfiguration(
+                    appName: "Modern Chat",
+                    bundleIdentifier: "com.example.modern"
+                )
             )
-        )
-        for await _ in progress { }
-        guard let bootstrap = try? await task.value else { return }
-        OllamaBackends.register(with: bootstrap.inferenceService)
-        CloudSaaSBackends.register(with: bootstrap.inferenceService)
-        FoundationBackends.register(with: bootstrap.inferenceService)
-        let chatVM = ChatViewModel(
-            inferenceService: bootstrap.inferenceService,
-            conversationRuntime: bootstrap.conversationRuntime
-        )
-        chatVM.configure(bootstrap: bootstrap)
+            for await _ in progress { }
+            let bootstrap = try await task.value
+            OllamaBackends.register(with: bootstrap.inferenceService)
+            CloudSaaSBackends.register(with: bootstrap.inferenceService)
+            FoundationBackends.register(with: bootstrap.inferenceService)
+            let chatVM = ChatViewModel(
+                inferenceService: bootstrap.inferenceService,
+                conversationRuntime: bootstrap.conversationRuntime
+            )
+            chatVM.configure(bootstrap: bootstrap)
 
-        let sessionVM = SessionManagerViewModel()
-        await sessionVM.configureAndLoad(bootstrap: bootstrap)
+            let sessionVM = SessionManagerViewModel()
+            await sessionVM.configureAndLoad(bootstrap: bootstrap)
 
-        if let restored = await sessionVM.selectInitialSession() {
-            sessionVM.activeSession = restored
-            await chatVM.switchToSession(restored)
+            if let restored = await sessionVM.selectInitialSession() {
+                sessionVM.activeSession = restored
+                await chatVM.switchToSession(restored)
+            } else {
+                let fresh = try await sessionVM.createSession()
+                sessionVM.activeSession = fresh
+                await chatVM.switchToSession(fresh)
+            }
+
+            self.bootstrap = bootstrap
+            self.chatViewModel = chatVM
+            self.sessionManager = sessionVM
+        } catch {
+            startupError = error
         }
-
-        self.bootstrap = bootstrap
-        self.chatViewModel = chatVM
-        self.sessionManager = sessionVM
     }
 }
 ```

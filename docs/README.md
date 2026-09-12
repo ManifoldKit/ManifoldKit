@@ -45,16 +45,8 @@ Branch points:
   inference layer with your own SwiftUI surface (no `ChatView`). The canonical,
   single-source BYO-UI walkthrough.
 
-> [!IMPORTANT]
-> **The backend cliff — a *runtime* throw, not a compile error.** If nothing
-> registers an inference backend (pre-iOS 26 / macOS 26, no cloud endpoint
-> configured, no companion packages), `ManifoldKit.quickStart()` throws
-> `ManifoldKitError.noBackendsRegistered` when you call it — it compiles fine,
-> then fails at launch. For local inference add a companion package
-> ([manifold-llama](https://github.com/ManifoldKit/manifold-llama) for GGUF,
-> [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) for MLX) and pass its
-> registrar to `quickStart(backends:)`. See
-> [QUICKSTART.md → Customizing backends](QUICKSTART.md#customizing-backends).
+> For backend registration, local companion packages, and the no-backend startup
+> path, use the canonical [Quickstart](QUICKSTART.md#customizing-backends).
 
 ## Add a capability
 
@@ -120,8 +112,14 @@ and forward-looking design notes. Most are also linked from
 | Doc | Covers |
 |-----|--------|
 | [SCOPE_DECISION.md](SCOPE_DECISION.md) | Scope rationale for what's in vs. out. |
-| [QA-PRACTICES.md](QA-PRACTICES.md) | The four cross-cutting QA practices (DX walkthroughs, audit tests, the sabotage suite, cold-start gates). |
+| [QA-PRACTICES.md](QA-PRACTICES.md) | Cross-cutting QA practices: DX walkthroughs, audits, sabotage, cold-start gates, local integration/perf sweeps, and demo coverage. |
+| [API-DESIGN.md](API-DESIGN.md) | Public API ownership, access-level, and compatibility policy. |
+| [DEMO-COVERAGE.md](DEMO-COVERAGE.md) | Capability-to-demo coverage contract and gate. |
+| [HARDWARE-TOOLCHAIN.md](HARDWARE-TOOLCHAIN.md) | Supported Apple hardware/toolchain and companion constraints. |
+| [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) | Product maturity and readiness signals. |
+| [RELEASE-1.0.md](RELEASE-1.0.md) | 1.0 release and compatibility policy. |
+| [TESTING-CI-PRINCIPLES.md](TESTING-CI-PRINCIPLES.md) | CI/test design principles and gate rationale. |
 | [QA-EVALUATION-PROCESS.md](QA-EVALUATION-PROCESS.md) | How a release candidate is evaluated before it ships — the hand-run checks that sit outside `swift test`. |
-| [UI-REFRESH-2026.md](UI-REFRESH-2026.md) / [UI-REFRESH-2026-PLAN.md](UI-REFRESH-2026-PLAN.md) | The 2026 UI refresh: the design rationale and the unit-by-unit delivery plan (issue #2307). Consumer-facing change inventory is in [MIGRATION-ui-refresh.md](MIGRATION-ui-refresh.md). |
+| [UI-REFRESH-2026.md](UI-REFRESH-2026.md) / [MIGRATION-ui-refresh.md](MIGRATION-ui-refresh.md) | The shipped 2026 UI refresh: design rationale and consumer-facing change inventory (issue #2307). |
 | [wwdc-2026-trait-stubs.md](wwdc-2026-trait-stubs.md) | The pre-wired stub traits for whatever Apple ships next. |
 | [plans/](plans) | In-flight release plans. |
