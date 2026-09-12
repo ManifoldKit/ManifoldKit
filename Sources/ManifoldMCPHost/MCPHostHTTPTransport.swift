@@ -30,7 +30,10 @@ import os
 /// Instantiate, `start()`, then hand to ``ManifoldMCPHost/run(transport:)``:
 ///
 /// ```swift
-/// let transport = try MCPHostHTTPTransport(port: 8765)
+/// let transport = try MCPHostHTTPTransport(
+///     port: 8765,
+///     authorizationToken: token
+/// )
 /// try await transport.start()
 /// try await host.run(transport: transport)
 /// ```
@@ -38,9 +41,10 @@ import os
 /// ## Scope & limitations
 ///
 /// - macOS only (not available on iOS or Catalyst), like the stdio transport.
-/// - Binds `127.0.0.1` by default — loopback only. This is a local-first
-///   surface; do not expose it to untrusted networks without front-loading
-///   TLS + authentication (e.g. via a reverse proxy).
+/// - Binds loopback only and requires a caller-supplied bearer token on every
+///   request. Keep the token outside logs and persistence.
+/// - Rejects browser-originated requests. The transport is for native MCP
+///   clients; it does not provide a browser CORS surface.
 /// - The stdio transport remains the default for local single-client use; this
 ///   transport exists for streamable-HTTP clients that cannot launch the host
 ///   as a subprocess.
@@ -54,6 +58,7 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
 
     private let port: NWEndpoint.Port
     private let maxMessageBytes: Int
+    private let authorizationHeader: [UInt8]
     private let continuation: AsyncThrowingStream<Data, Error>.Continuation
 
     private var listener: NWListener?
@@ -92,16 +97,26 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
     /// - Parameters:
     ///   - port: TCP port to bind. `0` binds an OS-assigned ephemeral port
     ///     (read back via ``boundPort``).
+    ///   - authorizationToken: Per-launch bearer token required on every
+    ///     request. Generate it with a cryptographically secure random source
+    ///     and pass the same value to the native MCP client.
     ///   - maxMessageBytes: Hard cap on a single inbound request body.
     public init(
         port: UInt16,
+        authorizationToken: String,
         maxMessageBytes: Int = 4 * 1024 * 1024
     ) throws {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
             throw MCPHostTransportError.invalidPort(port)
         }
+        let tokenBytes = Array(authorizationToken.utf8)
+        guard tokenBytes.isEmpty == false,
+              tokenBytes.allSatisfy({ $0 > 0x20 && $0 != 0x7f }) else {
+            throw MCPHostTransportError.invalidAuthorizationToken
+        }
         self.port = nwPort
         self.maxMessageBytes = maxMessageBytes
+        self.authorizationHeader = Array("Bearer \(authorizationToken)".utf8)
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: Data.self, throwing: Error.self)
         self.incomingMessages = stream
         self.continuation = continuation
@@ -314,17 +329,56 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
     }
 
     private func dispatch(_ request: HTTPRequest, on connection: NWConnection) {
+        guard isAllowedHost(request.headers["host"]) else {
+            respondAndClose(connection, status: "421 Misdirected Request", body: "invalid host")
+            return
+        }
+        guard request.headers["origin"] == nil else {
+            respondAndClose(connection, status: "403 Forbidden", body: "browser origins are not allowed")
+            return
+        }
+        guard securelyMatchesAuthorization(request.headers["authorization"]) else {
+            respondAndClose(
+                connection,
+                status: "401 Unauthorized",
+                body: "unauthorized",
+                additionalHeaders: ["WWW-Authenticate: Bearer"]
+            )
+            return
+        }
+
         switch request.method {
         case "GET":
             openSSEChannel(on: connection)
         case "POST":
             handlePOST(request, on: connection)
         case "OPTIONS":
-            // CORS / capability preflight — answer permissively for local use.
             respondAndClose(connection, status: "204 No Content", body: "")
         default:
             respondAndClose(connection, status: "405 Method Not Allowed", body: "unsupported method")
         }
+    }
+
+    private func isAllowedHost(_ host: String?) -> Bool {
+        guard let boundPort = listener?.port?.rawValue, let host else { return false }
+        let allowed = [
+            "127.0.0.1:\(boundPort)",
+            "localhost:\(boundPort)",
+            "[::1]:\(boundPort)",
+        ]
+        return allowed.contains(host.lowercased())
+    }
+
+    private func securelyMatchesAuthorization(_ candidate: String?) -> Bool {
+        guard let candidate else { return false }
+        let candidateBytes = Array(candidate.utf8)
+        guard candidateBytes.count == authorizationHeader.count else { return false }
+
+        var difference: UInt8 = 0
+        for index in authorizationHeader.indices {
+            difference |= authorizationHeader[index] ^ candidateBytes[index]
+        }
+        return difference == 0
     }
 
     private func openSSEChannel(on connection: NWConnection) {
@@ -333,7 +387,6 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
             + "Content-Type: text/event-stream\r\n"
             + "Cache-Control: no-cache\r\n"
             + "Connection: keep-alive\r\n"
-            + "Access-Control-Allow-Origin: *\r\n"
             + "Mcp-Session-Id: \(sessionID.uuidString)\r\n"
             + "\r\n"
         connection.send(content: Data(header.utf8), completion: .contentProcessed { _ in })
@@ -503,16 +556,20 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
 
     // MARK: HTTP helpers
 
-    private func respondAndClose(_ connection: NWConnection, status: String, body: String) {
+    private func respondAndClose(
+        _ connection: NWConnection,
+        status: String,
+        body: String,
+        additionalHeaders: [String] = []
+    ) {
         let bodyData = Data(body.utf8)
-        let header = "HTTP/1.1 \(status)\r\n"
+        var header = "HTTP/1.1 \(status)\r\n"
             + "Content-Type: text/plain; charset=utf-8\r\n"
             + "Content-Length: \(bodyData.count)\r\n"
-            + "Access-Control-Allow-Origin: *\r\n"
-            + "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
-            + "Access-Control-Allow-Headers: Content-Type\r\n"
-            + "Connection: close\r\n"
-            + "\r\n"
+        for additionalHeader in additionalHeaders {
+            header += "\(additionalHeader)\r\n"
+        }
+        header += "Connection: close\r\n\r\n"
         var response = Data(header.utf8)
         response.append(bodyData)
         connection.send(content: response, completion: .contentProcessed { _ in

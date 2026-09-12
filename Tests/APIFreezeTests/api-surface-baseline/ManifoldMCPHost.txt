@@ -10,7 +10,7 @@ MCPHostHTTPTransport Class
 MCPHostHTTPTransport conformances: Actor,Copyable,Escapable,MCPHostTransport,Sendable,SendableMetatype
 MCPHostHTTPTransport.boundPort Var
 MCPHostHTTPTransport.incomingMessages Var
-MCPHostHTTPTransport.init(port:maxMessageBytes:) Constructor
+MCPHostHTTPTransport.init(port:authorizationToken:maxMessageBytes:) Constructor
 MCPHostHTTPTransport.send(_:) Func
 MCPHostHTTPTransport.shutdown() Func
 MCPHostHTTPTransport.start() Func
@@ -34,6 +34,7 @@ MCPHostTransportError Enum
 MCPHostTransportError conformances: Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 MCPHostTransportError.errorDescription Var
 MCPHostTransportError.invalidContentLength EnumElement
+MCPHostTransportError.invalidAuthorizationToken EnumElement
 MCPHostTransportError.invalidHeader EnumElement
 MCPHostTransportError.invalidPort EnumElement
 MCPHostTransportError.listenFailed EnumElement

@@ -45,12 +45,15 @@ let transport = MCPHostStdioTransport()
 
 ```swift,no-build
 #if os(macOS)
-let transport = try MCPHostHTTPTransport(port: 8765)
+let transport = try MCPHostHTTPTransport(
+    port: 8765,
+    authorizationToken: perLaunchToken
+)
 try await transport.start()
 #endif
 ```
 
-By default the listener binds `127.0.0.1` (loopback only). It is a local-first surface — front it with TLS and authentication (e.g. a reverse proxy) before exposing it beyond the machine. stdio remains the default for local single-client use.
+The listener binds loopback only and authenticates every request with the supplied bearer token. Generate a fresh high-entropy token when the host starts, keep it out of logs and persistence, and configure the native MCP client with the same token. Browser requests carrying an `Origin` header are rejected; this transport does not expose CORS. stdio remains the default for local single-client use. Existing callers migrating from the unauthenticated initializer should follow <doc:MigratingMCPHTTPAuthentication>.
 
 ### 3. Start serving
 
@@ -121,7 +124,7 @@ For the streamable-HTTP transport, point the client at the bound URL instead:
 }
 ```
 
-Start ``MCPHostHTTPTransport`` when your app launches (keeping its normal UI) so the endpoint is reachable while the app runs.
+Start ``MCPHostHTTPTransport`` when your app launches (keeping its normal UI) and provide the same per-launch token to the native client so the endpoint is reachable only to an authenticated local caller while the app runs.
 
 ## Notes
 
