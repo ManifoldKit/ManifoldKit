@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.79.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.78.0...v0.79.0) (2026-09-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** authenticate the HTTP host boundary ([#2521](https://github.com/ManifoldKit/ManifoldKit/issues/2521))
+
+### Bug Fixes
+
+* **mcp:** authenticate the HTTP host boundary ([#2521](https://github.com/ManifoldKit/ManifoldKit/issues/2521)) ([7c591d1](https://github.com/ManifoldKit/ManifoldKit/commit/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e))
+
 ## [0.78.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.77.0...v0.78.0) (2026-09-10)
 
 ManifoldKit 0.78 lets host apps add their own support details to the existing
