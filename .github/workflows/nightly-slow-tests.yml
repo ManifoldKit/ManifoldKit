@@ -496,7 +496,7 @@ jobs:
               --body "$(printf '## Nightly cold-start gates failed\n\n**Run:** [%s](%s)\n\n%s\n\nCheck the run logs for full detail and close this issue once resolved.' "${{ github.run_id }}" "${run_url}" "${cause_line}")"
           fi
 
-  # Member-aware public-surface baseline (docs/plans/api-review-wave2-2026-07.md
+  # Member-aware public-surface baseline (https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/api-review-wave2-2026-07.md
   # item 0.A). Complements the `slow` job's api-check step above: that step
   # diagnoses BREAKING changes only (removals, type/signature changes) via
   # `swift package diagnose-api-breaking-changes` against the last release

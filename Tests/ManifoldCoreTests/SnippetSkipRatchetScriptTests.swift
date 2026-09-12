@@ -490,6 +490,75 @@ final class SnippetSkipRatchetScriptTests: XCTestCase {
         XCTAssertTrue(output.contains("whole-file opt-out docs=1 (Swift fences=1)"), "Whole-file hidden fence debt missing: \(output)")
     }
 
+    /// `GUIDE` has no fences; `GUIDE-OTHER` owns the only kept and skipped
+    /// fence. A loose `guide-*.swift` glob credited the latter to both docs,
+    /// turning the report into `docs=2` and hiding an untested GUIDE.
+    func test_reportDoesNotCreditSharedPrefixSiblingFences() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t0\ndocs/GUIDE-OTHER.md\t0\t1",
+            guideBody: "No Swift fences live here.",
+            sharedPrefixBody: """
+            ```swift
+            let keptByOther = 1
+            ```
+
+            ```swift,no-build:partial illustrative fragment
+            let skippedByOther = 2
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, 0, "Shared-prefix report fixture should be healthy. Output:\n\(output)")
+        XCTAssertTrue(output.contains("kept/extracted fences=1 across docs=1"), "GUIDE-OTHER must not credit GUIDE. Output:\n\(output)")
+        XCTAssertTrue(output.contains("skipped fences=1 across docs=1"), "GUIDE-OTHER must not credit GUIDE. Output:\n\(output)")
+        XCTAssertFalse(output.contains("across docs=2"), "Shared-prefix false credit returned. Output:\n\(output)")
+    }
+
+    /// `%03d` is a minimum width: fence 1000 is emitted as `1000`, not
+    /// truncated to three digits. Start the copied extractor at 999 so this
+    /// fixture reaches the boundary with only two fences, while GUIDE-OTHER
+    /// proves the numeric suffix still belongs to the exact document prefix.
+    func test_reportCountsFourDigitFenceIndicesWithoutCreditingPrefixSibling() throws {
+        let repo = try plantRepo(
+            // This only exercises the report counter. The separate ratchet
+            // still inventories exactly three-digit names, so its accelerated
+            // fixture baseline stays at zero rather than claiming this fixes
+            // that older policy seam.
+            baseline: "docs/GUIDE.md\t0\t0\ndocs/GUIDE-OTHER.md\t0\t0",
+            guideBody: """
+            ```swift
+            let keptAtOneThousand = 1
+            ```
+
+            ```swift,no-build:partial illustrative fragment
+            let skippedAtOneThousandOne = 2
+            ```
+            """,
+            sharedPrefixBody: """
+            ```swift
+            let keptBySibling = 3
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let script = repo.appendingPathComponent("scripts/extract-snippets.sh")
+        let original = try String(contentsOf: script, encoding: .utf8)
+        let needle = "block_num = 0; start_line = 0; tag = \"\""
+        XCTAssertTrue(original.contains(needle), "Fixture seam disappeared; update this test with the extractor parser.")
+        try original.replacingOccurrences(of: needle, with: "block_num = 999; start_line = 0; tag = \"\"")
+            .write(to: script, atomically: true, encoding: .utf8)
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, 0, "Four-digit index fixture should be healthy. Output:\n\(output)")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: repo.appendingPathComponent("out/guide-1000.swift").path), "Fixture must emit the four-digit kept index.")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: repo.appendingPathComponent("out/guide-1001.skip").path), "Fixture must emit the four-digit skipped index.")
+        XCTAssertTrue(output.contains("kept/extracted fences=2 across docs=2"), "1000 and sibling kept fences must each count once. Output:\n\(output)")
+        XCTAssertTrue(output.contains("skipped fences=1 across docs=1"), "1001 skipped fence must count for GUIDE. Output:\n\(output)")
+    }
+
     // MARK: - Harness
 
     /// Builds a minimal repo the script can run against: its own copy of the
@@ -499,6 +568,7 @@ final class SnippetSkipRatchetScriptTests: XCTestCase {
         baseline: String,
         guideBody: String,
         otherBody: String? = nil,
+        sharedPrefixBody: String? = nil,
         optedOutBody: String? = nil
     ) throws -> URL {
         let fm = FileManager.default
@@ -522,6 +592,10 @@ final class SnippetSkipRatchetScriptTests: XCTestCase {
         if let otherBody {
             try ("# Other\n\n" + otherBody + "\n")
                 .write(to: root.appendingPathComponent("docs/OTHER.md"), atomically: true, encoding: .utf8)
+        }
+        if let sharedPrefixBody {
+            try ("# Guide Other\n\n" + sharedPrefixBody + "\n")
+                .write(to: root.appendingPathComponent("docs/GUIDE-OTHER.md"), atomically: true, encoding: .utf8)
         }
         if let optedOutBody {
             // TESTING.md is an existing reasoned whole-file opt-out in the

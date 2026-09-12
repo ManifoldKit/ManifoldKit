@@ -713,10 +713,12 @@ for doc_rel in ${gated_docs[@]+"${gated_docs[@]}"} ${docc_files[@]+"${docc_files
     doc_skipped=0
     while IFS= read -r output_file || [[ -n "$output_file" ]]; do
         [[ -n "$output_file" ]] || continue
-        case "$output_file" in
-            "$OUT_DIR/${doc_slug}-"*.swift) doc_kept=1 ;;
-            "$OUT_DIR/${doc_slug}-"*.skip) doc_skipped=1 ;;
-        esac
+        suffix="${output_file#"$OUT_DIR/${doc_slug}-"}"
+        if [[ "$suffix" =~ ^[0-9][0-9][0-9][0-9]*\.swift$ ]]; then
+            doc_kept=1
+        elif [[ "$suffix" =~ ^[0-9][0-9][0-9][0-9]*\.skip$ ]]; then
+            doc_skipped=1
+        fi
     done <<<"$output_inventory"
     kept_docs=$((kept_docs + doc_kept))
     skipped_docs=$((skipped_docs + doc_skipped))

@@ -1,7 +1,7 @@
 // MCPClientOAuthWiringTests.swift
 //
 // Two gaps in MCPClient.connect(_:authorization:) found by a public-API gap
-// audit (docs/plans/inert-code-audit-2026-07.md):
+// audit (https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/inert-code-audit-2026-07.md):
 //
 // 1. A descriptor declaring `.oauth(...)` (e.g. MCPCatalog.notion) called with
 //    the default `MCPNoAuthorization()` sailed past the existing line-88-ish

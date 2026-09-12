@@ -2,7 +2,7 @@
 //
 // Tripwire for the "quickStart() + addToolSources(_:) silently registers a
 // non-functional generation tool" trap (audit item #41 in
-// docs/plans/inert-code-audit-2026-07.md, tracked under #2128 / #1903).
+// https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/inert-code-audit-2026-07.md, tracked under #2128 / #1903).
 //
 // `ManifoldKit.quickStart(...)` never passes `imageGenerationService` /
 // `videoGenerationService` / `webSearchRuntime` through to
@@ -144,7 +144,7 @@ final class GenerationComponentsDocLivenessTest: XCTestCase {
         let mentionsNoWiring = stripped.contains("does not wire") || stripped.contains("not wired")
             || stripped.contains("no parameter")
         guard mentionsQuickStart, mentionsNoWiring else {
-            return "documents addToolSources(_:) with generation tool sources without a caveat stating that ManifoldKit.quickStart(...) does not wire imageGenerationService/videoGenerationService/webSearchRuntime — the recipe reads as if plain quickStart() output works, but the registered sources fail (as a ToolResult errorKind, not a throw) with no build-time or registration-time warning. See #1903 / docs/plans/inert-code-audit-2026-07.md #41."
+            return "documents addToolSources(_:) with generation tool sources without a caveat stating that ManifoldKit.quickStart(...) does not wire imageGenerationService/videoGenerationService/webSearchRuntime — the recipe reads as if plain quickStart() output works, but the registered sources fail (as a ToolResult errorKind, not a throw) with no build-time or registration-time warning. See #1903 / https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/inert-code-audit-2026-07.md #41."
         }
         return nil
     }

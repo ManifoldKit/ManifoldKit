@@ -310,7 +310,7 @@ final class OutputParserSessionTests: XCTestCase {
             "A parse failure must not poison a following well-formed call")
     }
 
-    // MARK: - #1858 / inert-code-audit-2026-07 finding 5: truncated-body diagnostic at finalize
+    // MARK: - #1858 / https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/inert-code-audit-2026-07.md finding 5: truncated-body diagnostic at finalize
 
     /// `surfaceTruncatedToolBody` defaults to `true` (flipped 2026-07 — was
     /// `false` at #1858) so the `.toolCallTruncated` diagnostic is uniformly

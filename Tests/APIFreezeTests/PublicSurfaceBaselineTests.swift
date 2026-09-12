@@ -4,7 +4,7 @@ import XCTest
 /// (originated as the 0.2b prototype in the July API review;
 /// https://github.com/ManifoldKit/ManifoldKit/blob/8d67614566f037ff265387f2dcde09c76434944e/docs/plans/api-review-2026-07.md
 /// made load-bearing and expanded to full module coverage by
-/// `docs/plans/api-review-wave2-2026-07.md` item 0.A).
+/// `https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/api-review-wave2-2026-07.md` item 0.A).
 ///
 /// `scripts/api-surface-baseline.sh` generates the real, member-granular
 /// diff (swift-api-digester's ABIRoot dump, normalized to one line per
