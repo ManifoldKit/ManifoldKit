@@ -28,6 +28,7 @@ Sources/ManifoldMCP/ManifoldMCP.docc/Articles/MCPToolRegistryBridge.md	2	2
 Sources/ManifoldMCP/ManifoldMCP.docc/Articles/MCPTransports.md	1	1
 Sources/ManifoldMCP/ManifoldMCP.docc/ManifoldMCP.md	0	0
 Sources/ManifoldMCPHost/ManifoldMCPHost.docc/Articles/MCPHostServer.md	4	4
+Sources/ManifoldMCPHost/ManifoldMCPHost.docc/Articles/MigratingMCPHTTPAuthentication.md	0	0
 Sources/ManifoldMCPHost/ManifoldMCPHost.docc/ManifoldMCPHost.md	0	0
 Sources/ManifoldModelCatalog/ManifoldModelCatalog.docc/ManifoldModelCatalog.md	0	0
 Sources/ManifoldPersistenceSwiftData/ManifoldPersistenceSwiftData.docc/ManifoldPersistenceSwiftData.md	6	6

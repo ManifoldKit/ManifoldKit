@@ -523,6 +523,20 @@ final class MCPHostHTTPTransportTests: XCTestCase {
             port: port
         )
         XCTAssertTrue(wrong.contains("401 Unauthorized"), "wrong token must be rejected; got: \(wrong)")
+
+        // Equal-length mismatches must reach the byte comparison, not only the
+        // length guard. Exercise both ends so a partial comparison cannot pass.
+        for invalidToken in [
+            "X" + String(Self.authorizationToken.dropFirst()),
+            String(Self.authorizationToken.dropLast()) + "X",
+        ] {
+            XCTAssertEqual(invalidToken.utf8.count, Self.authorizationToken.utf8.count)
+            let response = try await requestHeader(
+                "GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(invalidToken)\r\n\r\n",
+                port: port
+            )
+            XCTAssertTrue(response.contains("401 Unauthorized"), "equal-length wrong token must be rejected; got: \(response)")
+        }
     }
 
     func test_requestBoundary_rejectsUnexpectedHost() async throws {
