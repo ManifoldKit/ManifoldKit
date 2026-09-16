@@ -170,7 +170,7 @@ let package = Package(
         // live in the manifold-mlx / manifold-llama companion packages (#1749).
         // Pin 0.9.0 exactly: this is the verified tag that still exports the
         // `HuggingFace` product consumed by ManifoldHuggingFace and its tests.
-        .package(url: "https://github.com/huggingface/swift-huggingface.git", exact: "0.10.0"),
+        .package(url: "https://github.com/huggingface/swift-huggingface.git", exact: "0.10.1"),
         // swift-jinja: renders a GGUF model's *real* embedded Jinja chat template
         // (`tokenizer.chat_template`) rather than approximating it with the
         // hand-rolled `PromptTemplate` enum (#1811). Consumed by ManifoldInference's
