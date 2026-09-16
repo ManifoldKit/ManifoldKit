@@ -164,8 +164,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     private var session: LanguageModelSession?
     private var generationTask: Task<Void, Never>?
     private var generationSequence: UInt64 = 0
-    /// Tracks the system prompt used to create the current session, so we only
-    /// recreate when the prompt actually changes.
+    /// Effective instructions of the current request (including its tool catalogue).
     private var currentSystemPrompt: String?
     /// True when the session has no in-flight `ResponseStream`.
     ///
@@ -175,8 +174,8 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     /// cancelled mid-stream the iterator is dropped early, leaving the session in
     /// a "dirty" state.  This flag tracks that: it is cleared to `false` just
     /// before the streaming loop starts and restored to `true` only when the loop
-    /// exits naturally (not via cancellation).  `generate()` treats a dirty session
-    /// the same as a `nil` session and creates a fresh `LanguageModelSession`.
+    /// exits naturally (not via cancellation). Every request gets a fresh session;
+    /// the flag still records whether the preceding iterator fully drained.
     private var _sessionIsClean = true
 
     /// Closure that returns the current `SystemLanguageModel.Availability`.
@@ -218,8 +217,8 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     // MARK: - Test-only accessors
 
 #if DEBUG
-    /// Exposes the active session reference for unit tests that verify session reuse /
-    /// recreation without running real inference. Not part of the public API.
+    /// Exposes session identity for request-isolation and recovery tests.
+    /// Not part of the public API.
     var _session: LanguageModelSession? { withStateLock { session } }
 
     /// Exposes the system prompt that was used to create the current session, so tests
@@ -410,12 +409,6 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
             )
         }
 
-        // Prior-turn image parts arrive per-call on `hints.history` (#2312).
-        // `LanguageModelSession` replays the *text* of prior turns from its own
-        // internal transcript, so this is purely the multimodal seam — a
-        // documented NO-OP on the current toolchain (see below).
-        installImageAttachments(from: hints.history)
-
         // Tool calling is synthesized via GuidedGeneration. The structured
         // schema is built up-front so a build failure (an unsupported
         // JSON-Schema construct in a registered tool) trips before we mutate
@@ -531,6 +524,10 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
             }
         }()
 
+        let conversation = try FoundationConversation(history: hints.history, fallbackPrompt: prompt)
+        let requestInstructions = [effectiveInstructions, conversation.systemInstructions]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
+
         let (activeSession, generationID): (LanguageModelSession, UInt64) = try withStateLock {
             guard _isModelLoaded else {
                 throw InferenceError.inferenceFailure("No model loaded")
@@ -542,30 +539,22 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
             let generationID = generationSequence
             _isGenerating = true
 
-            // Reuse the existing session to preserve conversation history.
-            // Recreate if: no session exists, the system prompt changed, or the
-            // previous generation was cancelled before its ResponseStream was fully
-            // consumed.  In the last case the session is "dirty" — LanguageModelSession
-            // asserts (SIGTRAP) if streamResponse() is called on a session whose
-            // previous ResponseStream iterator was dropped before returning nil.
-            let needsNewSession = needsNewFoundationSession(
-                sessionExists: session != nil,
-                currentInstructions: currentSystemPrompt,
-                newInstructions: effectiveInstructions,
-                isClean: _sessionIsClean
+            // Canonical per-request history is authoritative, including an empty
+            // history (single-turn). Never reuse the SDK's accumulated transcript:
+            // it may contain trimmed, edited, branched or cancelled turns.
+            let seed = LanguageModelSession(
+                instructions: requestInstructions.isEmpty ? nil : requestInstructions
             )
-            if needsNewSession {
-                if let effectiveInstructions, !effectiveInstructions.isEmpty {
-                    session = LanguageModelSession(instructions: effectiveInstructions)
-                } else {
-                    session = LanguageModelSession()
-                }
-                currentSystemPrompt = effectiveInstructions
-                _sessionIsClean = true  // fresh session always starts clean
-                // Signal the system daemon to warm up KV-cache state so the
-                // first streamResponse() on this session pays less IPC setup.
-                session?.prewarm()
+            if conversation.entries.isEmpty {
+                session = seed
+            } else {
+                session = LanguageModelSession(transcript: Transcript(
+                    entries: Array(seed.transcript) + conversation.entries
+                ))
             }
+            currentSystemPrompt = requestInstructions.isEmpty ? nil : requestInstructions
+            _sessionIsClean = true
+            session?.prewarm()
 
             return (session!, generationID)
         }
@@ -636,7 +625,9 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 // next call.  This prevents a SIGTRAP: LanguageModelSession asserts when
                 // streamResponse() is called again while the previous ResponseStream
                 // iterator was dropped before returning nil.
-                withStateLock { _sessionIsClean = false }
+                withStateLock {
+                    if generationSequence == generationID { _sessionIsClean = false }
+                }
 
                 metricTracker.start()
 
@@ -644,7 +635,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 if let toolEnvelope {
                     result = try await runToolAwareStream(
                         session: activeSession,
-                        prompt: prompt,
+                        prompt: conversation.prompt,
                         schema: toolEnvelope,
                         options: options,
                         continuation: continuation,
@@ -654,7 +645,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 } else if let guidedSchema {
                     result = try await runGuidedStructuredStream(
                         session: activeSession,
-                        prompt: prompt,
+                        prompt: conversation.prompt,
                         schema: guidedSchema,
                         options: options,
                         continuation: continuation,
@@ -664,7 +655,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 } else {
                     result = try await runTextOnlyStream(
                         session: activeSession,
-                        prompt: prompt,
+                        prompt: conversation.prompt,
                         options: options,
                         continuation: continuation,
                         generationStream: generationStream,
@@ -678,7 +669,9 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 // dropped mid-stream, which would cause LanguageModelSession to
                 // SIGTRAP on the next streamResponse() call.
                 if result.streamExhausted {
-                    withStateLock { _sessionIsClean = true }
+                    withStateLock {
+                        if generationSequence == generationID { _sessionIsClean = true }
+                    }
                 }
 
                 // Detect silent zero-event completion: Foundation Models can return
@@ -717,9 +710,12 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
             continuation.finish()
         }
 
-        withStateLock {
+        let taskIsCurrent = withStateLock {
+            guard generationSequence == generationID, _isGenerating else { return false }
             generationTask = task
+            return true
         }
+        if !taskIsCurrent { task.cancel() }
 
         continuation.onTermination = { @Sendable _ in
             task.cancel()
@@ -969,40 +965,6 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
 
 }
 
-// MARK: - Multimodal history seam
-
-@available(iOS 26, macOS 26, *)
-extension FoundationBackend {
-    /// Image-attachment seam for prior-turn ``MessagePart/image`` parts.
-    ///
-    /// This is a deliberate NO-OP on the current toolchain (Xcode 26.x /
-    /// Swift 6.2.x). Apple's public FoundationModels SDK exposes no `Data` /
-    /// `CGImage` / `Attachment` ingress for the model — see the
-    /// ``FoundationBackend`` type-level doc comment for the full audit. We do
-    /// NOT reference any 27.0-only symbol (`Attachment`, image-bearing
-    /// `Prompt` initialisers, etc.) so this compiles cleanly today.
-    ///
-    /// When the multimodal SDK lands (WWDC 2026 AFM 3, tracked by #1710), the
-    /// flag flip is a small, localized change:
-    ///   1. Gate the body on the real availability, e.g.
-    ///      `if #available(iOS 26.4, macOS 26.4, *) { … }`.
-    ///   2. For each ``StructuredMessage`` whose ``StructuredMessage/parts``
-    ///      contain a ``MessagePart/image(data:mimeType:)``, build an
-    ///      `Attachment` from the image bytes and thread it into the prompt /
-    ///      session transcript.
-    ///   3. Flip ``BackendCapabilities/supportsVision`` to the runtime-conditional
-    ///      `true` (see the OUTSTANDING note on `capabilities`).
-    /// The structured history this reads from is already wired (above), so the
-    /// only change at that point is replacing this NO-OP body.
-    private func installImageAttachments(from messages: [StructuredMessage]) {
-        // Intentionally empty on the current toolchain. The presence of image
-        // parts is detected by the runtime's GenerationQueue pre-flight, which
-        // rejects image-bearing turns while `supportsVision == false`; this
-        // backend therefore never receives images to install today.
-        _ = messages
-    }
-}
-
 // MARK: - TokenizerVendor
 
 @available(iOS 26, macOS 26, *)
@@ -1024,30 +986,6 @@ struct FoundationTokenizer: TokenizerProvider {
     func tokenCount(_ text: String) -> Int {
         max(1, text.count / 3)
     }
-}
-
-// MARK: - Session predicate
-
-/// Returns `true` when `generate()` must allocate a fresh `LanguageModelSession`.
-///
-/// Extracted as a file-private pure function so tests can cover all four branches
-/// without requiring a real Apple Intelligence entitlement.
-///
-/// - Parameters:
-///   - sessionExists: Whether a session has already been created.
-///   - currentInstructions: The instructions that were used to create the current session.
-///   - newInstructions: The instructions required for the upcoming generation turn.
-///   - isClean: `true` when the current session's `ResponseStream` was fully consumed
-///     (iterator returned `nil`). `false` means the stream was abandoned mid-flight;
-///     reusing it would cause `LanguageModelSession` to SIGTRAP on the next
-///     `streamResponse()` call.
-func needsNewFoundationSession(
-    sessionExists: Bool,
-    currentInstructions: String?,
-    newInstructions: String?,
-    isClean: Bool
-) -> Bool {
-    !sessionExists || currentInstructions != newInstructions || !isClean
 }
 
 #endif

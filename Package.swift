@@ -185,7 +185,13 @@ let package = Package(
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.17.0"),
         // Test-only: SwiftUI view-tree inspection for accessibility contract tests.
         // Must never appear in any production target.
-        .package(url: "https://github.com/nalexn/ViewInspector", from: "0.10.3"),
+        // Revision-pinned until ViewInspector publishes its 0.10.4 branch.
+        // This dependency is test-target-only, so SwiftPM prunes it when a
+        // versioned ManifoldKit package is consumed through a library product.
+        .package(
+            url: "https://github.com/nalexn/ViewInspector",
+            revision: "3a903082662b3636c99cb20e051abe78a2c49294"
+        ),
         // swift-syntax for the @ToolSchema macro plugin. Widened to 602.0.0..<604.0.0
         // to match what mlx-swift-lm 3.31.4 (companion manifold-mlx) now requires
         // transitively — a narrower range produces a duplicate-dependency resolution

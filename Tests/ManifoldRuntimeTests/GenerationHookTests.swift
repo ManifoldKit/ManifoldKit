@@ -63,22 +63,24 @@ final class GenerationHookIntegrationTests: XCTestCase {
     /// completion so tests can await it deterministically instead of sleeping.
     actor RecordingHook: GenerationHook {
         private(set) var receivedTurns: [CompletedTurn] = []
-        private var continuations: [CheckedContinuation<CompletedTurn, Never>] = []
+        private let deliveredTurns: AsyncStream<CompletedTurn>
+        private let deliveryContinuation: AsyncStream<CompletedTurn>.Continuation
+
+        init() {
+            (deliveredTurns, deliveryContinuation) = AsyncStream.makeStream()
+        }
 
         func postGeneration(_ turn: CompletedTurn) async {
             receivedTurns.append(turn)
-            for continuation in continuations {
-                continuation.resume(returning: turn)
-            }
-            continuations.removeAll()
+            deliveryContinuation.yield(turn)
         }
 
-        /// Suspends until the next `postGeneration(_:)` call completes and
-        /// returns the `CompletedTurn` that was delivered.
-        func awaitNextTurn() async -> CompletedTurn {
-            await withCheckedContinuation { continuation in
-                continuations.append(continuation)
-            }
+        /// Returns the next delivery, including one buffered before this
+        /// waiter starts. Cancellation ends the wait with `nil`, allowing a
+        /// timeout task group to join its cancelled child.
+        func awaitNextTurn() async -> CompletedTurn? {
+            var iterator = deliveredTurns.makeAsyncIterator()
+            return await iterator.next()
         }
     }
 
@@ -297,6 +299,71 @@ final class GenerationHookIntegrationTests: XCTestCase {
 
     enum TestError: Error { case deadlineElapsed }
 
+    // MARK: - RecordingHook regression coverage
+
+    func test_recordingHook_buffersDeliveryBeforeWaiterStarts() async throws {
+        let sessionID = UUID()
+        let expected = CompletedTurn(
+            sessionID: sessionID,
+            assistantMessage: ChatMessage(
+                role: .assistant,
+                content: "buffered",
+                sessionID: sessionID
+            ),
+            promptTokens: nil,
+            completionTokens: nil
+        )
+        let hook = RecordingHook()
+
+        await hook.postGeneration(expected)
+        let waiterCompleted = expectation(description: "buffered waiter completed")
+        let waiter = Task {
+            let turn = await hook.awaitNextTurn()
+            waiterCompleted.fulfill()
+            return turn
+        }
+        let waitResult = await XCTWaiter().fulfillment(of: [waiterCompleted], timeout: 1)
+        XCTAssertEqual(waitResult, .completed)
+        guard waitResult == .completed else {
+            waiter.cancel()
+            return
+        }
+        let bufferedDelivery = await waiter.value
+        let delivered = try XCTUnwrap(bufferedDelivery)
+        let receivedCount = await hook.receivedTurns.count
+
+        XCTAssertEqual(delivered.sessionID, sessionID)
+        XCTAssertEqual(delivered.assistantMessage.content, "buffered")
+        XCTAssertEqual(receivedCount, 1)
+    }
+
+    func test_recordingHook_cancelledWaiterCompletes() async {
+        let waiterStarted = expectation(description: "waiter started")
+        let waiterCompleted = expectation(description: "cancelled waiter completed")
+        let hook = RecordingHook()
+        let waiter = Task {
+            waiterStarted.fulfill()
+            let turn = await hook.awaitNextTurn()
+            waiterCompleted.fulfill()
+            return turn
+        }
+
+        let startResult = await XCTWaiter().fulfillment(of: [waiterStarted], timeout: 1)
+        XCTAssertEqual(startResult, .completed)
+        guard startResult == .completed else {
+            waiter.cancel()
+            return
+        }
+
+        waiter.cancel()
+        let completionResult = await XCTWaiter().fulfillment(of: [waiterCompleted], timeout: 1)
+        XCTAssertEqual(completionResult, .completed)
+        guard completionResult == .completed else { return }
+        let cancelledDelivery = await waiter.value
+
+        XCTAssertNil(cancelledDelivery)
+    }
+
     // MARK: - Test 1: hook fires on success
 
     func test_hook_firesAfterSuccessfulTurn() async throws {
@@ -315,16 +382,17 @@ final class GenerationHookIntegrationTests: XCTestCase {
 
         // Await the hook's own completion signal — deterministic, no sleep needed.
         // withThrowingTaskGroup bounds the wait so a broken hook doesn't hang CI.
-        let deliveredTurn = try await withThrowingTaskGroup(of: CompletedTurn.self) { group in
+        let maybeDeliveredTurn = try await withThrowingTaskGroup(of: CompletedTurn?.self) { group in
             group.addTask { await hook.awaitNextTurn() }
             group.addTask {
                 try await Task.sleep(for: .seconds(5))
                 throw TestError.deadlineElapsed
             }
-            let turn = try await group.next()!
+            let turn = try await group.next() ?? nil
             group.cancelAll()
             return turn
         }
+        let deliveredTurn = try XCTUnwrap(maybeDeliveredTurn)
 
         let turns = await hook.receivedTurns
         XCTAssertEqual(turns.count, 1, "Hook should fire exactly once per successful turn")
