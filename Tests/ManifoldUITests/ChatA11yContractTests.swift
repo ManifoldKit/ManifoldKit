@@ -50,6 +50,21 @@ final class ChatA11yContractTests: XCTestCase {
 
     private let sessionID = UUID()
 
+    /// Guards ViewInspector's OS 27 type/subpath reflection: a missing label
+    /// must not be synthesized from another accessibility modifier's value.
+    func test_missingLabel_doesNotReadOtherAccessibilityModifiers() throws {
+        let view = Text("Visible content")
+            .accessibilityIdentifier("negative-control-identifier")
+            .accessibilityValue("negative-control-value")
+            .accessibilityHint("negative-control-hint")
+        let inspected = try view.inspect().text()
+
+        XCTAssertThrowsError(try inspected.accessibilityLabel().string())
+        XCTAssertEqual(try inspected.accessibilityIdentifier(), "negative-control-identifier")
+        XCTAssertEqual(try inspected.accessibilityValue().string(), "negative-control-value")
+        XCTAssertEqual(try inspected.accessibilityHint().string(), "negative-control-hint")
+    }
+
     // MARK: - MessageBubbleView
 
     func test_messageBubble_userRole_hasContractAccessibilityLabel() throws {

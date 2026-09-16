@@ -270,7 +270,7 @@ final class FoundationBackendUnitTests: XCTestCase {
         XCTAssertTrue(backend.isModelLoaded, "Precondition: loadModel should succeed")
 
         // If the probe session were retained, generate() with systemPrompt == nil
-        // would reuse it (needsNewSession == false), carrying probe history forward.
+        // must not expose the probe transcript as conversation state.
         // After our fix, session is nil post-loadModel, so generate() creates a
         // fresh LanguageModelSession() on this call.
         XCTAssertFalse(backend.isGenerating, "isGenerating must be false before generate()")
@@ -366,7 +366,7 @@ final class FoundationBackendUnitTests: XCTestCase {
         XCTAssertFalse(backend.isGenerating)
     }
 
-    // MARK: - Session reuse for multi-turn context preservation
+    // MARK: - Request isolation and cancellation recovery
 
     /// Verifies that a dirty session forces a **new** `LanguageModelSession`
     /// on the next `generate()` call — even when the system prompt is unchanged.
@@ -389,11 +389,8 @@ final class FoundationBackendUnitTests: XCTestCase {
     /// race: it directly drives the `_sessionIsClean = false` state that a
     /// mid-stream cancellation would produce, without relying on Task scheduling order.
     ///
-    /// Sabotage check: remove the `|| !_sessionIsClean` clause from the
-    /// `needsNewSession` condition in `FoundationBackend.generate`.  The
-    /// `XCTAssert(session1 !== session2)` assertion will fail because the dirty
-    /// session is reused, reproducing the original SIGTRAP.  Remove the sabotage
-    /// before committing.
+    /// Sabotage: reuse the previous session instead of rebuilding the request.
+    /// The identity assertion below must fail. Remove the sabotage before commit.
     ///
     /// - Note: on CI (no Apple Intelligence) this test is SKIPPED — `LanguageModelSession`
     ///   cannot be created without Apple Intelligence.
@@ -439,26 +436,12 @@ final class FoundationBackendUnitTests: XCTestCase {
         )
     }
 
-    /// Verifies that consecutive `generate()` calls with the same `systemPrompt`
-    /// reuse the **same** `LanguageModelSession` object after a **clean** completion.
-    ///
-    /// `LanguageModelSession.streamResponse(to:)` accumulates turns inside the session,
-    /// which is how FoundationBackend provides multi-turn context to the model.
-    /// If a new session were created on every call, all prior conversation history
-    /// would be lost.
-    ///
-    /// Requires live Apple Intelligence because we must let the generation complete
-    /// naturally so the `ResponseStream` iterator returns `nil` and the session is
-    /// marked clean before the next call.
-    ///
-    /// Sabotage check: change the `needsNewSession` condition in `FoundationBackend.generate`
-    /// so it always creates a new session (e.g. `let needsNewSession = true`). The
-    /// `XCTAssert(session1 === session2)` assertion will fail because a new object is
-    /// allocated on every call. Remove the sabotage before committing.
-    func test_generate_reusesSameSession_afterCleanCompletion() async throws {
+    /// Empty history is a single-turn request, even after a clean completion.
+    /// Reusing the previous SDK session leaks context absent from the request.
+    func test_generate_emptyHistory_createsFreshSession_afterCleanCompletion() async throws {
         try XCTSkipUnless(
             FoundationBackend.isAvailable,
-            "LanguageModelSession cannot be created without Apple Intelligence — skipping session-reuse test"
+            "LanguageModelSession cannot be created without Apple Intelligence — skipping request-isolation test"
         )
 
         let url = URL(fileURLWithPath: "/dev/null")
@@ -475,36 +458,24 @@ final class FoundationBackendUnitTests: XCTestCase {
 
         XCTAssertFalse(backend.isGenerating, "isGenerating must be false after natural completion")
 
-        // Second call — same systemPrompt, previous stream completed cleanly → reuse session.
+        // Same instructions still require a fresh single-turn session.
         let stream2 = try backend.generate(prompt: "What did you just say?", systemPrompt: systemPrompt, config: GenerationConfig())
         for try await _ in stream2.events {}
         let session2 = backend._session
         XCTAssertNotNil(session2, "Second generate() must have a session")
 
-        // The key invariant: same session object identity means conversation history was preserved.
+        // Prior context must be explicitly supplied through hints.history.
         XCTAssert(
-            session1 === session2,
-            "Session must be REUSED after a clean completion when systemPrompt is unchanged"
+            session1 !== session2,
+            "Empty history must not retain the previous request's SDK transcript"
         )
     }
 
     /// Verifies that `generate()` creates a **new** `LanguageModelSession` when the
     /// system prompt changes between calls.
     ///
-    /// `LanguageModelSession(instructions:)` bakes the system prompt into the session.
-    /// There is no API to mutate instructions after creation, so a prompt change forces
-    /// a new session (accepting that prior conversation history is discarded in exchange
-    /// for the correct persona).
-    ///
-    /// The first generation must complete **cleanly** (not via `_cancelTaskOnly()`)
-    /// so the session is marked clean before the second call.  That way the session
-    /// recreation is caused solely by the prompt change and not by the dirty-session
-    /// guard, keeping the sabotage check precise.
-    ///
-    /// Sabotage check: remove the `systemPrompt != currentSystemPrompt` clause from the
-    /// `needsNewSession` condition in `FoundationBackend.generate`. The assertion
-    /// `XCTAssert(session1 !== session2)` will fail because the old clean session is
-    /// reused even though the prompt changed. Remove the sabotage before committing.
+    /// Rebuilding must apply new instructions instead of the old session's
+    /// instructions. Supplied canonical history is preserved separately.
     func test_generate_createsNewSession_whenSystemPromptChanges() async throws {
         try XCTSkipUnless(
             FoundationBackend.isAvailable,
@@ -813,142 +784,6 @@ final class FoundationBackendUnitTests: XCTestCase {
         // Each delta should be exactly "a" (one new character per step).
         XCTAssertEqual(collectedDeltas.count, 100)
         XCTAssertTrue(collectedDeltas.allSatisfy { $0 == "a" })
-    }
-}
-
-// MARK: - needsNewFoundationSession predicate tests
-
-/// Tests for the `needsNewFoundationSession` pure function.
-///
-/// These tests do NOT gate on `FoundationBackend.isAvailable` and run on every
-/// CI machine — including simulators — because they exercise only the extracted
-/// predicate, not the `LanguageModelSession` API.
-@available(iOS 26, macOS 26, *)
-final class NeedsNewFoundationSessionTests: XCTestCase {
-
-    override func setUp() async throws {
-        try await super.setUp()
-        guard ProcessInfo.processInfo.isOperatingSystemAtLeast(
-            OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
-        ) else {
-            throw XCTSkip("FoundationModels requires iOS 26 / macOS 26")
-        }
-    }
-
-    // MARK: - 1. No session exists → always create new
-
-    func test_noSession_alwaysCreatesNew() {
-        XCTAssertTrue(
-            needsNewFoundationSession(
-                sessionExists: false,
-                currentInstructions: nil,
-                newInstructions: nil,
-                isClean: true
-            ),
-            "When no session exists a new one must always be created"
-        )
-    }
-
-    func test_noSession_withInstructions_createsNew() {
-        XCTAssertTrue(
-            needsNewFoundationSession(
-                sessionExists: false,
-                currentInstructions: nil,
-                newInstructions: "You are helpful.",
-                isClean: true
-            ),
-            "When no session exists a new one must be created regardless of instructions"
-        )
-    }
-
-    // MARK: - 2. Session exists, clean, same instructions → reuse
-
-    func test_existingCleanSession_sameInstructions_reuses() {
-        XCTAssertFalse(
-            needsNewFoundationSession(
-                sessionExists: true,
-                currentInstructions: "You are helpful.",
-                newInstructions: "You are helpful.",
-                isClean: true
-            ),
-            "A clean session with matching instructions must be reused to preserve conversation history"
-        )
-    }
-
-    func test_existingCleanSession_bothNilInstructions_reuses() {
-        XCTAssertFalse(
-            needsNewFoundationSession(
-                sessionExists: true,
-                currentInstructions: nil,
-                newInstructions: nil,
-                isClean: true
-            ),
-            "A clean session with no instructions on either side must be reused"
-        )
-    }
-
-    // MARK: - 3. Session exists, dirty → create new
-
-    func test_dirtySession_sameInstructions_createsNew() {
-        XCTAssertTrue(
-            needsNewFoundationSession(
-                sessionExists: true,
-                currentInstructions: "You are helpful.",
-                newInstructions: "You are helpful.",
-                isClean: false
-            ),
-            "A dirty session must never be reused — calling streamResponse() on it would SIGTRAP"
-        )
-    }
-
-    func test_dirtySession_nilInstructions_createsNew() {
-        XCTAssertTrue(
-            needsNewFoundationSession(
-                sessionExists: true,
-                currentInstructions: nil,
-                newInstructions: nil,
-                isClean: false
-            ),
-            "A dirty session with nil instructions must still be replaced"
-        )
-    }
-
-    // MARK: - 4. Session exists, clean, instructions changed → create new
-
-    func test_existingCleanSession_instructionsChanged_createsNew() {
-        XCTAssertTrue(
-            needsNewFoundationSession(
-                sessionExists: true,
-                currentInstructions: "You are a pirate.",
-                newInstructions: "You are helpful.",
-                isClean: true
-            ),
-            "Instructions are baked into LanguageModelSession at creation — a change forces a new session"
-        )
-    }
-
-    func test_existingCleanSession_instructionsNilToNonNil_createsNew() {
-        XCTAssertTrue(
-            needsNewFoundationSession(
-                sessionExists: true,
-                currentInstructions: nil,
-                newInstructions: "You are helpful.",
-                isClean: true
-            ),
-            "Transitioning from no instructions to having instructions forces a new session"
-        )
-    }
-
-    func test_existingCleanSession_instructionsNonNilToNil_createsNew() {
-        XCTAssertTrue(
-            needsNewFoundationSession(
-                sessionExists: true,
-                currentInstructions: "You are helpful.",
-                newInstructions: nil,
-                isClean: true
-            ),
-            "Removing instructions forces a new session"
-        )
     }
 }
 
