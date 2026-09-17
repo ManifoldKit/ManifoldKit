@@ -218,19 +218,33 @@ The model inventory itself is now recursive: GGUF live nested as `Models/gguf/<F
 
 ## 6. Known coverage gaps
 
-### ManifoldFoundation CI coverage gap (#2096, accepted, deferred)
+### ManifoldFoundation hosted-runtime coverage (#2096, partially resolved)
 
-**What's uncovered.** `ManifoldFoundation`'s entire test surface — `FoundationBackendUnitTests`, `FoundationBackendToolCallingTests`, `FoundationLocalBackendContractTests`, `FoundationBackendMetricEmissionTests`, `Conformance/FoundationBackendContractTests`, `FoundationModelE2ETests`, plus the Foundation-gated slices of `BackendBenchmarkE2ETests` and `ManifoldFuzzTests/FoundationFuzzFactoryTests` — compiles in CI but has never asserted a real pass/fail. Every test method's `setUp()` throws `XCTSkip("FoundationModels requires iOS 26 / macOS 26")` before touching `FoundationBackend`.
+**What now runs.** The required `test` job and its Server/Macros satellites run
+on the GA `macos-26` Apple Silicon image with the repository's pinned Xcode
+26.3 toolchain. Foundation tests therefore reach their macOS-26 runtime guards
+and can exercise SDK-backed construction, error and state paths instead of
+blanket-skipping only because the host is macOS 15. GitHub's
+[`macos-26` image inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md)
+records both the host generation and installed Xcode 26.3 toolchain; the image
+became [generally available on 26 February
+2026](https://github.com/actions/runner-images/issues/13739).
 
-**Why.** `FoundationBackend` is `@available(iOS 26, macOS 26, *)` per AGENTS.md's platform policy (current-OS floor `n`). Every `runs-on:` across all CI workflows is `macos-15` (or `ubuntu-latest`, or the `fuzz-weekly.yml` self-hosted `macos, arm64` box) — there is no GitHub-hosted macOS 26 runner, and the self-hosted box is not provisioned for one either. The tests key off the *running* OS version (`ProcessInfo.isOperatingSystemAtLeast`), not just SDK availability, so an Xcode 26 SDK on a macOS 15 host still skips at runtime. This is a compile-time-covered, runtime-never-executed gap, not a missing-target gap — `ManifoldFoundation` links into the default `ManifoldKit` umbrella build, so the code itself is exercised by every other suite; only its own assertions never run.
+**What remains uncovered.** A hosted macOS-26 runtime is not a provisioned
+Apple Intelligence device. Tests that require the downloaded system model or
+real generation still `XCTSkip` when `FoundationBackend.probeIsReady()` is
+false. Those paths remain physical-host release evidence, alongside the local
+integration sweep. The CI move proves minimum-runtime linkage and the
+non-generation contract paths; it does not qualify live Foundation inference,
+macOS 27, or iOS 27.
 
-**Decision.** Accepted as a permanent local-only gap (issue #2096, option (c) — document, do not stand up a runner). `ManifoldFoundation`'s suite is verified by hand on Apple Silicon running macOS 26, the same way `ManifoldFuzz`'s campaigns and the local-integration-sweep lanes above are: a developer-run check, not a CI gate. This mirrors the MLX/llama.cpp treatment (§5) in spirit, but is intentionally **not** folded into `scripts/local-integration-sweep.sh` — that script's premise is real-model integration/perf on hardware CI can't reach; this gap is an OS-floor problem, not a hardware or model-weights problem, so bolting it onto the sweep script would conflate two different reasons for "doesn't run in CI."
-
-**Revisit trigger.** Re-open this decision (not just the doc) when either becomes true:
-- GitHub ships a `macos-26` (or later) hosted runner image, making a real macOS-26 CI lane cheap instead of requiring new self-hosted infrastructure.
-- Apple ships the next major OS and CLAUDE.md's platform-policy floor bumps to macOS 26 / iOS 26 as the *minimum* (`n-1`) — at that point every `runs-on: macos-15` job either upgrades or the whole fleet is already macOS 26+, and the skip guard becomes dead code to remove rather than a gap to route around.
-
-Until then, `docs/QA-PRACTICES.md` (this section) and a comment on the `ManifoldBackendsTests` step in `.github/workflows/ci.yml` are the discoverability anchors — the runtime `XCTSkip` alone reads as an oversight, not a decision, which is what #2096 exists to fix.
+**Scope.** The package continues to declare iOS 18 / macOS 15. Independent
+macOS-15 compile lanes remain while that is true; moving the qualification
+jobs to macOS 26 is preparation for the coordinated 1.0 floor change tracked
+by [#2517](https://github.com/ManifoldKit/ManifoldKit/issues/2517), not the floor
+change itself. `TestTargetGateAuditTest` pins the qualification jobs to
+`macos-26` and the Xcode 26.3 selection so this coverage cannot silently drift
+back to compile-only evidence.
 
 ---
 
