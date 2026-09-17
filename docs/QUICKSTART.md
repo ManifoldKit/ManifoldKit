@@ -514,6 +514,27 @@ The full walkthrough — package wiring, the minimal headless example, a SwiftUI
 
 ## Customizing storage
 
+### One process-wide configuration
+
+ManifoldKit v1 supports one `ManifoldConfiguration` for the whole process. Every
+`ManifoldBootstrap` initializer and `build` overload shares one construction
+coordinator: an overlapping attempt fails with
+`ManifoldBootstrapError.constructionInProgress`, and assigning
+`ManifoldConfiguration.shared` while construction is suspended makes that
+construction fail with `.configurationChanged`. Both failures are recoverable;
+wait for the active construction to finish or stop the competing configuration
+writer before retrying.
+
+The coordinator covers construction only. It does not track completed graph
+lifetimes, so constructing a second graph with a different configuration while
+the first remains alive is unsupported even when the calls are sequential.
+Identity changes after graph construction and simultaneous graphs with distinct
+credential namespaces, storage identities, or trust policies are also
+unsupported. Security-policy fields remain live process-wide values: tightening
+`networkPolicy`, `customHostTrustPolicy`, or
+`allowUnpinnedCredentialedHosts` after construction still affects subsequent
+requests.
+
 `ManifoldKit.quickStart(configuration:)` accepts a `ManifoldConfiguration`. Override the bundle identifier so two ManifoldKit-based apps on the same machine don't collide on the shared SwiftData store path:
 
 ```swift,no-build

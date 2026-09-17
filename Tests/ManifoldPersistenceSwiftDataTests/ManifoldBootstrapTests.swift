@@ -2,9 +2,12 @@ import XCTest
 import SwiftData
 @testable import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
+@testable import ManifoldRuntime
 
 @MainActor
 final class ManifoldBootstrapTests: XCTestCase {
+
+    private struct ForcedFailure: Error {}
 
     func test_init_installsConfigurationBeforeBuildingModelContainer() throws {
         let originalConfiguration = ManifoldConfiguration.shared
@@ -67,6 +70,283 @@ final class ManifoldBootstrapTests: XCTestCase {
             originalConfiguration.bundleIdentifier,
             "ManifoldConfiguration.shared should roll back to its prior value when bootstrap throws"
         )
+    }
+
+    func test_overlappingConstruction_rejectsSyncInMemoryAndBothAsyncOverloads() async throws {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
+        let activeConfiguration = ManifoldConfiguration(
+            bundleIdentifier: "com.manifoldkit.runtime-tests.active.\(UUID().uuidString)"
+        )
+        let rejectedConfiguration = ManifoldConfiguration(
+            bundleIdentifier: "com.manifoldkit.runtime-tests.rejected.\(UUID().uuidString)"
+        )
+        let (arrivals, arrivalContinuation) = AsyncStream.makeStream(
+            of: RuntimeBootstrapMilestone.self,
+            bufferingPolicy: .bufferingNewest(1)
+        )
+        let (releases, releaseContinuation) = AsyncStream.makeStream(
+            of: Void.self,
+            bufferingPolicy: .bufferingNewest(1)
+        )
+        let (_, activeTask) = ManifoldBootstrap.build(
+            configuration: activeConfiguration,
+            enableResumableRuns: false,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+            constructionCheckpoint: { milestone in
+                guard milestone == .installingConfiguration else { return }
+                arrivalContinuation.yield(milestone)
+                var iterator = releases.makeAsyncIterator()
+                _ = await iterator.next()
+            }
+        )
+
+        var arrivalIterator = arrivals.makeAsyncIterator()
+        let reachedMilestone = await arrivalIterator.next()
+        XCTAssertEqual(reachedMilestone, .installingConfiguration)
+        XCTAssertEqual(ManifoldConfiguration.shared.bundleIdentifier, activeConfiguration.bundleIdentifier)
+
+        XCTAssertThrowsError(
+            try ManifoldBootstrap(
+                configuration: rejectedConfiguration,
+                makeModelContainer: {
+                    XCTFail("Rejected synchronous construction must fail before building storage")
+                    return try ModelContainerFactory.makeInMemoryContainer()
+                }
+            )
+        ) { error in
+            XCTAssertEqual(error as? ManifoldBootstrapError, .constructionInProgress)
+        }
+
+        XCTAssertThrowsError(
+            try ManifoldBootstrap.makeInMemory(configuration: rejectedConfiguration)
+        ) { error in
+            XCTAssertEqual(error as? ManifoldBootstrapError, .constructionInProgress)
+        }
+
+        // Create both rejected tasks before awaiting either one. The barrier
+        // keeps the active bootstrap pinned at the installed milestone.
+        let (_, publicTask) = ManifoldBootstrap.build(
+            configuration: rejectedConfiguration,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+        let (_, packageTask) = ManifoldBootstrap.build(
+            configuration: rejectedConfiguration,
+            enableResumableRuns: true,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+        await assertConstructionInProgress(publicTask)
+        await assertConstructionInProgress(packageTask)
+        XCTAssertEqual(ManifoldConfiguration.shared.bundleIdentifier, activeConfiguration.bundleIdentifier)
+
+        releaseContinuation.yield()
+        releaseContinuation.finish()
+        let activeBootstrap = try await activeTask.value
+
+        let session = ManifoldInference.ChatSession(title: "Coordinator persistence probe")
+        try await activeBootstrap.persistence.insertSession(session)
+        let persistedSessions = try await activeBootstrap.persistence.fetchSessions()
+        XCTAssertEqual(persistedSessions.map(\.id), [session.id])
+    }
+
+    func test_asyncBuild_directWriterDuringMilestoneFailsAndPreservesWriter() async {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
+        let replacement = ManifoldConfiguration(
+            bundleIdentifier: "com.manifoldkit.runtime-tests.replacement.\(UUID().uuidString)"
+        )
+        let (arrivals, arrivalContinuation) = AsyncStream.makeStream(
+            of: RuntimeBootstrapMilestone.self,
+            bufferingPolicy: .bufferingNewest(1)
+        )
+        let (releases, releaseContinuation) = AsyncStream.makeStream(
+            of: Void.self,
+            bufferingPolicy: .bufferingNewest(1)
+        )
+        let owner = ManifoldConfiguration(
+            bundleIdentifier: "com.manifoldkit.runtime-tests.owner.\(UUID().uuidString)"
+        )
+        let (_, task) = ManifoldBootstrap.build(
+            configuration: owner,
+            enableResumableRuns: false,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+            constructionCheckpoint: { milestone in
+                guard milestone == .installingConfiguration else { return }
+                arrivalContinuation.yield(milestone)
+                var iterator = releases.makeAsyncIterator()
+                _ = await iterator.next()
+            }
+        )
+
+        var arrivalIterator = arrivals.makeAsyncIterator()
+        let reachedMilestone = await arrivalIterator.next()
+        XCTAssertEqual(reachedMilestone, .installingConfiguration)
+        XCTAssertEqual(ManifoldConfiguration.shared.bundleIdentifier, owner.bundleIdentifier)
+
+        ManifoldConfiguration.shared = replacement
+        releaseContinuation.yield()
+        releaseContinuation.finish()
+
+        do {
+            _ = try await task.value
+            XCTFail("A bootstrap whose configuration was replaced must not return a mixed graph")
+        } catch {
+            XCTAssertEqual(error as? ManifoldBootstrapError, .configurationChanged)
+        }
+        XCTAssertEqual(ManifoldConfiguration.shared.bundleIdentifier, replacement.bundleIdentifier)
+    }
+
+    func test_syncConstruction_directWriterBeforeReturnFailsAndPreservesWriter() {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
+        let replacement = ManifoldConfiguration(
+            bundleIdentifier: "com.manifoldkit.runtime-tests.sync-replacement.\(UUID().uuidString)"
+        )
+        XCTAssertThrowsError(
+            try ManifoldBootstrap(
+                configuration: ManifoldConfiguration(
+                    bundleIdentifier: "com.manifoldkit.runtime-tests.sync-owner.\(UUID().uuidString)"
+                ),
+                makeModelContainer: {
+                    ManifoldConfiguration.shared = replacement
+                    return try ModelContainerFactory.makeInMemoryContainer()
+                }
+            )
+        ) { error in
+            XCTAssertEqual(error as? ManifoldBootstrapError, .configurationChanged)
+        }
+        XCTAssertEqual(ManifoldConfiguration.shared.bundleIdentifier, replacement.bundleIdentifier)
+    }
+
+    func test_asyncBuild_directWriterInsideContainerFactoryFailsAndPreservesWriter() async {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
+        let replacement = ManifoldConfiguration(
+            bundleIdentifier: "com.manifoldkit.runtime-tests.container-replacement.\(UUID().uuidString)"
+        )
+        let (progress, task) = ManifoldBootstrap.build(
+            configuration: ManifoldConfiguration(
+                bundleIdentifier: "com.manifoldkit.runtime-tests.container-owner.\(UUID().uuidString)"
+            ),
+            makeModelContainer: {
+                ManifoldConfiguration.shared = replacement
+                return try ModelContainerFactory.makeInMemoryContainer()
+            }
+        )
+        for await _ in progress {}
+
+        do {
+            _ = try await task.value
+            XCTFail("A bootstrap whose configuration was replaced must not return a mixed graph")
+        } catch {
+            XCTAssertEqual(error as? ManifoldBootstrapError, .configurationChanged)
+        }
+        XCTAssertEqual(ManifoldConfiguration.shared.bundleIdentifier, replacement.bundleIdentifier)
+    }
+
+    func test_asyncBuild_failureWhileOwningInstallationRestoresPreviousConfiguration() async {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
+        let previous = ManifoldConfiguration(
+            bundleIdentifier: "com.manifoldkit.runtime-tests.previous.\(UUID().uuidString)"
+        )
+        ManifoldConfiguration.shared = previous
+        let (progress, task) = ManifoldBootstrap.build(
+            configuration: ManifoldConfiguration(
+                bundleIdentifier: "com.manifoldkit.runtime-tests.failing.\(UUID().uuidString)"
+            ),
+            makeModelContainer: { throw ForcedFailure() }
+        )
+        for await _ in progress {}
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected the injected container failure")
+        } catch {
+            XCTAssertTrue(error is ForcedFailure)
+        }
+        XCTAssertEqual(ManifoldConfiguration.shared.bundleIdentifier, previous.bundleIdentifier)
+    }
+
+    func test_syncFailureAfterDirectWriterDoesNotRestoreStaleConfiguration() {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
+        let replacement = ManifoldConfiguration(
+            bundleIdentifier: "com.manifoldkit.runtime-tests.newer-writer.\(UUID().uuidString)"
+        )
+        XCTAssertThrowsError(
+            try ManifoldBootstrap(
+                configuration: ManifoldConfiguration(
+                    bundleIdentifier: "com.manifoldkit.runtime-tests.failing-owner.\(UUID().uuidString)"
+                ),
+                makeModelContainer: {
+                    ManifoldConfiguration.shared = replacement
+                    throw ForcedFailure()
+                }
+            )
+        ) { error in
+            XCTAssertTrue(error is ForcedFailure)
+        }
+        XCTAssertEqual(ManifoldConfiguration.shared.bundleIdentifier, replacement.bundleIdentifier)
+    }
+
+    func test_asyncBuild_emitsExistingMilestonesAndKeepsSecurityPoliciesLive() async throws {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
+        let (progress, task) = ManifoldBootstrap.build(
+            configuration: ManifoldConfiguration(
+                bundleIdentifier: "com.manifoldkit.runtime-tests.milestones.\(UUID().uuidString)",
+                customHostTrustPolicy: .platformDefault,
+                allowUnpinnedCredentialedHosts: true,
+                networkPolicy: .unrestricted
+            ),
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+        var milestones: [RuntimeBootstrapMilestone] = []
+        for await milestone in progress { milestones.append(milestone) }
+        _ = try await task.value
+
+        XCTAssertEqual(milestones, RuntimeBootstrapMilestone.allCases)
+
+        var tightened = ManifoldConfiguration.shared
+        tightened.customHostTrustPolicy = .requireExplicitPins
+        tightened.allowUnpinnedCredentialedHosts = false
+        tightened.networkPolicy = .allowlist(["allowed.example"])
+        ManifoldConfiguration.shared = tightened
+
+        XCTAssertEqual(ManifoldConfiguration.shared.customHostTrustPolicy, .requireExplicitPins)
+        XCTAssertFalse(ManifoldConfiguration.shared.allowUnpinnedCredentialedHosts)
+        let blockedURL = try XCTUnwrap(URL(string: "https://blocked.example/api"))
+        let blockedRequest = URLRequest(url: blockedURL)
+        XCTAssertTrue(
+            NetworkPolicyURLProtocol.canInit(with: blockedRequest),
+            "The request guard must keep reading the tightened process-wide policy after bootstrap"
+        )
+    }
+
+    private func assertConstructionInProgress(
+        _ task: Task<ManifoldBootstrap, any Error>,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        do {
+            _ = try await task.value
+            XCTFail("Overlapping async construction must fail", file: file, line: line)
+        } catch {
+            XCTAssertEqual(
+                error as? ManifoldBootstrapError,
+                .constructionInProgress,
+                file: file,
+                line: line
+            )
+        }
     }
 
     func test_init_wiresInferenceServicePersistenceAndContainerToTheSameInstances() async throws {

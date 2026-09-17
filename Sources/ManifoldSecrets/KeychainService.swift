@@ -81,20 +81,21 @@ public enum KeychainService {
     // The default value mirrors the ManifoldConfiguration fallback:
     // `ManifoldConfiguration.frameworkDefaultBundleIdentifier + ".apikeys"`.
     //
-    // Marked `nonisolated(unsafe)` because the closure reference is protected
-    // by the caller's synchronisation guarantees: ManifoldConfiguration's
-    // `shared` setter (which updates this) is itself guarded by an
-    // OSAllocatedUnfairLock, and tests set it synchronously before any
-    // KeychainService call. Reads are stateless (the closure is called, not
-    // captured). This is safe for the same reason @unchecked Sendable is used
-    // for synchronous-callback capture boxes — the shared state is never
-    // mutated concurrently with a read.
-    nonisolated(unsafe) package static var serviceNameProvider: @Sendable () -> String = {
-        "com.manifoldkit.apikeys"
+    private static let serviceNameProviderStorage = OSAllocatedUnfairLock<(@Sendable () -> String)>(
+        initialState: { "com.manifoldkit.apikeys" }
+    )
+
+    package static var serviceNameProvider: @Sendable () -> String {
+        get { serviceNameProviderStorage.withLock { $0 } }
+        set { serviceNameProviderStorage.withLock { $0 = newValue } }
     }
 
     private static var serviceName: String {
-        serviceNameProvider()
+        // Copy the closure while holding the provider lock, then invoke it
+        // outside that lock. ManifoldConfiguration's provider acquires its own
+        // storage lock, so this ordering prevents a lock inversion.
+        let provider = serviceNameProvider
+        return provider()
     }
 
     // os.Logger for security-category diagnostics. ManifoldSecrets is a

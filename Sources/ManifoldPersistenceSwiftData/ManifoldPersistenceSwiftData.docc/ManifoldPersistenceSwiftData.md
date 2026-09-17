@@ -50,6 +50,14 @@ let bootstrap = try ManifoldBootstrap(
 // `InferenceService`. Pass it into ChatViewModel (or drive it directly).
 ```
 
+ManifoldKit supports one process-wide ``ManifoldConfiguration``. Overlapping
+bootstrap construction fails with
+``ManifoldBootstrapError/constructionInProgress``; a direct assignment to
+``ManifoldConfiguration/shared`` before construction finishes fails the active
+construction with ``ManifoldBootstrapError/configurationChanged``. Completed
+graph lifetimes are not tracked, so sequentially constructing differently
+configured graphs while an earlier graph remains alive is unsupported.
+
 ### Incognito (in-memory) sessions with ``ManifoldBootstrap/makeInMemory(configuration:inferenceService:ragConfiguration:)``
 
 For sessions where conversation history must never touch disk — Incognito mode, SwiftUI Previews, or test scaffolding — use the `makeInMemory` factory. It returns a fully-wired bootstrap backed by an ephemeral SwiftData container; all data is discarded when the instance is deallocated:
@@ -155,6 +163,7 @@ RAG no longer needs a host-supplied embedder. When ``RAGConfiguration/embeddingB
 ### Bootstrap
 
 - ``ManifoldBootstrap``
+- ``ManifoldBootstrapError``
 - ``RAGConfiguration``
 
 ### Container factory

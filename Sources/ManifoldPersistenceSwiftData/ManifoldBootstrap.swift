@@ -128,6 +128,33 @@ public struct RAGConfiguration: Sendable {
     }
 }
 
+/// A recoverable violation of ManifoldKit's process-wide bootstrap
+/// construction contract.
+///
+/// This error is public because host apps in a separate package need to
+/// distinguish a retryable launch overlap from a configuration writer that
+/// violated the process-wide installation contract.
+///
+/// Vocabulary growth (1.x): new cases may be added when bootstrap gains another
+/// recoverable process-wide construction conflict.
+public enum ManifoldBootstrapError: Error, Sendable, Equatable, LocalizedError {
+    /// Another synchronous or asynchronous bootstrap construction is active.
+    case constructionInProgress
+
+    /// A direct writer replaced ``ManifoldConfiguration/shared`` before the
+    /// active bootstrap finished assembling its graph.
+    case configurationChanged
+
+    public var errorDescription: String? {
+        switch self {
+        case .constructionInProgress:
+            return "Another ManifoldKit bootstrap is already being constructed. Wait for it to finish before retrying."
+        case .configurationChanged:
+            return "ManifoldConfiguration.shared changed while ManifoldKit was constructing its bootstrap. Install one process-wide configuration before retrying."
+        }
+    }
+}
+
 /// Preferred bootstrap surface for host apps that use ManifoldKit's shipped
 /// SwiftData persistence.
 ///
@@ -164,8 +191,19 @@ public struct RAGConfiguration: Sendable {
 /// }
 /// runtime = try await runtimeTask.value
 /// ```
+///
+/// ManifoldKit supports one process-wide ``ManifoldConfiguration``. Bootstrap
+/// construction is therefore serialized across every initializer and factory:
+/// an overlapping attempt throws ``ManifoldBootstrapError/constructionInProgress``,
+/// while a direct assignment to ``ManifoldConfiguration/shared`` during
+/// construction makes the active attempt throw
+/// ``ManifoldBootstrapError/configurationChanged``. Completed graph lifetimes
+/// are not tracked; constructing sequential graphs with different
+/// configurations while an earlier graph remains alive is unsupported.
 @MainActor
 public final class ManifoldBootstrap {
+
+    private static var constructionInProgress = false
 
     public let inferenceService: InferenceService
     public let diagnostics: DiagnosticsService
@@ -341,14 +379,17 @@ public final class ManifoldBootstrap {
         // with the other *GenerationService params at the call site by label.
         audioGenerationService: AudioGenerationService? = nil
     ) throws {
-        // Capture the previous configuration before any mutation so a failure
-        // partway through bootstrap leaves `ManifoldConfiguration.shared`
-        // untouched from the caller's perspective.
-        let previousConfiguration = ManifoldConfiguration.shared
+        guard Self.beginConstruction() else {
+            throw ManifoldBootstrapError.constructionInProgress
+        }
+        defer { Self.endConstruction() }
+
+        // Capturing the previous value, installing the requested one, and
+        // recording its generation are one operation under the configuration
+        // lock. That receipt is the authority for both validation and rollback.
+        let installation = ManifoldConfiguration.installShared(configuration)
 
         do {
-            ManifoldConfiguration.shared = configuration
-
             let resolvedInferenceService = inferenceService ?? InferenceService()
             self.inferenceService = resolvedInferenceService
 
@@ -419,8 +460,10 @@ public final class ManifoldBootstrap {
             }
             self.webSearchRuntime = webSearchRuntime
             self._isInMemory = isInMemory
+
+            try Self.requireOwnership(of: installation)
         } catch {
-            ManifoldConfiguration.shared = previousConfiguration
+            ManifoldConfiguration.restoreShared(ifOwnedBy: installation)
             throw error
         }
     }
@@ -670,29 +713,46 @@ public final class ManifoldBootstrap {
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
         // Appended at the tail to keep existing parameter positions stable for
         // the API source-compat digester (#1904 UI fast-follow).
-        audioGenerationService: AudioGenerationService? = nil
+        audioGenerationService: AudioGenerationService? = nil,
+        // Package-only deterministic checkpoint used by construction-race
+        // regression tests. Production entry points always pass `nil`.
+        constructionCheckpoint: (@MainActor @Sendable (RuntimeBootstrapMilestone) async -> Void)? = nil
     ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<ManifoldBootstrap, any Error>) {
         let (stream, continuation) = AsyncStream.makeStream(
             of: RuntimeBootstrapMilestone.self,
             bufferingPolicy: .unbounded
         )
 
+        guard beginConstruction() else {
+            continuation.finish()
+            let failedTask: Task<ManifoldBootstrap, any Error> = Task { @MainActor in
+                throw ManifoldBootstrapError.constructionInProgress
+            }
+            return (stream, failedTask)
+        }
+
         let task = Task { @MainActor [continuation] in
             defer { continuation.finish() }
+            defer { endConstruction() }
 
-            let previousConfiguration = ManifoldConfiguration.shared
+            let installation = ManifoldConfiguration.installShared(configuration)
             do {
                 continuation.yield(.installingConfiguration)
-                ManifoldConfiguration.shared = configuration
+                await constructionCheckpoint?(.installingConfiguration)
                 await Task.yield()
+                try requireOwnership(of: installation)
 
                 continuation.yield(.resolvingInferenceService)
                 let resolvedService = inferenceService ?? InferenceService()
+                await constructionCheckpoint?(.resolvingInferenceService)
                 await Task.yield()
+                try requireOwnership(of: installation)
 
                 continuation.yield(.buildingModelContainer)
                 let container = try makeModelContainer()
+                await constructionCheckpoint?(.buildingModelContainer)
                 await Task.yield()
+                try requireOwnership(of: installation)
 
                 continuation.yield(.wiringPersistence)
                 let mainContext = container.mainContext
@@ -709,11 +769,11 @@ public final class ManifoldBootstrap {
                 let runStore = enableResumableRuns
                     ? SwiftDataRunStore(modelContext: mainContext)
                     : nil
+                await constructionCheckpoint?(.wiringPersistence)
                 await Task.yield()
+                try requireOwnership(of: installation)
 
-                continuation.yield(.complete)
-
-                return ManifoldBootstrap(
+                let bootstrap = ManifoldBootstrap(
                     inferenceService: resolvedService,
                     diagnostics: diagnostics,
                     modelContainer: container,
@@ -733,8 +793,12 @@ public final class ManifoldBootstrap {
                     hookRegistry: hookRegistry,
                     runStore: runStore
                 )
+                try requireOwnership(of: installation)
+
+                continuation.yield(.complete)
+                return bootstrap
             } catch {
-                ManifoldConfiguration.shared = previousConfiguration
+                ManifoldConfiguration.restoreShared(ifOwnedBy: installation)
                 throw error
             }
         }
@@ -775,14 +839,35 @@ public final class ManifoldBootstrap {
         inferenceService: InferenceService? = nil,
         ragConfiguration: RAGConfiguration? = nil
     ) throws -> ManifoldBootstrap {
-        let container = try ModelContainerFactory.makeInMemoryContainer()
         return try ManifoldBootstrap(
             configuration: configuration,
             ragConfiguration: ragConfiguration,
             inferenceService: inferenceService,
-            makeModelContainer: { container },
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
             isInMemory: true
         )
+    }
+
+    // MARK: - Construction transaction
+
+    /// Claims the process-wide construction slot. Every public construction
+    /// entry point funnels through this coordinator before doing fallible work.
+    private static func beginConstruction() -> Bool {
+        guard !constructionInProgress else { return false }
+        constructionInProgress = true
+        return true
+    }
+
+    private static func endConstruction() {
+        constructionInProgress = false
+    }
+
+    private static func requireOwnership(
+        of installation: ManifoldConfiguration.SharedInstallation
+    ) throws {
+        guard ManifoldConfiguration.sharedIsOwned(by: installation) else {
+            throw ManifoldBootstrapError.configurationChanged
+        }
     }
 
     // MARK: - Boot hooks

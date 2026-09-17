@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- Reject overlapping bootstrap construction and direct configuration replacement with recoverable
+  `ManifoldBootstrapError` cases, while preserving a newer writer during failed rollback.
+
 ## [0.78.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.77.0...v0.78.0) (2026-09-10)
 
 ManifoldKit 0.78 lets host apps add their own support details to the existing
