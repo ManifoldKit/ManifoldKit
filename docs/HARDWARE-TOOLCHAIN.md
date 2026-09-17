@@ -88,12 +88,21 @@ Don't assume core and a companion package need the same tools-version ceiling
 
 ## CI runner shape
 
-- **macOS runners, 10× billing.** Core's CI runs on `macos-15` (Apple Silicon)
-  specifically to reduce spend relative to Intel runners
-  (`.github/workflows/ci.yml:305` and others). Every CI run — core or
-  companion — is macOS-only and billed at GitHub's 10× multiplier for macOS
-  minutes; a failed push wastes real money, not just time. Run the local test
-  gate before every push rather than treating CI as the iteration loop.
+- **macOS qualification runners.** Core's required runtime-qualification job,
+  cache prime and trait satellites run on the GA Apple Silicon `macos-26`
+  image with Xcode 26.3 selected explicitly. This
+  exercises the oldest runtime in the planned 1.0 matrix while the package's
+  declared floor remains macOS 15 / iOS 18. The API-digester and cold-start
+  jobs retain independent `macos-15` compile coverage until the coordinated
+  floor change. The iOS 26 file-protection runtime check also retains its
+  `macos-15` host until its simulator selector is updated for the macOS 26
+  image's device inventory. GitHub's authoritative
+  [`macos-26` inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md)
+  lists Xcode 26.3 and the installed iOS 26 simulators. Core also has Ubuntu
+  lint jobs. Standard runner minutes are free for this public repository; a
+  failed macOS run costs latency because GitHub caps the organisation's
+  concurrent macOS jobs. Run the local test gate before every push rather than
+  treating CI as the iteration loop.
 - **CI runners ship Bash 3.2 as `/bin/bash`, not a newer bash.** macOS ships
   Bash 3.2 by default on GitHub-hosted runners, so `declare -A` (associative
   arrays) and `mapfile` (needs bash 4+) are unavailable in any script CI
