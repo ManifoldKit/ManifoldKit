@@ -52,10 +52,12 @@ let bootstrap = try ManifoldBootstrap(
 
 ManifoldKit supports one process-wide ``ManifoldConfiguration``. Overlapping
 bootstrap construction fails with
-``ManifoldBootstrapError/constructionInProgress``; a direct assignment to
-``ManifoldConfiguration/shared`` before construction finishes fails the active
-construction with ``ManifoldBootstrapError/configurationChanged``. Completed
-graph lifetimes are not tracked, so sequentially constructing differently
+``ManifoldBootstrapError/constructionInProgress``. A direct assignment to
+``ManifoldConfiguration/shared`` that replaces the active construction's installed
+configuration invalidates that installation. If construction otherwise completes,
+it throws ``ManifoldBootstrapError/configurationChanged``; an earlier construction
+failure retains its original error. Rollback never overwrites a newer writer.
+Completed graph lifetimes are not tracked, so sequentially constructing differently
 configured graphs while an earlier graph remains alive is unsupported.
 
 ### Incognito (in-memory) sessions with ``ManifoldBootstrap/makeInMemory(configuration:inferenceService:ragConfiguration:)``

@@ -195,10 +195,11 @@ public enum ManifoldBootstrapError: Error, Sendable, Equatable, LocalizedError {
 /// ManifoldKit supports one process-wide ``ManifoldConfiguration``. Bootstrap
 /// construction is therefore serialized across every initializer and factory:
 /// an overlapping attempt throws ``ManifoldBootstrapError/constructionInProgress``,
-/// while a direct assignment to ``ManifoldConfiguration/shared`` during
-/// construction makes the active attempt throw
-/// ``ManifoldBootstrapError/configurationChanged``. Completed graph lifetimes
-/// are not tracked; constructing sequential graphs with different
+/// while replacing its installed ``ManifoldConfiguration/shared`` invalidates
+/// the active construction. If construction otherwise completes, it throws
+/// ``ManifoldBootstrapError/configurationChanged``; an earlier construction
+/// failure retains its original error. Rollback never overwrites a newer writer.
+/// Completed graph lifetimes are not tracked; constructing sequential graphs with different
 /// configurations while an earlier graph remains alive is unsupported.
 @MainActor
 public final class ManifoldBootstrap {
