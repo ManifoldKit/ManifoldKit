@@ -368,3 +368,23 @@ final class SessionBranchCoordinatorIntegrationTests: XCTestCase {
             "deleteAll() must clear the BranchOrigin table along with every session and message")
     }
 }
+
+/// Pure value-copy coverage; persistence deliberately does not retain status.
+final class SessionBranchMessageCopyTests: XCTestCase {
+    func test_copyMessage_clearsEveryTransientStatusWithoutChangingSource() {
+        let statuses: [MessageStatus?] = [nil, .sending, .sent, .failed]
+        for status in statuses {
+            let original = ChatMessage(role: .assistant, content: "Historical reply", sessionID: UUID(),
+                                       promptTokens: 40, completionTokens: 10, kind: .memory("summary"),
+                                       status: status, citations: [], agentID: UUID())
+            let id = UUID(), sessionID = UUID()
+            let copy = SessionBranchCoordinator.copyMessage(original, id: id, sessionID: sessionID)
+            var expected = original
+            expected.id = id
+            expected.sessionID = sessionID
+            expected.status = nil
+            XCTAssertEqual(copy, expected)
+            XCTAssertEqual(original.status, status, "Copying must not mutate the source")
+        }
+    }
+}

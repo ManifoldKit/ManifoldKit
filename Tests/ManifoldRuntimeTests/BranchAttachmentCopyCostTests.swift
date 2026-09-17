@@ -248,15 +248,12 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
 
         measure {
             let newSessionID = UUID()
-            // Replicate ConversationRuntime.branch's inner copy loop. Each
+            // Exercise ConversationRuntime.branch's actual copy policy. Each
             // ChatMessage is a struct, so the assignment performs the
             // value-copy of `contentParts` (including image data bytes) the
             // audit is interested in.
             for original in sourceMessages {
-                var copy = original
-                copy.id = UUID()
-                copy.sessionID = newSessionID
-                copy.status = nil
+                let copy = SessionBranchCoordinator.copyMessage(original, id: UUID(), sessionID: newSessionID)
                 // Synchronous Dictionary write — the in-memory store's async
                 // insertMessage just writes to a dictionary. We avoid the
                 // async-over-sync hop because XCTMeasure's closure is sync
