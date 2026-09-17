@@ -224,7 +224,9 @@ public enum ManifoldSchemaV9: VersionedSchema {
                 }
             }
             set {
-                guard let v = newValue, !v.isEmpty else { citationsJSON = nil; return }
+                // nil means retrieval did not run; [] means it ran with no
+                // citations. Preserve that distinction across store/branch reads.
+                guard let v = newValue else { citationsJSON = nil; return }
                 do {
                     let data = try JSONEncoder().encode(v)
                     citationsJSON = String(data: data, encoding: .utf8)

@@ -4,6 +4,7 @@ import SwiftData
 import ManifoldInference
 import ManifoldPersistenceSwiftData
 import ManifoldPersistenceTestSupport
+import ManifoldTestSupport
 
 /// Integration coverage for the branch-origin pointer (#2307 branch-origin
 /// chip): ``SessionBranchCoordinator/branch(sourceSessionID:branchMessageID:newSessionID:newSessionTitle:)``
@@ -123,6 +124,95 @@ final class SessionBranchCoordinatorIntegrationTests: XCTestCase {
 
         let resolvedTitle = await listService.branchOriginTitle(for: session)
         XCTAssertNil(resolvedTitle, "A session that was not branched must not report an origin title")
+    }
+
+    // MARK: - Durable message snapshot
+
+    func test_runtimeBranch_preservesDurableFieldsAndIndependentHistory() async throws {
+        let source = ChatSession(title: "Annotated history")
+        try await stack.provider.insertSession(source)
+        let citation = Citation(documentID: UUID(), documentTitle: "Source", chunkIndex: 2,
+                                snippet: "Supporting passage", score: 0.75)
+        let kinds: [MessageKind] = [.chat, .annotation("review"), .memory("summary"),
+                                   .custom("host-note"), .toolResult(callID: "receipt")]
+        let base = Date(timeIntervalSince1970: 100)
+        var history: [ChatMessage] = []
+        for (index, kind) in kinds.enumerated() {
+            let message = ChatMessage(
+                role: .assistant,
+                contentParts: [.text("record \(index)"),
+                               .image(data: Data([1, 2, 3, UInt8(index)]), mimeType: "image/png")],
+                timestamp: base.addingTimeInterval(Double(index)),
+                sessionID: source.id,
+                promptTokens: index == 1 ? nil : 40 + index,
+                completionTokens: index == 1 ? nil : 10 + index,
+                kind: kind,
+                citations: index == 1 ? nil : (index == 2 ? [] : [citation]),
+                agentID: index == 1 ? nil : UUID()
+            )
+            history.append(message)
+            try await stack.provider.insertMessage(message)
+        }
+        let trailing = ChatMessage(role: .user, content: "Not in the branch",
+                                   timestamp: base.addingTimeInterval(10), sessionID: source.id)
+        try await stack.provider.insertMessage(trailing)
+        let branchPoint = try XCTUnwrap(history.last)
+        let runtime = ConversationRuntime(
+            messageStore: stack.provider, sessionStore: stack.provider,
+            inferenceService: InferenceService(backend: MockInferenceBackend(), name: "Unused")
+        )
+        let childID = UUID()
+        let handle = try await runtime.processTurn(TurnInput(sessionID: source.id, kind: .branch(
+            messageID: branchPoint.id, newSessionID: childID, generateAfter: false
+        )))
+        XCTAssertNil(handle)
+        let child = try await stack.provider.fetchMessages(for: childID)
+        XCTAssertEqual(child.count, history.count, "Branch includes the point but excludes trailing history")
+        XCTAssertEqual(Set(child.map(\.id)).count, history.count)
+        XCTAssertTrue(Set(child.map(\.id)).isDisjoint(with: Set(history.map(\.id))))
+        for (original, copied) in zip(history, child) {
+            var expected = original
+            expected.id = copied.id
+            expected.sessionID = childID
+            expected.status = nil
+            XCTAssertEqual(copied, expected, "Branch must preserve all durable fields, including nil vs empty citations")
+            XCTAssertEqual(copied.kind.isWireVisible, original.kind.isWireVisible)
+            XCTAssertEqual(copied.kind.backendRole, original.kind.backendRole)
+        }
+        let sourceAfterBranch = try await stack.provider.fetchMessages(for: source.id)
+        XCTAssertEqual(sourceAfterBranch, history + [trailing])
+
+        // A branch of a branch must retain the same semantics too.
+        let childPoint = try XCTUnwrap(child.last)
+        let grandchildID = UUID()
+        _ = try await runtime.processTurn(TurnInput(sessionID: childID, kind: .branch(
+            messageID: childPoint.id, newSessionID: grandchildID, generateAfter: false
+        )))
+        let grandchild = try await stack.provider.fetchMessages(for: grandchildID)
+        XCTAssertEqual(grandchild.count, child.count)
+        XCTAssertTrue(Set(grandchild.map(\.id)).isDisjoint(with: Set(child.map(\.id))))
+        for (original, copied) in zip(child, grandchild) {
+            var expected = original
+            expected.id = copied.id
+            expected.sessionID = grandchildID
+            XCTAssertEqual(copied, expected)
+        }
+
+        // Edits and deletion of the source must not mutate either snapshot.
+        var edited = try XCTUnwrap(history.first)
+        edited.contentParts = [.text("Revised")]
+        edited.citations = []
+        edited.agentID = nil
+        edited.kind = .annotation("changed")
+        edited.promptTokens = 999
+        try await stack.provider.updateMessage(edited)
+        let childAfterEdit = try await stack.provider.fetchMessages(for: childID)
+        XCTAssertEqual(childAfterEdit, child)
+        try await stack.provider.deleteSession(source.id)
+        let childAfterDeletion = try await stack.provider.fetchMessages(for: childID)
+        let grandchildAfterDeletion = try await stack.provider.fetchMessages(for: grandchildID)
+        XCTAssertEqual(childAfterDeletion, child)
+        XCTAssertEqual(grandchildAfterDeletion, grandchild)
     }
 
     // MARK: - Original session unaffected
@@ -276,5 +366,25 @@ final class SessionBranchCoordinatorIntegrationTests: XCTestCase {
 
         XCTAssertTrue(try fetchAllBranchOriginRows().isEmpty,
             "deleteAll() must clear the BranchOrigin table along with every session and message")
+    }
+}
+
+/// Pure value-copy coverage; persistence deliberately does not retain status.
+final class SessionBranchMessageCopyTests: XCTestCase {
+    func test_copyMessage_clearsEveryTransientStatusWithoutChangingSource() {
+        let statuses: [MessageStatus?] = [nil, .sending, .sent, .failed]
+        for status in statuses {
+            let original = ChatMessage(role: .assistant, content: "Historical reply", sessionID: UUID(),
+                                       promptTokens: 40, completionTokens: 10, kind: .memory("summary"),
+                                       status: status, citations: [], agentID: UUID())
+            let id = UUID(), sessionID = UUID()
+            let copy = SessionBranchCoordinator.copyMessage(original, id: id, sessionID: sessionID)
+            var expected = original
+            expected.id = id
+            expected.sessionID = sessionID
+            expected.status = nil
+            XCTAssertEqual(copy, expected)
+            XCTAssertEqual(original.status, status, "Copying must not mutate the source")
+        }
     }
 }
