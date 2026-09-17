@@ -166,15 +166,16 @@ jobs:
       # below (it only scans `uses:` lines). Replaced with a direct,
       # checksum-verified download of the release asset: the hash below was
       # computed locally from the downloaded tarball and cross-checked against
-      # rhysd/actionlint's own published `actionlint_1.7.7_checksums.txt` for
-      # this release (both matched).
+      # rhysd/actionlint's own published `actionlint_1.7.8_checksums.txt` for
+      # this release (both matched). v1.7.8 is the first release whose hosted
+      # runner inventory includes `macos-26`.
       - name: Install actionlint
         id: install_actionlint
         run: |
           set -euo pipefail
           curl -sSfL -o actionlint.tar.gz \
-            "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz"
-          echo "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757  actionlint.tar.gz" | sha256sum -c -
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.8/actionlint_1.7.8_linux_amd64.tar.gz"
+          echo "be92c2652ab7b6d08425428797ceabeb16e31a781c07bc388456b4e592f3e36a  actionlint.tar.gz" | sha256sum -c -
           tar -xzf actionlint.tar.gz actionlint
           echo "executable=$PWD/actionlint" >> "$GITHUB_OUTPUT"
 
