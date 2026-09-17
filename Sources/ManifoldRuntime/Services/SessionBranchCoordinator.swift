@@ -125,13 +125,14 @@ private func branchCopyMutations(
         while end < source.count, source[end].timestamp == timestamp { end += 1 }
         let freshIDs = (start..<end).map { _ in UUID() }.sorted()
         for (original, id) in zip(source[start..<end], freshIDs) {
-            mutations.append(.insert(ChatMessage(
-                id: id,
-                role: original.role,
-                contentParts: original.contentParts,
-                timestamp: original.timestamp,
-                sessionID: sessionID
-            )))
+            // Branches are historical snapshots, including recorded usage and
+            // semantic kind (which controls wire/UI visibility). Copy the value
+            // so new durable fields cannot silently fall back to init defaults.
+            var copy = original
+            copy.id = id
+            copy.sessionID = sessionID
+            copy.status = nil // Delivery state belongs to the original live UI.
+            mutations.append(.insert(copy))
         }
         start = end
     }

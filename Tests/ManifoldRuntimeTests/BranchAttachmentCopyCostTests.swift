@@ -253,12 +253,10 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
             // value-copy of `contentParts` (including image data bytes) the
             // audit is interested in.
             for original in sourceMessages {
-                let copy = ChatMessage(
-                    role: original.role,
-                    contentParts: original.contentParts,
-                    timestamp: original.timestamp,
-                    sessionID: newSessionID
-                )
+                var copy = original
+                copy.id = UUID()
+                copy.sessionID = newSessionID
+                copy.status = nil
                 // Synchronous Dictionary write — the in-memory store's async
                 // insertMessage just writes to a dictionary. We avoid the
                 // async-over-sync hop because XCTMeasure's closure is sync
