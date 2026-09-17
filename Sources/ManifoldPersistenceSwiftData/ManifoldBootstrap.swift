@@ -714,10 +714,47 @@ public final class ManifoldBootstrap {
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
         // Appended at the tail to keep existing parameter positions stable for
         // the API source-compat digester (#1904 UI fast-follow).
+        audioGenerationService: AudioGenerationService? = nil
+    ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<ManifoldBootstrap, any Error>) {
+        buildWithCheckpoint(
+            configuration: configuration,
+            ragConfiguration: ragConfiguration,
+            inferenceService: inferenceService,
+            imageGenerationService: imageGenerationService,
+            videoGenerationService: videoGenerationService,
+            webSearchRuntime: webSearchRuntime,
+            diagnostics: diagnostics,
+            runtimeOptions: runtimeOptions,
+            sessionToolSources: sessionToolSources,
+            hookRegistry: hookRegistry,
+            enableResumableRuns: enableResumableRuns,
+            makeModelContainer: makeModelContainer,
+            audioGenerationService: audioGenerationService,
+            constructionCheckpoint: nil
+        )
+    }
+
+    // Keep the existing package factory signature stable: the API digester also
+    // checks package declarations. Only deterministic race tests supply a checkpoint.
+    package static func buildWithCheckpoint(
+        configuration: ManifoldConfiguration,
+        ragConfiguration: RAGConfiguration? = nil,
+        inferenceService: InferenceService? = nil,
+        imageGenerationService: ImageGenerationService? = nil,
+        videoGenerationService: VideoGenerationService? = nil,
+        webSearchRuntime: (any WebSearchRuntime)? = nil,
+        diagnostics: DiagnosticsService = DiagnosticsService(),
+        runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
+        sessionToolSources: [any SessionToolSource] = [],
+        hookRegistry: HookRegistry? = nil,
+        enableResumableRuns: Bool,
+        makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
+        // Appended at the tail to keep existing parameter positions stable for
+        // the API source-compat digester (#1904 UI fast-follow).
         audioGenerationService: AudioGenerationService? = nil,
         // Package-only deterministic checkpoint used by construction-race
         // regression tests. Production entry points always pass `nil`.
-        constructionCheckpoint: (@MainActor @Sendable (RuntimeBootstrapMilestone) async -> Void)? = nil
+        constructionCheckpoint: (@MainActor @Sendable (RuntimeBootstrapMilestone) async -> Void)?
     ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<ManifoldBootstrap, any Error>) {
         let (stream, continuation) = AsyncStream.makeStream(
             of: RuntimeBootstrapMilestone.self,

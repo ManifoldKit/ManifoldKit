@@ -90,7 +90,7 @@ final class ManifoldBootstrapTests: XCTestCase {
             of: Void.self,
             bufferingPolicy: .bufferingNewest(1)
         )
-        let (_, activeTask) = ManifoldBootstrap.build(
+        let (_, activeTask) = ManifoldBootstrap.buildWithCheckpoint(
             configuration: activeConfiguration,
             enableResumableRuns: false,
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
@@ -168,7 +168,7 @@ final class ManifoldBootstrapTests: XCTestCase {
         let owner = ManifoldConfiguration(
             bundleIdentifier: "com.manifoldkit.runtime-tests.owner.\(UUID().uuidString)"
         )
-        let (_, task) = ManifoldBootstrap.build(
+        let (_, task) = ManifoldBootstrap.buildWithCheckpoint(
             configuration: owner,
             enableResumableRuns: false,
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
