@@ -856,7 +856,7 @@ public struct SessionCapture: Sendable {
     /// Compact queue-timeline classification for a script step. Detectors
     /// read this to disambiguate (e.g., `stopRequested` before turn-2 is the
     /// signal for ``CancellationRaceDetector``).
-    public enum TimelineEvent: String, Codable, Sendable {
+    public enum TimelineEvent: String, Sendable {
         case executed           // send/regenerate completed via enqueue
         case stopRequested      // stop step fired stopGeneration
         case edited             // edit mutated the message array
@@ -870,11 +870,39 @@ public struct SessionCapture: Sendable {
 /// session snapshot; only the representative top-level record receives this
 /// value before the sink writes it.
 struct SessionCaptureSnapshot: Codable, Sendable, Equatable {
+    enum TimelineSnapshot: String, Codable, Sendable {
+        case executed
+        case stopRequested
+        case edited
+        case deleted
+        case indexOutOfRange
+
+        init(_ event: SessionCapture.TimelineEvent) {
+            switch event {
+            case .executed: self = .executed
+            case .stopRequested: self = .stopRequested
+            case .edited: self = .edited
+            case .deleted: self = .deleted
+            case .indexOutOfRange: self = .indexOutOfRange
+            }
+        }
+
+        var event: SessionCapture.TimelineEvent {
+            switch self {
+            case .executed: return .executed
+            case .stopRequested: return .stopRequested
+            case .edited: return .edited
+            case .deleted: return .deleted
+            case .indexOutOfRange: return .indexOutOfRange
+            }
+        }
+    }
+
     struct StepSnapshot: Codable, Sendable, Equatable {
         let index: Int
         let step: SessionScript.Step
         let record: RunRecord?
-        let timeline: SessionCapture.TimelineEvent
+        let timeline: TimelineSnapshot
         let elapsedMs: Double
         let stopObservation: SessionCapture.StopObservation?
     }
@@ -891,7 +919,7 @@ struct SessionCaptureSnapshot: Codable, Sendable, Equatable {
                 index: $0.index,
                 step: $0.step,
                 record: $0.record,
-                timeline: $0.timeline,
+                timeline: TimelineSnapshot($0.timeline),
                 elapsedMs: $0.elapsedMs,
                 stopObservation: $0.stopObservation
             )
@@ -908,7 +936,7 @@ struct SessionCaptureSnapshot: Codable, Sendable, Equatable {
                         index: snapshot.index,
                         step: snapshot.step,
                         record: snapshot.record,
-                        timeline: snapshot.timeline,
+                        timeline: snapshot.timeline.event,
                         elapsedMs: snapshot.elapsedMs,
                         stopObservation: stopObservation
                     )
@@ -917,7 +945,7 @@ struct SessionCaptureSnapshot: Codable, Sendable, Equatable {
                     index: snapshot.index,
                     step: snapshot.step,
                     record: snapshot.record,
-                    timeline: snapshot.timeline,
+                    timeline: snapshot.timeline.event,
                     elapsedMs: snapshot.elapsedMs
                 )
             }
