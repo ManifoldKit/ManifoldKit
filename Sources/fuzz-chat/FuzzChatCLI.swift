@@ -518,7 +518,9 @@ struct FuzzChatCLI {
         switch outcome {
         case .reproduced(let result):
             let verdict: String = {
-                if result.newSeverity == .confirmed {
+                if result.requiresManualTriage {
+                    return "manual triage required; overlap reproduction does not confirm a race"
+                } else if result.newSeverity == .confirmed {
                     return "promoted to confirmed"
                 } else {
                     return "remains flaky"
@@ -562,7 +564,7 @@ struct FuzzChatCLI {
     /// Drives the Shrinker and maps its `Result` / errors to an exit code +
     /// summary line. Exit codes:
     ///   0  — successful shrink (either reached minimal or exhausted budget)
-    ///   2  — non-determinism or no-reproduction pre-check failed
+    ///   2  — non-determinism, no reproduction, or unsupported session shrink
     ///   3  — internal error (record-not-found, replay failure)
     static func runShrink(
         hash: String,
@@ -578,6 +580,11 @@ struct FuzzChatCLI {
         } catch Shrinker.Failure.recordNotFound(let h) {
             FileHandle.standardError.write(Data("Shrink \(h): record not found\n".utf8))
             return 3
+        } catch let error as Shrinker.SessionCaptureUnsupportedError {
+            FileHandle.standardError.write(Data(
+                "Shrink \(error.hash): session-script findings are not shrinkable yet; replay the full saved script\n".utf8
+            ))
+            return 2
         } catch {
             FileHandle.standardError.write(Data("Shrink \(hash): internal error — \(error)\n".utf8))
             return 3
