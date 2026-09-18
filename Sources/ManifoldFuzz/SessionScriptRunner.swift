@@ -340,6 +340,9 @@ public actor SessionScriptRunner {
                     temperature: options.temperature,
                     topP: options.topP,
                     repeatPenalty: options.repeatPenalty,
+                    // The record carries this seed for replay, so every
+                    // generated session turn must use it too.
+                    seed: seed,
                     maxOutputTokens: options.maxOutputTokens
                 )
                 if !options.toolDefinitions.isEmpty {

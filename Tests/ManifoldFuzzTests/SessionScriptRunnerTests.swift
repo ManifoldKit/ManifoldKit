@@ -15,6 +15,7 @@ final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
         var generateCallCount = 0
         var stopCallCount = 0
         var activeRequestHadTools = false
+        var generationConfigs: [GenerationConfig] = []
     }
 
     let capabilities = BackendCapabilities(
@@ -61,6 +62,7 @@ final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
 
     var generateCallCount: Int { lock.withLock { state.generateCallCount } }
     var stopCallCount: Int { lock.withLock { state.stopCallCount } }
+    var generationConfigs: [GenerationConfig] { lock.withLock { state.generationConfigs } }
 
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
         lock.withLock {
@@ -80,6 +82,7 @@ final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
         state.generateCallCount += 1
         state.isGenerating = true
         state.activeRequestHadTools = !config.tools.isEmpty
+        state.generationConfigs.append(config)
         let prefixResidue = state.shouldPrefixResidue
         state.shouldPrefixResidue = false
         lock.unlock()
@@ -248,6 +251,37 @@ final class SessionScriptRunnerTests: XCTestCase {
         XCTAssertEqual(capture.steps[1].stopObservation?.qualification, .inFlight)
         XCTAssertEqual(try XCTUnwrap(capture.steps[2].record).raw, "clean successor")
         XCTAssertTrue(CancellationRaceDetector().inspect([capture]).isEmpty)
+    }
+
+    /// Session-script records are replay inputs. A configured runner seed must
+    /// therefore reach the backend for ordinary sends, the send that is
+    /// cancelled by an adjacent stop, and regenerated turns alike.
+    func test_seed_reachesBackendAndRecordsAcrossSendRegenerateAndPairedStop() async throws {
+        let seed: UInt64 = 0xC0FFEE
+        let backend = StopResidueBackend(leakIntoSuccessor: false)
+        let service = InferenceService(backend: backend, name: "SessionSeedWiring")
+        let runner = SessionScriptRunner(service: service, seed: seed)
+        let script = SessionScript(
+            id: "seed-through-session-turns",
+            steps: [.send(text: "first"), .stop, .send(text: "second"), .regenerate]
+        )
+
+        let capture = await runner.execute(script)
+        let records = capture.turnRecords
+        let backendConfigs = backend.generationConfigs
+        let expectedSeeds = Array(repeating: seed, count: 3)
+
+        XCTAssertEqual(capture.steps.map(\.timeline), [.executed, .stopRequested, .executed, .executed])
+        XCTAssertEqual(capture.steps[1].stopObservation?.qualification, .inFlight)
+        XCTAssertEqual(backendConfigs.count, 3)
+        XCTAssertEqual(records.count, 3)
+        XCTAssertEqual(backendConfigs.map(\.seed), expectedSeeds.map(Optional.some))
+        XCTAssertEqual(records.map(\.config.seed), expectedSeeds)
+        XCTAssertEqual(
+            backendConfigs.map(\.seed),
+            records.map { Optional($0.config.seed) },
+            "the replay seed recorded for every session turn must be the seed sent to its backend"
+        )
     }
 
     func test_adjacentStop_withoutVisibleContent_reportsUnexercisedWindow() async {
