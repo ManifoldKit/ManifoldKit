@@ -5,7 +5,8 @@ extension BackendContractChecks {
     /// Exercises stop → immediate resend on an already-loaded backend.
     ///
     /// The fixture must keep each generation running after its first content
-    /// event. A naturally completed or silent stream is a failed precondition,
+    /// event, and without cancellation its remaining work must outlast the
+    /// termination deadline. A naturally completed or silent stream is a failed precondition,
     /// never cancellation evidence. Companion packages use this same check
     /// with their hardware fixtures; no model is loaded or reset by the check.
     /// Throws a diagnostic on violation so callers can also test broken fixtures.

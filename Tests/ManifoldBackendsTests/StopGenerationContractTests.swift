@@ -14,6 +14,12 @@ final class StopGenerationContractTests: XCTestCase {
         try await BackendContractChecks.assertStopGenerationContract(backend: StopContractFixture())
     }
 
+    func test_delayedPredecessorTeardown_preservesSuccessorOwnership() async throws {
+        try await BackendContractChecks.assertStopGenerationContract(
+            backend: StopContractFixture(mode: .guardedTeardown), timeout: .milliseconds(200)
+        )
+    }
+
     func test_sabotage_flagStillTrue_isRejected() async {
         await assertViolation(.keepsGenerating, contains: "synchronously")
     }
@@ -88,7 +94,10 @@ final class StopGenerationContractTests: XCTestCase {
         let streamURL = baseURL.appendingPathComponent(path)
         let showURL = baseURL.appendingPathComponent("api/show")
         MockURLProtocol.stub(url: streamURL, response: .asyncSSE(
-            chunks: Array(repeating: Data(chunk.utf8), count: 100), chunkDelay: 0.02, statusCode: 200
+            // Natural completion takes 20 seconds, longer than the shared
+            // 10-second drain deadline. Clearing a flag without cancelling
+            // the transport must fail rather than finish naturally in time.
+            chunks: Array(repeating: Data(chunk.utf8), count: 1000), chunkDelay: 0.02, statusCode: 200
         ))
         MockURLProtocol.stub(url: showURL, response: .immediate(
             data: Data("{\"capabilities\":[]}".utf8), statusCode: 200
@@ -119,11 +128,15 @@ final class StopGenerationContractTests: XCTestCase {
 }
 
 private final class StopContractFixture: InferenceBackend, Sendable {
-    enum Mode { case compliant, keepsGenerating, rejectsReuse, neverFinishes, alreadyFinished, silent, clearsSuccessorFlag }
+    enum Mode {
+        case compliant, keepsGenerating, rejectsReuse, neverFinishes, alreadyFinished, silent
+        case clearsSuccessorFlag, guardedTeardown
+    }
     private struct State {
         var loaded = true
         var generating = false
         var generationCount = 0
+        var predecessorAwaitingTeardown = false
         var continuations: [AsyncThrowingStream<GenerationEvent, Error>.Continuation] = []
     }
     private let state = OSAllocatedUnfairLock(initialState: State())
@@ -141,11 +154,30 @@ private final class StopContractFixture: InferenceBackend, Sendable {
                 throw InferenceError.inferenceFailure("successor rejected")
             }
             s.generationCount += 1
-            s.generating = !(mode == .clearsSuccessorFlag && s.generationCount > 1)
+            s.generating = true
         }
         let pair = AsyncThrowingStream<GenerationEvent, Error>.makeStream()
         state.withLock { $0.continuations.append(pair.continuation) }
         if mode != .silent { pair.continuation.yield(.token("in-flight")) }
+        let predecessor = state.withLock { s -> AsyncThrowingStream<GenerationEvent, Error>.Continuation? in
+            guard s.predecessorAwaitingTeardown, s.generationCount == 2 else { return nil }
+            s.predecessorAwaitingTeardown = false
+            return s.continuations.first
+        }
+        if let predecessor {
+            Task { @MainActor in
+                // Predecessor completion is impossible until generate(2).
+                // A checker that drains before resend therefore fails even
+                // against the guarded fixture, proving the overlap is real.
+                await Task.yield()
+                state.withLock { s in
+                    if mode == .clearsSuccessorFlag || s.generationCount == 1 {
+                        s.generating = false
+                    }
+                }
+                predecessor.finish()
+            }
+        }
         if mode == .alreadyFinished {
             state.withLock { $0.generating = false }
             pair.continuation.finish()
@@ -154,8 +186,12 @@ private final class StopContractFixture: InferenceBackend, Sendable {
     }
 
     func stopGeneration() {
-        let continuations = state.withLock { s in
+        let continuations = state.withLock { s -> [AsyncThrowingStream<GenerationEvent, Error>.Continuation] in
             if mode != .keepsGenerating { s.generating = false }
+            if (mode == .clearsSuccessorFlag || mode == .guardedTeardown), s.generationCount == 1 {
+                s.predecessorAwaitingTeardown = true
+                return []
+            }
             return s.continuations
         }
         if mode != .neverFinishes { for continuation in continuations { continuation.finish() } }

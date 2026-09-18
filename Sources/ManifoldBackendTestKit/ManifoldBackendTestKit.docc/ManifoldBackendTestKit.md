@@ -86,7 +86,9 @@ For local (on-device) backends, additionally declare a
 
 Call `BackendContractChecks.assertStopGenerationContract(backend:prompt:config:timeout:)`
 from a main-actor asynchronous test with an already-loaded backend. The fixture
-must produce content and remain in flight until the check stops it. A silent
+must produce content and remain in flight until the check stops it. Its
+uncancelled remaining workload must outlast the termination deadline, so
+natural completion cannot substitute for a successful stop. A silent
 or naturally completed turn throws a failed-precondition diagnostic; it does
 not count as cancellation evidence.
 
