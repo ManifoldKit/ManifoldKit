@@ -198,6 +198,25 @@ final class ConformanceRecordEmitTests: XCTestCase {
         XCTAssertEqual(rec.failureClass, .noCall)
     }
 
+    /// Thermal throttling can happen before the backend forwards its first
+    /// generation event. A process interrupted in that pause has not produced a
+    /// model turn, so throttle metadata alone must preserve the prompt-only hole.
+    func testThrottleOnlyPartialTranscriptRemainsNotMeasured() throws {
+        // Sabotage evidence: treating every diagnostic as proof of generation
+        // changes this status to `.measured` and fails the assertion.
+        let jsonl = """
+        {"kind":"prompt","scenario":"throttle","backend":"llama.cpp","model":"qwen","requiredTools":["now"]}
+        {"kind":"throttle_diagnostic","scenario":"throttle","backend":"llama.cpp","model":"qwen","turn":1,"reason":"thermalState=.critical"}
+        """
+        let rec = try record(ConformanceScorer.records(jsonl: jsonl, context: context()), scenario: "throttle")
+
+        guard case .notMeasured = rec.status else {
+            return XCTFail("throttle before the first model event must remain unmeasured, got \(rec.status)")
+        }
+        XCTAssertNil(rec.verdict)
+        XCTAssertNil(rec.toolSelection)
+    }
+
     /// An explicit `error` event (ScenarioRunner records one on generation failure)
     /// is a positive infra-failure signal → a `.loadFail` (💥) hole.
     func testPromptPlusErrorEventIsLoadFail() throws {

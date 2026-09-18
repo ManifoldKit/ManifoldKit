@@ -239,8 +239,9 @@ public final class TranscriptLogger {
     }
 
     /// Keep malformed model output useful without allowing a runaway generation
-    /// to inflate every transcript row. Iterating Characters preserves valid
-    /// Unicode while enforcing the limit in the byte unit JSONL consumers pay.
+    /// to inflate every transcript row. Iterating Unicode scalars preserves a
+    /// valid String while still retaining a useful prefix when the first
+    /// extended grapheme cluster alone exceeds the byte limit.
     private static func boundedDiagnosticBody(
         _ rawBody: String,
         maxUTF8Bytes: Int = 4_096
@@ -250,16 +251,17 @@ public final class TranscriptLogger {
             return (rawBody, byteCount, false)
         }
 
+        let scalars = rawBody.unicodeScalars
         var usedBytes = 0
-        var end = rawBody.startIndex
-        while end < rawBody.endIndex {
-            let next = rawBody.index(after: end)
-            let characterBytes = rawBody[end..<next].utf8.count
-            guard usedBytes + characterBytes <= maxUTF8Bytes else { break }
-            usedBytes += characterBytes
+        var end = scalars.startIndex
+        while end < scalars.endIndex {
+            let next = scalars.index(after: end)
+            let scalarBytes = String(scalars[end]).utf8.count
+            guard usedBytes + scalarBytes <= maxUTF8Bytes else { break }
+            usedBytes += scalarBytes
             end = next
         }
-        return (String(rawBody[..<end]), byteCount, true)
+        return (String(scalars[..<end]), byteCount, true)
     }
 
     private func encode(_ event: Event) -> [String: Any] {

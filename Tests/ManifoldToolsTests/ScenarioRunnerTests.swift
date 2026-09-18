@@ -2,10 +2,10 @@ import XCTest
 import ManifoldInference
 @testable import ManifoldTools
 
-private final class DiagnosticBackend: InferenceBackend, @unchecked Sendable {
+private final class DiagnosticBackend: InferenceBackend, Sendable {
     let events: [GenerationEvent]
-    var isModelLoaded = true
-    var isGenerating = false
+    var isModelLoaded: Bool { true }
+    var isGenerating: Bool { false }
     let capabilities = BackendCapabilities(
         supportsToolCalling: true,
         supportsGrammarConstrainedSampling: false
@@ -15,9 +15,7 @@ private final class DiagnosticBackend: InferenceBackend, @unchecked Sendable {
         self.events = events
     }
 
-    func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
-        isModelLoaded = true
-    }
+    func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
 
     func generate(
         prompt: String,
@@ -34,13 +32,9 @@ private final class DiagnosticBackend: InferenceBackend, @unchecked Sendable {
         })
     }
 
-    func stopGeneration() {
-        isGenerating = false
-    }
+    func stopGeneration() {}
 
-    func unloadModel() {
-        isModelLoaded = false
-    }
+    func unloadModel() {}
 }
 
 @MainActor
@@ -934,7 +928,10 @@ final class ScenarioRunnerTests: XCTestCase {
             try? FileManager.default.removeItem(at: directory)
         }
 
-        let rawBody = String(repeating: "🧰", count: 2_000)
+        // One extended grapheme cluster larger than the entire byte budget.
+        // Character-based truncation would return an empty prefix here; scalar
+        // boundaries retain useful, valid Unicode evidence.
+        let rawBody = "a" + String(repeating: "\u{0301}", count: 3_000) + "tail"
         let logger = try TranscriptLogger(url: path)
         _ = try await makeRunner(
             backend: DiagnosticBackend(events: [.toolCallTruncated(rawBody: rawBody)]),
@@ -945,8 +942,12 @@ final class ScenarioRunnerTests: XCTestCase {
         let rows = try transcriptRows(at: path)
         let diagnostic = try XCTUnwrap(rows.first { $0["kind"] as? String == "tool_call_truncated" })
         let prefix = try XCTUnwrap(diagnostic["rawBodyPrefix"] as? String)
+        XCTAssertFalse(prefix.isEmpty, "a huge first grapheme must still retain a scalar prefix")
         XCTAssertLessThanOrEqual(prefix.utf8.count, 4_096, "diagnostic payloads must stay bounded")
-        XCTAssertTrue(rawBody.hasPrefix(prefix))
+        XCTAssertEqual(
+            Array(prefix.unicodeScalars),
+            Array(rawBody.unicodeScalars.prefix(prefix.unicodeScalars.count))
+        )
         XCTAssertEqual(diagnostic["rawBodyUTF8ByteCount"] as? Int, rawBody.utf8.count)
         XCTAssertEqual(diagnostic["rawBodyTruncated"] as? Bool, true)
     }
