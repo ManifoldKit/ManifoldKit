@@ -14,26 +14,31 @@ final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
         var stopObservedWhileGenerating = false
         var generateCallCount = 0
         var stopCallCount = 0
+        var activeRequestHadTools = false
     }
 
     let capabilities = BackendCapabilities(
         supportedParameters: [.temperature, .topP, .repeatPenalty],
         maxContextTokens: 4_096,
         requiresPromptTemplate: false,
-        supportsSystemPrompt: true
+        supportsSystemPrompt: true,
+        supportsToolCalling: true
     )
 
     private let lock = NSLock()
     private var state: State
     private let residue = " residue"
     private let firstTurnTokens: [String]
+    private let requiresToolsForResidue: Bool
 
     init(
         leakIntoSuccessor: Bool,
-        firstTurnTokens: [String] = ["old response residue"]
+        firstTurnTokens: [String] = ["old response residue"],
+        requiresToolsForResidue: Bool = false
     ) {
         state = State(leakIntoSuccessor: leakIntoSuccessor)
         self.firstTurnTokens = firstTurnTokens
+        self.requiresToolsForResidue = requiresToolsForResidue
     }
 
     var isModelLoaded: Bool {
@@ -74,6 +79,7 @@ final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
         state.turn += 1
         state.generateCallCount += 1
         state.isGenerating = true
+        state.activeRequestHadTools = !config.tools.isEmpty
         let prefixResidue = state.shouldPrefixResidue
         state.shouldPrefixResidue = false
         lock.unlock()
@@ -105,7 +111,8 @@ final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
         let wasGenerating = state.isGenerating
         state.stopCallCount += 1
         state.stopObservedWhileGenerating = wasGenerating
-        if wasGenerating && state.leakIntoSuccessor {
+        if wasGenerating && state.leakIntoSuccessor
+            && (!requiresToolsForResidue || state.activeRequestHadTools) {
             state.shouldPrefixResidue = true
         }
         state.isGenerating = false

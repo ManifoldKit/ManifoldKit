@@ -54,6 +54,9 @@ public struct Shrinker: Sendable {
     public enum Failure: Error, Sendable {
         case recordNotFound(String)
         case replayFailed(String)
+        /// Session findings require script-aware mutation. Refuse rather than
+        /// report a smaller top-level prompt that replay never executed.
+        case sessionCaptureUnsupported(String)
     }
 
     private let replayer: Replayer
@@ -76,6 +79,9 @@ public struct Shrinker: Sendable {
     ) async throws -> Result {
         guard let seed = try replayer.loadRecord(hash: hash) else {
             throw Failure.recordNotFound(hash)
+        }
+        if seed.sessionCapture != nil {
+            throw Failure.sessionCaptureUnsupported(hash)
         }
 
         let originalJoined = joinedPrompt(seed.prompt.messages)

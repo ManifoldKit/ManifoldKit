@@ -54,7 +54,10 @@ final class ReplayTests: XCTestCase {
     struct StopResidueFactory: FuzzBackendFactory {
         func makeHandle() async throws -> FuzzRunner.BackendHandle {
             FuzzRunner.BackendHandle(
-                backend: StopResidueBackend(leakIntoSuccessor: true),
+                backend: StopResidueBackend(
+                    leakIntoSuccessor: true,
+                    requiresToolsForResidue: true
+                ),
                 modelId: "stop-residue-model",
                 modelURL: URL(string: "mem:stop-residue-model")!,
                 backendName: "mock",
@@ -314,6 +317,7 @@ final class ReplayTests: XCTestCase {
                 outputDir: tempDir,
                 quiet: true,
                 sessionScripts: true,
+                tools: true,
                 requestTimeout: 1
             ),
             factory: factory,
@@ -331,6 +335,7 @@ final class ReplayTests: XCTestCase {
             modelHashResolver: { _ in nil }
         )
         let decoded = try XCTUnwrap(loader.loadRecord(hash: finding.hash))
+        XCTAssertFalse(decoded.toolDefinitions.isEmpty, "the captured finding must depend on advertised tools")
         let decodedSession = try XCTUnwrap(decoded.sessionCapture)
         XCTAssertEqual(decodedSession.script, script)
         XCTAssertEqual(decodedSession.steps.count, script.steps.count)

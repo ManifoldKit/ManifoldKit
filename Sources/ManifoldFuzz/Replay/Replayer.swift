@@ -438,6 +438,7 @@ public struct Replayer: Sendable {
                 temperature: record.config.temperature,
                 topP: record.config.topP,
                 maxOutputTokens: record.config.maxTokens,
+                toolDefinitions: record.toolDefinitions,
                 contextLimit: record.config.contextLimit,
                 memoryBudgetBytes: record.model.memoryBudgetBytes
             ),

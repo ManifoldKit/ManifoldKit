@@ -119,7 +119,8 @@ final class ShrinkerTests: XCTestCase {
         prompt: String,
         mutators: [String] = [],
         systemPrompt: String? = nil,
-        maxTokens: Int? = 256
+        maxTokens: Int? = 256,
+        sessionScript: SessionScript? = nil
     ) throws -> String {
         let finding = Finding(
             detectorId: detectorId,
@@ -128,7 +129,7 @@ final class ShrinkerTests: XCTestCase {
             trigger: trigger,
             modelId: "stub-model"
         )
-        let record = RunRecord(
+        var record = RunRecord(
             runId: UUID().uuidString,
             ts: "2026-04-19T00:00:00Z",
             harness: .init(
@@ -171,6 +172,13 @@ final class ShrinkerTests: XCTestCase {
             error: nil,
             stopReason: "naturalStop"
         )
+        if let sessionScript {
+            record.sessionCapture = SessionCaptureSnapshot(.init(
+                script: sessionScript,
+                sessionID: UUID(),
+                steps: []
+            ))
+        }
 
         let findingDir = tempDir
             .appendingPathComponent("findings", isDirectory: true)
@@ -187,6 +195,33 @@ final class ShrinkerTests: XCTestCase {
     }
 
     // MARK: - Tests
+
+    @MainActor
+    func test_shrink_refusesSessionCaptureInsteadOfMutatingIgnoredRepresentativePrompt() async throws {
+        let hash = try seedRecord(
+            trigger: "T",
+            prompt: "representative turn only",
+            sessionScript: .init(
+                id: "full-session",
+                steps: [.send(text: "load-bearing original script")]
+            )
+        )
+        let replayer = Replayer(
+            findingsRoot: tempDir,
+            factory: EchoFactory(),
+            gitRevResolver: { "aaaaaaa" },
+            modelHashResolver: { _ in nil }
+        )
+
+        do {
+            _ = try await Shrinker(replayer: replayer).shrink(hash: hash)
+            XCTFail("session captures must be rejected until shrinking mutates the actual script")
+        } catch Shrinker.Failure.sessionCaptureUnsupported(let rejectedHash) {
+            XCTAssertEqual(rejectedHash, hash)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
 
     /// Phase 1 happy path: detector fires only when the first mutator is
     /// present. After shrink, the other two mutators should be dropped.
