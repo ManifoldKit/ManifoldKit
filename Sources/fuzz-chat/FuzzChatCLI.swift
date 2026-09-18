@@ -580,9 +580,9 @@ struct FuzzChatCLI {
         } catch Shrinker.Failure.recordNotFound(let h) {
             FileHandle.standardError.write(Data("Shrink \(h): record not found\n".utf8))
             return 3
-        } catch Shrinker.Failure.sessionCaptureUnsupported(let h) {
+        } catch let error as Shrinker.SessionCaptureUnsupportedError {
             FileHandle.standardError.write(Data(
-                "Shrink \(h): session-script findings are not shrinkable yet; replay the full saved script\n".utf8
+                "Shrink \(error.hash): session-script findings are not shrinkable yet; replay the full saved script\n".utf8
             ))
             return 2
         } catch {

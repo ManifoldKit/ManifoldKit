@@ -216,8 +216,8 @@ final class ShrinkerTests: XCTestCase {
         do {
             _ = try await Shrinker(replayer: replayer).shrink(hash: hash)
             XCTFail("session captures must be rejected until shrinking mutates the actual script")
-        } catch Shrinker.Failure.sessionCaptureUnsupported(let rejectedHash) {
-            XCTAssertEqual(rejectedHash, hash)
+        } catch let error as Shrinker.SessionCaptureUnsupportedError {
+            XCTAssertEqual(error.hash, hash)
         } catch {
             XCTFail("unexpected error: \(error)")
         }

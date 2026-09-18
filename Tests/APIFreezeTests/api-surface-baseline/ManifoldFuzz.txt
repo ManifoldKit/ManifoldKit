@@ -636,7 +636,6 @@ Shrinker.Failure Enum
 Shrinker.Failure conformances: Copyable,Error,Escapable,Sendable,SendableMetatype
 Shrinker.Failure.recordNotFound EnumElement
 Shrinker.Failure.replayFailed EnumElement
-Shrinker.Failure.sessionCaptureUnsupported EnumElement
 Shrinker.Result Struct
 Shrinker.Result conformances: Copyable,Escapable,Sendable,SendableMetatype
 Shrinker.Result.originalPromptLength Var
@@ -646,6 +645,9 @@ Shrinker.Result.shrunkPrompt Var
 Shrinker.Result.shrunkPromptLength Var
 Shrinker.Result.shrunkSystemPrompt Var
 Shrinker.Result.steps Var
+Shrinker.SessionCaptureUnsupportedError Struct
+Shrinker.SessionCaptureUnsupportedError conformances: Copyable,Error,Escapable,Sendable,SendableMetatype
+Shrinker.SessionCaptureUnsupportedError.hash Var
 Shrinker.TerminationReason Enum
 Shrinker.TerminationReason conformances: Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 Shrinker.TerminationReason.RawValue TypeAlias
