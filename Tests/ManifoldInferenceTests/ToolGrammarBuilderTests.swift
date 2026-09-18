@@ -34,6 +34,42 @@ final class ToolGrammarBuilderTests: XCTestCase {
         XCTAssertNil(builder.buildGrammar(for: []))
     }
 
+    func test_nonJSONToolDialect_declinesEnvelopeGrammar() {
+        // Sabotage evidence: forwarding every dialect into the JSON builder
+        // returns a non-nil grammar and fails the XCTAssertNil below.
+        // Mirrors manifold-llama's Qwen3.5/Qwen3.6 capability: the model's
+        // embedded template teaches nested XML parameters, so a JSON envelope
+        // grammar would contradict the prompt and prevent valid calls.
+        let xmlDialect = ToolCallDialect(
+            family: .custom,
+            openDelimiter: "<tool_call>",
+            closeDelimiter: "</tool_call>",
+            argEncoding: .custom,
+            extractability: .clean
+        )
+
+        XCTAssertNil(
+            builder.buildGrammar(
+                for: [tool("get_weather")],
+                mode: .strict(only: nil),
+                dialect: xmlDialect
+            ),
+            "an explicit non-JSON dialect must use unconstrained sampling instead of a wrong JSON grammar"
+        )
+    }
+
+    func test_JSONToolDialect_keepsEnvelopeGrammar() {
+        // Control: over-broadly declining every declared dialect fails here.
+        XCTAssertNotNil(
+            builder.buildGrammar(
+                for: [tool("get_weather")],
+                mode: .strict(only: nil),
+                dialect: .qwen
+            ),
+            "Qwen2.5/Hermes JSON dialects must retain the existing envelope grammar"
+        )
+    }
+
     // MARK: - Structural sanity
 
     func test_singleTool_hasRootRuleAndQuotedName() {

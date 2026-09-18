@@ -140,7 +140,83 @@ public final class TranscriptLogger {
     public var destination: URL { url }
 
     public func append(_ event: Event) {
-        var dict = encode(event)
+        appendRecord(encode(event))
+    }
+
+    package func appendToolCallParseFailed(scenarioId: String, turn: Int, rawBody: String) {
+        appendToolBodyDiagnostic(
+            kind: "tool_call_parse_failed",
+            scenarioId: scenarioId,
+            turn: turn,
+            rawBody: rawBody
+        )
+    }
+
+    package func appendToolCallTruncated(scenarioId: String, turn: Int, rawBody: String) {
+        appendToolBodyDiagnostic(
+            kind: "tool_call_truncated",
+            scenarioId: scenarioId,
+            turn: turn,
+            rawBody: rawBody
+        )
+    }
+
+    package func appendThrottleDiagnostic(scenarioId: String, turn: Int, reason: String) {
+        appendRecord([
+            "ts": isoFormatter.string(from: Date()),
+            "kind": "throttle_diagnostic",
+            "scenario": scenarioId,
+            "turn": turn,
+            "reason": reason,
+        ])
+    }
+
+    package func appendToolIterationLimitExceeded(scenarioId: String, turn: Int, iterations: Int) {
+        appendRecord([
+            "ts": isoFormatter.string(from: Date()),
+            "kind": "tool_iteration_limit_exceeded",
+            "scenario": scenarioId,
+            "turn": turn,
+            "iterations": iterations,
+        ])
+    }
+
+    package func appendRunTokenBudgetExceeded(
+        scenarioId: String,
+        turn: Int,
+        tokensUsed: Int,
+        limit: Int
+    ) {
+        appendRecord([
+            "ts": isoFormatter.string(from: Date()),
+            "kind": "run_token_budget_exceeded",
+            "scenario": scenarioId,
+            "turn": turn,
+            "tokensUsed": tokensUsed,
+            "limit": limit,
+        ])
+    }
+
+    private func appendToolBodyDiagnostic(
+        kind: String,
+        scenarioId: String,
+        turn: Int,
+        rawBody: String
+    ) {
+        let bounded = Self.boundedDiagnosticBody(rawBody)
+        appendRecord([
+            "ts": isoFormatter.string(from: Date()),
+            "kind": kind,
+            "scenario": scenarioId,
+            "turn": turn,
+            "rawBodyPrefix": bounded.prefix,
+            "rawBodyUTF8ByteCount": bounded.byteCount,
+            "rawBodyTruncated": bounded.truncated,
+        ])
+    }
+
+    private func appendRecord(_ record: [String: Any]) {
+        var dict = record
         // Stamp run attribution onto every record. Keys are only added when set,
         // so transcripts produced by callers that didn't supply attribution keep
         // their original shape (backward compatible).
@@ -160,6 +236,30 @@ public final class TranscriptLogger {
         }
         fileHandle?.write(data)
         fileHandle?.write(Data("\n".utf8))
+    }
+
+    /// Keep malformed model output useful without allowing a runaway generation
+    /// to inflate every transcript row. Iterating Characters preserves valid
+    /// Unicode while enforcing the limit in the byte unit JSONL consumers pay.
+    private static func boundedDiagnosticBody(
+        _ rawBody: String,
+        maxUTF8Bytes: Int = 4_096
+    ) -> (prefix: String, byteCount: Int, truncated: Bool) {
+        let byteCount = rawBody.utf8.count
+        guard byteCount > maxUTF8Bytes else {
+            return (rawBody, byteCount, false)
+        }
+
+        var usedBytes = 0
+        var end = rawBody.startIndex
+        while end < rawBody.endIndex {
+            let next = rawBody.index(after: end)
+            let characterBytes = rawBody[end..<next].utf8.count
+            guard usedBytes + characterBytes <= maxUTF8Bytes else { break }
+            usedBytes += characterBytes
+            end = next
+        }
+        return (String(rawBody[..<end]), byteCount, true)
     }
 
     private func encode(_ event: Event) -> [String: Any] {

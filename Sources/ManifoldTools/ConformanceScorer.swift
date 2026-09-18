@@ -326,6 +326,13 @@ public enum ConformanceScorer {
                 // cell was genuinely measured (a `final` with no `tool_call` is a
                 // real, measured `noCall` — not a hole).
                 groups[key]?.producedModelTurn = true
+            case "tool_call_parse_failed", "tool_call_truncated",
+                 "throttle_diagnostic", "tool_iteration_limit_exceeded",
+                 "run_token_budget_exceeded":
+                // These diagnostics originate while consuming a live model
+                // stream. Even when no final/tool_call follows, the cell was
+                // measured and must not collapse into a prompt-only hole.
+                groups[key]?.producedModelTurn = true
             case "error":
                 // An explicit infra/harness error (e.g. the backend rejected the
                 // model). Marks the cell as errored so the record emitter maps it to

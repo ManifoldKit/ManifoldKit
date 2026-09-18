@@ -181,6 +181,23 @@ final class ConformanceRecordEmitTests: XCTestCase {
         XCTAssertNotEqual(rec.failureClass, .noCall, "must NOT be a measured noCall false-zero (#2087)")
     }
 
+    /// A parser diagnostic proves generation ran even when a partial companion
+    /// transcript has no final/assertion row. It must remain a measured no-call,
+    /// not regress to the prompt-only hole above.
+    func testToolParseDiagnosticMarksTurnMeasured() throws {
+        // Sabotage evidence: remove the diagnostic kinds from `resolve` and the
+        // status becomes `.notMeasured`, failing this assertion.
+        let jsonl = """
+        {"kind":"prompt","scenario":"parse","backend":"llama.cpp","model":"qwen","requiredTools":["now"]}
+        {"kind":"tool_call_parse_failed","scenario":"parse","backend":"llama.cpp","model":"qwen","turn":1,"rawBodyPrefix":"<tool_call>","rawBodyUTF8ByteCount":11,"rawBodyTruncated":false}
+        """
+        let rec = try record(ConformanceScorer.records(jsonl: jsonl, context: context()), scenario: "parse")
+
+        XCTAssertEqual(rec.status, .measured)
+        XCTAssertEqual(rec.verdict, .fail)
+        XCTAssertEqual(rec.failureClass, .noCall)
+    }
+
     /// An explicit `error` event (ScenarioRunner records one on generation failure)
     /// is a positive infra-failure signal → a `.loadFail` (💥) hole.
     func testPromptPlusErrorEventIsLoadFail() throws {
