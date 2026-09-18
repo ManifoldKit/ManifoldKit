@@ -83,7 +83,10 @@ no action needed if you only use those.
 When `DefaultCompressionPolicy` is installed on `ConversationRuntime`, the
 runtime resolves the active backend's context window and tokenizer together on
 every compression pass. Switching models updates both trigger and output
-budgeting without rebuilding the policy. A backend that does not vend a
+budgeting without rebuilding the policy. Before a turn, the built-in policy
+remeasures persisted history and the wire system prompt with that active
+tokenizer rather than comparing a previous model's recorded prompt count with
+the new model's capacity. A backend that does not vend a
 tokenizer uses the chars/4 heuristic for that pass; the runtime does not retain
 the previous model's tokenizer. Direct calls to `DefaultCompressionPolicy`
 still use the `contextSize` and `tokenizer` supplied to its factory because no

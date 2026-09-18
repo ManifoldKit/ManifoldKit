@@ -49,11 +49,12 @@ import ManifoldInference
 /// `reservedTokens` while also subtracting `systemPrompt` **double-counts**
 /// and over-compresses.
 ///
-/// The tokenizer used to size that budget stays **construction-injected**
-/// (unchanged) — pass a real `tokenizer:` to ``DefaultCompressionPolicy``'s
-/// factories; there is no call-time tokenizer override. `systemPrompt` is
-/// `nil` when the turn has no system prompt on the wire; treat `nil` the same
-/// as an empty string.
+/// A custom conformance still owns its tokenizer. For
+/// ``DefaultCompressionPolicy``, direct method calls use the factory's
+/// construction-injected tokenizer, while `ConversationRuntime` resolves the
+/// active backend's tokenizer and context window for each pass. `systemPrompt`
+/// is `nil` when the turn has no system prompt on the wire; treat `nil` the
+/// same as an empty string.
 ///
 /// ## v0.26.0 Migration
 ///

@@ -110,11 +110,13 @@ struct TurnCompressionCoordinator: Sendable {
         }
         let lastPromptTokens = existingHistory.last(where: { $0.role == .assistant })?.promptTokens
         let activeModelBudget = await inferenceService.activeModelCompressionBudgetAsync()
+        let systemPrompt: String?
         if let defaultPolicy = preTurnPolicy as? DefaultCompressionPolicy,
            let activeModelBudget {
+            systemPrompt = await resolveSystemPrompt(wireSystemPrompt, sessionID: sessionID)
             guard defaultPolicy.shouldCompressBeforeTurn(
-                messageCount: existingHistory.count,
-                lastPromptTokens: lastPromptTokens,
+                history: existingHistory,
+                systemPrompt: systemPrompt,
                 activeModelBudget: activeModelBudget
             ) else { return }
         } else {
@@ -122,10 +124,10 @@ struct TurnCompressionCoordinator: Sendable {
                 messageCount: existingHistory.count,
                 lastPromptTokens: lastPromptTokens
             ) else { return }
+            systemPrompt = await resolveSystemPrompt(wireSystemPrompt, sessionID: sessionID)
         }
 
         let generate = makeCompressionGenerateClosure()
-        let systemPrompt = await resolveSystemPrompt(wireSystemPrompt, sessionID: sessionID)
         let compressed: [ChatMessage]
         do {
             if let defaultPolicy = preTurnPolicy as? DefaultCompressionPolicy,

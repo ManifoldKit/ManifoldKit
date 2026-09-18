@@ -21,7 +21,9 @@ import ManifoldInference
 /// ``CompressionPolicy``'s post-turn seam — see that protocol's migration note
 /// for the full rationale (real wire-prompt budget sizing; `reservedTokens` is
 /// response headroom only — shrink it if you previously folded system tokens
-/// in, or you double-count; the tokenizer stays construction-injected).
+/// in, or you double-count). Custom conformers own their token accounting;
+/// `ConversationRuntime` remeasures the built-in ``DefaultCompressionPolicy``
+/// against the active backend before a turn.
 ///
 /// Pre-turn compression adds inference latency before the user's message
 /// appears in the UI — the `generate:` closure is called as part of turn

@@ -69,12 +69,12 @@ import ManifoldInference
 ///
 /// ``CompressionPolicy/shouldCompress(promptTokens:contextSize:contextUtilization:)``
 /// receives utilisation directly. ``PreTurnCompressionPolicy`` does not — its
-/// `shouldCompressBeforeTurn` sees only `messageCount` and `lastPromptTokens`,
-/// so this policy stores `contextSize` and computes utilisation from
-/// `lastPromptTokens / contextSize`. The two can disagree at the boundary by a
-/// rounding margin: a post-turn caller that hands in an already-rounded
-/// utilisation may cross the threshold while the pre-turn recompute from raw
-/// `lastPromptTokens` stays just below it.
+/// public `shouldCompressBeforeTurn` sees only `messageCount` and
+/// `lastPromptTokens`, so direct callers use construction-time `contextSize`
+/// and the last recorded count. The runtime-owned path instead remeasures the
+/// current history and wire system prompt with the active model's tokenizer;
+/// a model switch cannot compare model A's recorded count with model B's
+/// capacity.
 ///
 /// ## Outcome observability (#2203) and message pinning (#2204)
 ///
@@ -368,12 +368,22 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
     }
 
     package func shouldCompressBeforeTurn(
-        messageCount: Int,
-        lastPromptTokens: Int?,
+        history: [ChatMessage],
+        systemPrompt: String?,
         activeModelBudget: ActiveModelCompressionBudget
     ) -> Bool {
-        guard activeModelBudget.contextSize > 0, let promptTokens = lastPromptTokens else { return false }
-        return Double(promptTokens) / Double(activeModelBudget.contextSize) >= threshold
+        guard activeModelBudget.contextSize > 0 else { return false }
+        let historyTokens = history.reduce(0) { partialResult, message in
+            partialResult + ContextWindowManager.estimateTokenCount(
+                message,
+                tokenizer: activeModelBudget.tokenizer
+            )
+        }
+        let systemPromptTokens = ContextWindowManager.estimateTokenCount(
+            systemPrompt ?? "",
+            tokenizer: activeModelBudget.tokenizer
+        )
+        return Double(historyTokens + systemPromptTokens) / Double(activeModelBudget.contextSize) >= threshold
     }
 
     public func compressBeforeTurn(
