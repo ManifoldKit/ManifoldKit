@@ -1,64 +1,43 @@
 import Foundation
 
-/// Fires when turn 2's raw output contains a long verbatim run of text from
-/// turn 1's own mid-stream tail (the portion of turn 1's stream after its
-/// first event), gated on a `.stop` step existing somewhere between the two
-/// turns.
+/// Fires when a stop that actually overlapped turn 1 is followed by turn 2
+/// whose visible output begins with a suffix of turn 1's observed tail.
 ///
 /// ## What this can and can't detect (read before touching the stop-timing logic)
 ///
-/// The name and original doc comment framed this as catching a live
-/// cancellation race — tokens still in flight when `.stop` fires leaking
-/// into the next turn. #2361's investigation found that framing describes a
-/// condition this harness cannot produce: `SessionScriptRunner.execute` is
-/// strictly sequential — a `.send` step's `runTurn` is fully `await`ed
-/// (its stream consumed to completion by `EventRecorder.consume`) before the
-/// loop advances to the script's next step, so by the time a `.stop` step's
-/// `stopGeneration()` call runs, turn 1 has already reached `phase: "done"`
-/// and the service is idle. There is no in-flight decode for `.stop` to race
-/// with in this harness.
+/// #2361 found two independent blind spots in the old check. First,
+/// `SessionScriptRunner` awaited turn 1 to completion before executing the
+/// next `.stop`, so the stop was idle by construction. The runner now pairs an
+/// immediately adjacent turn/stop, waits until the one `EventRecorder`
+/// consumer observes visible output, and calls `stopGeneration()` while the
+/// service still reports an active turn. Stops that lose that race or observe
+/// no visible content produce an explicit `stop-window-unexercised` finding;
+/// they never count as clean cancellation coverage.
 ///
-/// There is also no shared clock to detect an overlap even if one could
-/// occur: `EventSnapshot.t` (`EventRecorder.consume`) is measured from each
-/// turn's own `ContinuousClock.now`, reset per turn — turn 1's event
-/// timestamps and the `.stop` step's `elapsedMs` are not on the same axis.
-/// **Do not** try to filter on "did this token arrive after the stop's
-/// timestamp" — turn 1's timestamps are always smaller than they'd need to
-/// be to compare against a later step's, so that filter would silently
-/// select the empty set on every capture and permanently disable the
-/// detector.
+/// Second, the old detector searched for a long common substring anywhere in
+/// turn 2. That duplicated `TurnBoundaryKVStateDetector` and still could not
+/// distinguish residue from legitimate repeated prose. Cancellation residue
+/// has stronger placement: a suffix of the stopped turn's observed tail must
+/// appear at the very start of its successor. This positional gate permits a
+/// short threshold while rejecting the original "which" / "where" / echoed
+/// prompt false positives when those words occur in the middle of turn 2.
 ///
-/// So today this detector only checks: does a long run of turn 1's own
-/// (naturally completed) tail leak verbatim into turn 2, on captures where a
-/// `.stop` step happens to sit between them. #2361 was filed against exactly
-/// that check, and the check itself was unsound: it matched on any single
-/// mid-stream `token` event (as short as the old `minTokenChars`), so two
-/// long-form generations sharing an ordinary function word ("which",
-/// "where") — or, worse, echoing a word from the *user's own prompt* on both
-/// turns (`edit-then-regenerate.json`: "capital of France" → "capital of
-/// Germany") — satisfied it trivially. `TurnBoundaryKVStateDetector` solved
-/// the identical false-positive shape for turn-to-turn residue with a
-/// longest-common-contiguous-substring gate instead of a token-membership
-/// check; this detector mirrors that design (via the shared
-/// `LongestCommonSubstring` helper) — concatenate turn 1's mid-stream token
-/// stream into one tail string and require the longest run shared with turn
-/// 2's raw output to clear `minResidueChars`, well above what an incidental
-/// shared word/phrase reaches.
+/// `textObservedAfterStopReturned` means exactly that the recorder consumed
+/// the event after `stopGeneration()` returned. It does not prove when the
+/// backend emitted or decoded the event because an async stream may already
+/// have buffered it. Findings use "observed" language deliberately.
 public struct CancellationRaceDetector: SessionDetector {
     public let id = "cancellation-race"
     public let humanName = "Cancellation race token interleave"
-    public let inspiredBy = "8d6b013 — stop-while-decoding; #2361 — FP fix (see doc comment: harness can't race)"
+    public let inspiredBy = "8d6b013 — stop-while-decoding; #2361 — real in-flight stop + positional residue"
 
-    /// Minimum length (in Swift `Character`s) of the longest common
-    /// contiguous substring between turn 1's mid-stream tail and turn 2's
-    /// raw output required to fire. Shared with
-    /// `TurnBoundaryKVStateDetector.minResidueChars` via
-    /// `LongestCommonSubstring.defaultMinChars` — chosen to clear incidental
-    /// shared function words/phrases ("which", "where", "the capital of")
-    /// while still catching a genuine leaked run of decoded text.
+    /// Minimum positional suffix/prefix overlap, in Swift `Character`s.
+    /// Six catches one leaked subword-sized chunk; requiring that chunk at
+    /// both boundaries supplies the discrimination the old 24-character
+    /// anywhere-match lacked.
     public let minResidueChars: Int
 
-    public init(minResidueChars: Int = LongestCommonSubstring.defaultMinChars) {
+    public init(minResidueChars: Int = 6) {
         self.minResidueChars = minResidueChars
     }
 
@@ -84,37 +63,85 @@ public struct CancellationRaceDetector: SessionDetector {
             guard let turn1 = mostRecentTurn(before: stopIdx, in: capture),
                   let turn2 = nextTurn(after: stopIdx, in: capture) else { continue }
 
-            let turn1Events = turn1.record?.events ?? []
+            guard let observation = capture.steps[stopIdx].stopObservation else {
+                findings.append(unexercisedFinding(
+                    reason: "stop has no overlap observation (synthetic or legacy capture)",
+                    turn1: turn1,
+                    turn2: turn2
+                ))
+                continue
+            }
+            guard observation.qualification == .inFlight else {
+                findings.append(unexercisedFinding(
+                    reason: qualificationDescription(observation.qualification),
+                    turn1: turn1,
+                    turn2: turn2
+                ))
+                continue
+            }
+
             let turn2Raw = turn2.record?.raw ?? ""
-            if turn1Events.isEmpty || turn2Raw.isEmpty { continue }
+            let stoppedTurnTail = observation.tailObservedBeforeStopReturned
+                + observation.textObservedAfterStopReturned
+            guard !stoppedTurnTail.isEmpty, !turn2Raw.isEmpty else { continue }
 
-            // turn 1's mid-stream tail: every `token` event emitted after
-            // the first event of turn 1, concatenated in order. This is
-            // NOT "the part of turn 1 still in flight when stop landed" —
-            // see the type's doc comment: the harness always finishes turn
-            // 1 before `.stop` runs, so there is no such window. It's just
-            // "turn 1 minus its opening token" — a long run of THAT
-            // appearing verbatim in turn 2 (on a capture where a `.stop`
-            // step happens to sit between them) is what this checks.
-            guard let firstEventT = turn1Events.first?.t else { continue }
-            let midStreamTail = turn1Events
-                .filter { $0.kind == "token" && $0.t > firstEventT }
-                .compactMap(\.v)
-                .joined()
-            guard !midStreamTail.isEmpty else { continue }
-
-            if let residue = LongestCommonSubstring.compute(midStreamTail, turn2Raw),
+            if let residue = longestSuffixPrefixOverlap(stoppedTurnTail, turn2Raw),
                residue.count >= minResidueChars {
+                let afterStopCount = observation.textObservedAfterStopReturned.count
                 findings.append(.init(
                     detectorId: id,
-                    subCheck: "turn1-tail-residue-in-turn-after-stop",
+                    subCheck: "stopped-turn-tail-at-successor-prefix",
                     severity: .flaky,
-                    trigger: "turn1-tail residue '\(residue.prefix(60))' found verbatim in turn after stop",
+                    trigger: "stopped-turn suffix '\(residue.prefix(60))' begins successor; "
+                        + "\(afterStopCount) character(s) were observed after stop returned "
+                        + "(backend emission time unknown)",
                     modelId: turn2.record?.model.id ?? "unknown"
                 ))
             }
         }
         return findings
+    }
+
+    private func unexercisedFinding(
+        reason: String,
+        turn1: SessionCapture.StepResult,
+        turn2: SessionCapture.StepResult
+    ) -> Finding {
+        .init(
+            detectorId: id,
+            subCheck: "stop-window-unexercised",
+            severity: .flaky,
+            trigger: "cancellation coverage not qualified: \(reason)",
+            modelId: turn2.record?.model.id ?? turn1.record?.model.id ?? "unknown"
+        )
+    }
+
+    private func qualificationDescription(_ qualification: SessionCapture.StopQualification) -> String {
+        switch qualification {
+        case .inFlight:
+            return "in-flight"
+        case .completedBeforeStop:
+            return "turn completed before stop reached the active service"
+        case .noVisibleContent:
+            return "turn ended without visible content before a stop window opened"
+        case .notPairedWithTurn:
+            return "stop was not immediately paired with a send/regenerate step"
+        case .cancelledBeforeObservation:
+            return "runner was cancelled before the stop window was observed"
+        }
+    }
+
+    private func longestSuffixPrefixOverlap(_ oldTail: String, _ successor: String) -> String? {
+        let maxLength = min(oldTail.count, successor.count)
+        guard maxLength >= minResidueChars else { return nil }
+
+        for length in stride(from: maxLength, through: minResidueChars, by: -1) {
+            let suffix = oldTail.suffix(length)
+            if suffix.elementsEqual(successor.prefix(length)) {
+                return String(suffix)
+            }
+        }
+        return nil
     }
 
     private func mostRecentTurn(before idx: Int, in capture: SessionCapture) -> SessionCapture.StepResult? {

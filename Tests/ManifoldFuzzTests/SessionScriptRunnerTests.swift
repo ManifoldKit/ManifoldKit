@@ -3,6 +3,112 @@ import XCTest
 import ManifoldInference
 import ManifoldTestSupport
 
+private final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
+    private struct State {
+        var isModelLoaded = true
+        var isGenerating = false
+        var turn = 0
+        var activeContinuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation?
+        var leakIntoSuccessor: Bool
+        var shouldPrefixResidue = false
+        var stopObservedWhileGenerating = false
+    }
+
+    let capabilities = BackendCapabilities(
+        supportedParameters: [.temperature, .topP, .repeatPenalty],
+        maxContextTokens: 4_096,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true
+    )
+
+    private let lock = NSLock()
+    private var state: State
+    private let residue = " residue"
+
+    init(leakIntoSuccessor: Bool) {
+        state = State(leakIntoSuccessor: leakIntoSuccessor)
+    }
+
+    var isModelLoaded: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return state.isModelLoaded
+    }
+
+    var isGenerating: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return state.isGenerating
+    }
+
+    var didObserveStopWhileGenerating: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return state.stopObservedWhileGenerating
+    }
+
+    func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
+        lock.withLock {
+            state.isModelLoaded = true
+        }
+    }
+
+    func generate(
+        prompt: String,
+        systemPrompt: String?,
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
+    ) throws -> GenerationStream {
+        lock.lock()
+        let turn = state.turn
+        state.turn += 1
+        state.isGenerating = true
+        let prefixResidue = state.shouldPrefixResidue
+        state.shouldPrefixResidue = false
+        lock.unlock()
+
+        return GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { [self] continuation in
+            lock.lock()
+            state.activeContinuation = continuation
+            lock.unlock()
+
+            if turn == 0 {
+                // The stream deliberately remains open after its first token.
+                // Only a real stop can finish this turn and admit turn 2.
+                continuation.yield(.token("old response" + residue))
+            } else {
+                continuation.yield(.token(prefixResidue ? residue + " successor" : "clean successor"))
+                lock.lock()
+                state.isGenerating = false
+                state.activeContinuation = nil
+                lock.unlock()
+                continuation.finish()
+            }
+        })
+    }
+
+    func stopGeneration() {
+        lock.lock()
+        let wasGenerating = state.isGenerating
+        state.stopObservedWhileGenerating = wasGenerating
+        if wasGenerating && state.leakIntoSuccessor {
+            state.shouldPrefixResidue = true
+        }
+        state.isGenerating = false
+        let continuation = state.activeContinuation
+        state.activeContinuation = nil
+        lock.unlock()
+        continuation?.finish()
+    }
+
+    func unloadModel() {
+        stopGeneration()
+        lock.lock()
+        state.isModelLoaded = false
+        lock.unlock()
+    }
+}
+
 @MainActor
 final class SessionScriptRunnerTests: XCTestCase {
 
@@ -51,6 +157,65 @@ final class SessionScriptRunnerTests: XCTestCase {
         XCTAssertEqual(capture.steps[0].timeline, .stopRequested)
         XCTAssertNil(capture.steps[0].record)
         XCTAssertEqual(mock.stopCallCount, 1)
+    }
+
+    func test_adjacentStop_overlapsActiveTurn_andDetectsSuccessorPrefixResidue() async throws {
+        let backend = StopResidueBackend(leakIntoSuccessor: true)
+        let service = InferenceService(backend: backend, name: "StopResidueTest")
+        let runner = SessionScriptRunner(service: service)
+        let script = SessionScript(
+            id: "real-stop-residue",
+            steps: [.send(text: "first"), .stop, .send(text: "second")]
+        )
+
+        let capture = await runner.execute(script)
+        let observation = try XCTUnwrap(capture.steps[1].stopObservation)
+
+        XCTAssertTrue(backend.didObserveStopWhileGenerating)
+        XCTAssertEqual(observation.qualification, .inFlight)
+        XCTAssertTrue(observation.tailObservedBeforeStopReturned.hasSuffix(" residue"))
+        XCTAssertEqual(
+            observation.textObservedAfterStopReturned,
+            "",
+            "queue cancellation should not be mislabeled as proof of post-stop backend emission"
+        )
+        XCTAssertTrue(try XCTUnwrap(capture.steps[2].record).raw.hasPrefix(" residue"))
+
+        let findings = CancellationRaceDetector().inspect([capture])
+        XCTAssertEqual(findings.map(\.subCheck), ["stopped-turn-tail-at-successor-prefix"])
+    }
+
+    func test_adjacentStop_cleanSuccessor_isQualifiedWithoutResidueFinding() async throws {
+        let backend = StopResidueBackend(leakIntoSuccessor: false)
+        let service = InferenceService(backend: backend, name: "StopResidueControl")
+        let runner = SessionScriptRunner(service: service)
+        let script = SessionScript(
+            id: "real-stop-clean-control",
+            steps: [.send(text: "first"), .stop, .send(text: "second")]
+        )
+
+        let capture = await runner.execute(script)
+        XCTAssertTrue(backend.didObserveStopWhileGenerating)
+        XCTAssertEqual(capture.steps[1].stopObservation?.qualification, .inFlight)
+        XCTAssertEqual(try XCTUnwrap(capture.steps[2].record).raw, "clean successor")
+        XCTAssertTrue(CancellationRaceDetector().inspect([capture]).isEmpty)
+    }
+
+    func test_adjacentStop_withoutVisibleContent_reportsUnexercisedWindow() async {
+        let (service, mock) = makeService()
+        mock.tokensToYieldPerTurn = [[], ["clean successor"]]
+        let runner = SessionScriptRunner(service: service)
+        let script = SessionScript(
+            id: "no-visible-stop-window",
+            steps: [.send(text: "first"), .stop, .send(text: "second")]
+        )
+
+        let capture = await runner.execute(script)
+        XCTAssertEqual(capture.steps[1].stopObservation?.qualification, .noVisibleContent)
+        XCTAssertEqual(
+            CancellationRaceDetector().inspect([capture]).map(\.subCheck),
+            ["stop-window-unexercised"]
+        )
     }
 
     /// A `.send` step whose generation never completes (a `TokenEmissionGate`

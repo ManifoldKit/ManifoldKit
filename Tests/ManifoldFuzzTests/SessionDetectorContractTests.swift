@@ -64,6 +64,9 @@ private enum SessionFixture {
         id: String,
         turns: [RunRecord],
         stopAfterIndex: Int? = nil,
+        stopQualification: SessionCapture.StopQualification = .inFlight,
+        tailObservedBeforeStopReturned: String? = nil,
+        textObservedAfterStopReturned: String = "",
         systemPrompt: String? = nil,
         sessionLabel: String? = nil
     ) -> SessionCapture {
@@ -84,7 +87,12 @@ private enum SessionFixture {
                     step: .stop,
                     record: nil,
                     timeline: .stopRequested,
-                    elapsedMs: 0
+                    elapsedMs: 0,
+                    stopObservation: .init(
+                        qualification: stopQualification,
+                        tailObservedBeforeStopReturned: tailObservedBeforeStopReturned ?? r.raw,
+                        textObservedAfterStopReturned: textObservedAfterStopReturned
+                    )
                 ))
                 stepIndex += 1
             }
@@ -206,13 +214,9 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
 
     private let detector = CancellationRaceDetector()
 
-    /// Positive: turn 1 streams several tokens; a `.stop` step follows
-    /// (per this detector's contract, `.stop` always lands after turn 1 has
-    /// already finished — see `CancellationRaceDetector`'s doc comment);
-    /// turn 2's raw contains a long contiguous run of turn 1's mid-stream
-    /// tail verbatim — a genuine residue leak, not an incidental shared
-    /// word.
-    func test_positive_midStreamTailLeakFires() {
+    /// Positive: a real in-flight stop observed turn 1 ending in `leakedTail`,
+    /// and turn 2 begins with that exact suffix.
+    func test_positive_stoppedTurnSuffixAtSuccessorPrefixFires() {
         let leakedTail = "the ancient lighthouse cast a long green shadow across the entire harbor at midnight"
         let turn1 = SessionFixture.record(
             raw: "begin " + leakedTail,
@@ -222,7 +226,7 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
             ]
         )
         let turn2 = SessionFixture.record(
-            raw: "Sure, here is something new: " + leakedTail + " and then the story continues."
+            raw: leakedTail + " and then the story continues."
         )
         let capture = SessionFixture.capture(id: "race-pos", turns: [turn1, turn2], stopAfterIndex: 0)
         let findings = detector.inspect([capture])
@@ -260,9 +264,7 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
             events.append((0.1 + Double(i) * 0.05, "token", chunk))
         }
         let turn1 = SessionFixture.record(raw: "begin " + leakedTail, events: events)
-        let turn2 = SessionFixture.record(
-            raw: "Unrelated opener. " + leakedTail + " Unrelated closer."
-        )
+        let turn2 = SessionFixture.record(raw: leakedTail + " Unrelated closer.")
         let capture = SessionFixture.capture(id: "race-multitoken", turns: [turn1, turn2], stopAfterIndex: 0)
         SessionContractAsserter.assertNonEmpty(detector.inspect([capture]), detectorId: detector.id)
     }
@@ -279,21 +281,21 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
         XCTAssertTrue(findings.isEmpty)
     }
 
-    /// Boundary: the shared run between turn 1's mid-stream tail and turn
-    /// 2's raw is exactly `minResidueChars` long (24). The guard is
+    /// Boundary: the suffix/prefix overlap is exactly `minResidueChars` long
+    /// (6). The guard is
     /// `>= minResidueChars` so it MUST fire; ten inspections must return
     /// identical findings.
     func test_boundary_deterministicAtThreshold() {
-        let boundary = "abcdefghijklmnopqrstuvwx" // 24 chars
-        precondition(boundary.count == 24)
+        let boundary = "abcdef" // 6 chars
+        precondition(boundary.count == detector.minResidueChars)
         let turn1 = SessionFixture.record(
-            raw: "hello zzz" + boundary + "qqq",
+            raw: "hello zzz" + boundary,
             events: [
                 (0.0, "token", "hello "),
-                (0.4, "token", "zzz" + boundary + "qqq"),
+                (0.4, "token", "zzz" + boundary),
             ]
         )
-        let turn2 = SessionFixture.record(raw: "www" + boundary + "yyy")
+        let turn2 = SessionFixture.record(raw: boundary + "yyy")
         let capture = SessionFixture.capture(id: "race-boundary", turns: [turn1, turn2], stopAfterIndex: 0)
 
         let first = detector.inspect([capture])
@@ -304,6 +306,38 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
             XCTAssertEqual(firstFP, nextFP, "boundary run \(i) differed")
         }
         XCTAssertFalse(first.isEmpty, "boundary must fire")
+    }
+
+    func test_unexercised_completedBeforeStopIsReportedExplicitly() {
+        let turn1 = SessionFixture.record(raw: "already finished")
+        let turn2 = SessionFixture.record(raw: "clean successor")
+        let capture = SessionFixture.capture(
+            id: "race-unexercised",
+            turns: [turn1, turn2],
+            stopAfterIndex: 0,
+            stopQualification: .completedBeforeStop
+        )
+
+        let findings = detector.inspect([capture])
+        XCTAssertEqual(findings.map(\.subCheck), ["stop-window-unexercised"])
+        XCTAssertTrue(findings[0].trigger.contains("completed before stop"))
+    }
+
+    func test_negative_matchingTextInSuccessorMiddleDoesNotFire() {
+        let residue = " leaked"
+        let turn1 = SessionFixture.record(raw: "old response" + residue)
+        let turn2 = SessionFixture.record(raw: "clean prefix then" + residue)
+        let capture = SessionFixture.capture(id: "race-positional", turns: [turn1, turn2], stopAfterIndex: 0)
+
+        SessionContractAsserter.assertEmpty(detector.inspect([capture]), detectorId: detector.id)
+    }
+
+    func test_negative_qualifiedStopWithCleanSuccessorDoesNotFire() {
+        let turn1 = SessionFixture.record(raw: "old response residue")
+        let turn2 = SessionFixture.record(raw: "clean successor")
+        let capture = SessionFixture.capture(id: "race-clean", turns: [turn1, turn2], stopAfterIndex: 0)
+
+        SessionContractAsserter.assertEmpty(detector.inspect([capture]), detectorId: detector.id)
     }
 
     /// Adversarial: the user intentionally sent the same message twice.
@@ -323,10 +357,8 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
         XCTAssertTrue(detector.inspect([capture]).isEmpty)
     }
 
-    /// Adversarial / the #2361 regression: a `.stop` step exists somewhere
-    /// in the capture (per this detector's contract it never overlaps turn
-    /// 1's — already-completed — stream; see the type's doc comment)
-    /// between two verbose, unrelated turns that legitimately share
+    /// Adversarial / the #2361 regression: a qualified in-flight `.stop`
+    /// exists between two verbose, unrelated turns that legitimately share
     /// ordinary function words ("which", "where", "capital") the way any
     /// two long-form generations will. The pre-fix detector matched on any
     /// single mid-stream token >= 6 chars and fired on these; this is the
@@ -363,9 +395,8 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
     /// comes from the assistant echoing the *user's own prompt* back on
     /// both turns ("The capital of France is Paris." → "The capital of
     /// Germany is Berlin."), not from two independent long-form
-    /// completions. Verified LCS between turn 1's mid-stream tail
-    /// ("capital of France is Paris.") and turn 2's raw is 11 chars
-    /// ("capital of "), comfortably below the 24-char gate. Must NOT fire.
+    /// completions. The repeated "capital of " text is in the middle of both
+    /// replies; turn 2 does not begin with a suffix of turn 1. Must NOT fire.
     func test_adversarial_echoedUserPromptAcrossEditRegenerateDoesNotFire() {
         let turn1 = SessionFixture.record(
             raw: "The capital of France is Paris.",

@@ -116,51 +116,105 @@ public actor SessionScriptRunner {
         var steps: [SessionCapture.StepResult] = []
         let scriptSessionID: UUID = options.requestGroupID ?? UUID()
 
-        for (index, step) in script.steps.enumerated() {
+        var index = 0
+        while index < script.steps.count {
+            let step = script.steps[index]
             let t0 = ContinuousClock.now
             switch step {
             case .send(let text):
                 messages.append(.init(role: "user", text: text))
-                let record = await runTurn(
-                    messages: messages,
-                    systemPrompt: script.systemPrompt,
-                    requestGroupID: scriptSessionID,
-                    stepIndex: index,
-                    step: step
-                )
+                let pairedStop = script.steps.indices.contains(index + 1)
+                    && script.steps[index + 1] == .stop
+                let outcome: TurnOutcome
+                if pairedStop {
+                    outcome = await runTurnPairedWithStop(
+                        messages: messages,
+                        systemPrompt: script.systemPrompt,
+                        requestGroupID: scriptSessionID,
+                        stepIndex: index,
+                        step: step
+                    )
+                } else {
+                    outcome = .init(record: await runTurn(
+                        messages: messages,
+                        systemPrompt: script.systemPrompt,
+                        requestGroupID: scriptSessionID,
+                        stepIndex: index,
+                        step: step
+                    ))
+                }
                 // Append assistant reply (visible raw, even if empty — the
                 // detectors care about the record field directly, but the
                 // message array needs to stay consistent so subsequent
                 // edit/delete indices are stable).
-                messages.append(.init(role: "assistant", text: record.raw))
+                messages.append(.init(role: "assistant", text: outcome.record.raw))
                 steps.append(.init(
                     index: index,
                     step: step,
-                    record: record,
+                    record: outcome.record,
                     timeline: .executed,
                     elapsedMs: elapsedMs(since: t0)
                 ))
+                if let stopObservation = outcome.stopObservation {
+                    steps.append(.init(
+                        index: index + 1,
+                        step: .stop,
+                        record: nil,
+                        timeline: .stopRequested,
+                        elapsedMs: outcome.stopElapsedMs,
+                        stopObservation: stopObservation
+                    ))
+                    index += 2
+                } else {
+                    index += 1
+                }
 
             case .regenerate:
                 // Drop the most recent assistant message (if any) and re-run.
                 if let last = messages.last, last.role == "assistant" {
                     messages.removeLast()
                 }
-                let record = await runTurn(
-                    messages: messages,
-                    systemPrompt: script.systemPrompt,
-                    requestGroupID: scriptSessionID,
-                    stepIndex: index,
-                    step: step
-                )
-                messages.append(.init(role: "assistant", text: record.raw))
+                let pairedStop = script.steps.indices.contains(index + 1)
+                    && script.steps[index + 1] == .stop
+                let outcome: TurnOutcome
+                if pairedStop {
+                    outcome = await runTurnPairedWithStop(
+                        messages: messages,
+                        systemPrompt: script.systemPrompt,
+                        requestGroupID: scriptSessionID,
+                        stepIndex: index,
+                        step: step
+                    )
+                } else {
+                    outcome = .init(record: await runTurn(
+                        messages: messages,
+                        systemPrompt: script.systemPrompt,
+                        requestGroupID: scriptSessionID,
+                        stepIndex: index,
+                        step: step
+                    ))
+                }
+                messages.append(.init(role: "assistant", text: outcome.record.raw))
                 steps.append(.init(
                     index: index,
                     step: step,
-                    record: record,
+                    record: outcome.record,
                     timeline: .executed,
                     elapsedMs: elapsedMs(since: t0)
                 ))
+                if let stopObservation = outcome.stopObservation {
+                    steps.append(.init(
+                        index: index + 1,
+                        step: .stop,
+                        record: nil,
+                        timeline: .stopRequested,
+                        elapsedMs: outcome.stopElapsedMs,
+                        stopObservation: stopObservation
+                    ))
+                    index += 2
+                } else {
+                    index += 1
+                }
 
             case .stop:
                 await MainActor.run { [service] in
@@ -171,8 +225,14 @@ public actor SessionScriptRunner {
                     step: step,
                     record: nil,
                     timeline: .stopRequested,
-                    elapsedMs: elapsedMs(since: t0)
+                    elapsedMs: elapsedMs(since: t0),
+                    stopObservation: .init(
+                        qualification: .notPairedWithTurn,
+                        tailObservedBeforeStopReturned: "",
+                        textObservedAfterStopReturned: ""
+                    )
                 ))
+                index += 1
 
             case .edit(let idx, let newText):
                 if messages.indices.contains(idx) {
@@ -193,6 +253,7 @@ public actor SessionScriptRunner {
                         elapsedMs: elapsedMs(since: t0)
                     ))
                 }
+                index += 1
 
             case .delete(let idx):
                 if messages.indices.contains(idx) {
@@ -213,6 +274,7 @@ public actor SessionScriptRunner {
                         elapsedMs: elapsedMs(since: t0)
                     ))
                 }
+                index += 1
             }
         }
 
@@ -228,7 +290,8 @@ public actor SessionScriptRunner {
         systemPrompt: String?,
         requestGroupID: UUID,
         stepIndex: Int,
-        step: SessionScript.Step
+        step: SessionScript.Step,
+        onVisibleToken: (@Sendable (String) -> Void)? = nil
     ) async -> RunRecord {
         let memBefore = AppMemoryUsage.currentBytes()
         let start = ContinuousClock.now
@@ -302,11 +365,21 @@ public actor SessionScriptRunner {
                 // here would additionally hard-cut a slow-but-continuously-
                 // streaming completion the idle timeout correctly lets
                 // finish.
-                capture = await EventRecorder().consume(stream, maxOutputTokens: maxOutputTokens)
+                capture = await EventRecorder().consume(
+                    stream,
+                    maxOutputTokens: maxOutputTokens,
+                    onVisibleToken: onVisibleToken
+                )
             } else {
                 capture = await GenerationTimeout.run(
                     .seconds(requestTimeout),
-                    operation: { await EventRecorder().consume(stream, maxOutputTokens: maxOutputTokens) },
+                    operation: {
+                        await EventRecorder().consume(
+                            stream,
+                            maxOutputTokens: maxOutputTokens,
+                            onVisibleToken: onVisibleToken
+                        )
+                    },
                     onTimeout: { [self] in
                         // Cancelling the operation task alone does not stop
                         // `InferenceService`'s in-flight generation — the
@@ -393,6 +466,114 @@ public actor SessionScriptRunner {
         )
     }
 
+    /// Runs the existing one-turn path while the immediately following
+    /// `.stop` step overlaps that turn. Waiting for the recorder's first
+    /// visible-token observation proves the stream is active; the MainActor
+    /// check and stop call are one non-suspending block, so a naturally ended
+    /// turn is classified as unqualified instead of silently counting as
+    /// cancellation coverage.
+    private func runTurnPairedWithStop(
+        messages: [ChatMessage],
+        systemPrompt: String?,
+        requestGroupID: UUID,
+        stepIndex: Int,
+        step: SessionScript.Step
+    ) async -> TurnOutcome {
+        let probe = TurnStopProbe()
+
+        return await withTaskGroup(of: RunRecord.self) { group in
+            group.addTask { [self] in
+                let record = await self.runTurn(
+                    messages: messages,
+                    systemPrompt: systemPrompt,
+                    requestGroupID: requestGroupID,
+                    stepIndex: stepIndex,
+                    step: step,
+                    onVisibleToken: { probe.observeVisibleToken($0) }
+                )
+                probe.completeTurn()
+                return record
+            }
+
+            let milestone = await probe.waitForFirstVisibleTokenOrCompletion()
+            let stopStart = ContinuousClock.now
+            let wasInFlight = await MainActor.run { [service] in
+                let active = service.isGenerating
+                service.stopGeneration()
+                return active
+            }
+            probe.markStopReturned(
+                wasInFlight: wasInFlight,
+                sawVisibleToken: milestone == .firstVisibleToken
+            )
+            let stopElapsedMs = elapsedMs(since: stopStart)
+
+            let record = await group.next() ?? Self.cancelledTurnRecord(
+                options: options,
+                seed: seed,
+                harness: harness,
+                stepIndex: stepIndex,
+                step: step
+            )
+            group.cancelAll()
+            return TurnOutcome(
+                record: record,
+                stopObservation: probe.snapshot(),
+                stopElapsedMs: stopElapsedMs
+            )
+        }
+    }
+
+    /// Defensive fallback for parent-task cancellation before the structured
+    /// child can return its record. Normal enqueue failures/timeouts already
+    /// return their own record from ``runTurn`` and never take this path.
+    private static func cancelledTurnRecord(
+        options: Options,
+        seed: UInt64,
+        harness: RunRecord.HarnessSnapshot,
+        stepIndex: Int,
+        step: SessionScript.Step
+    ) -> RunRecord {
+        RunRecord(
+            runId: UUID().uuidString,
+            ts: ISO8601DateFormatter().string(from: Date()),
+            harness: harness,
+            model: .init(
+                backend: options.backendName,
+                id: options.modelId,
+                url: options.modelURL.absoluteString,
+                fileSHA256: nil,
+                tokenizerHash: nil,
+                memoryBudgetBytes: options.memoryBudgetBytes
+            ),
+            config: .init(
+                seed: seed,
+                temperature: options.temperature,
+                topP: options.topP,
+                maxTokens: options.maxOutputTokens,
+                systemPrompt: nil,
+                contextLimit: options.contextLimit
+            ),
+            prompt: .init(
+                corpusId: "session-script/\(step.opName)-\(stepIndex)",
+                mutators: [],
+                messages: []
+            ),
+            events: [],
+            raw: "",
+            rendered: "",
+            thinkingRaw: "",
+            thinkingParts: [],
+            thinkingCompleteCount: 0,
+            templateMarkers: options.templateMarkers,
+            memory: .init(beforeBytes: nil, peakBytes: nil, afterBytes: nil),
+            timing: .init(firstTokenMs: nil, totalMs: 0, tokensPerSec: nil),
+            phase: "failed",
+            error: "session script turn cancelled before capture completed",
+            stopReason: "cancelled"
+        )
+    }
+
     private func tokensPerSec(_ c: EventRecorder.Capture) -> Double? {
         guard let completion = c.completionTokens,
               let firstToken = c.firstTokenMs,
@@ -415,6 +596,116 @@ public actor SessionScriptRunner {
     private nonisolated func elapsedMs(since start: ContinuousClock.Instant) -> Double {
         let comps = start.duration(to: ContinuousClock.now).components
         return Double(comps.seconds) * 1000 + Double(comps.attoseconds) / 1e15
+    }
+}
+
+private struct TurnOutcome: Sendable {
+    let record: RunRecord
+    let stopObservation: SessionCapture.StopObservation?
+    let stopElapsedMs: Double
+
+    init(
+        record: RunRecord,
+        stopObservation: SessionCapture.StopObservation? = nil,
+        stopElapsedMs: Double = 0
+    ) {
+        self.record = record
+        self.stopObservation = stopObservation
+        self.stopElapsedMs = stopElapsedMs
+    }
+}
+
+/// Lock-backed bridge between the runner task issuing `.stop` and the single
+/// `EventRecorder` consumer observing the turn. "After stop" here always means
+/// observed after `InferenceService.stopGeneration()` returned; buffered
+/// stream events may have been emitted by the backend earlier, so the capture
+/// deliberately does not claim backend-emission timing.
+private final class TurnStopProbe: @unchecked Sendable {
+    enum Milestone: Sendable, Equatable {
+        case firstVisibleToken
+        case completedWithoutVisibleToken
+    }
+
+    private static let tailLimit = 1_024
+
+    private let lock = NSLock()
+    private let milestones: AsyncStream<Milestone>
+    private let milestoneContinuation: AsyncStream<Milestone>.Continuation
+    private var sawVisibleToken = false
+    private var stopReturned = false
+    private var qualification: SessionCapture.StopQualification?
+    private var tailObservedBeforeStopReturned = ""
+    private var textObservedAfterStopReturned = ""
+
+    init() {
+        let pair = AsyncStream<Milestone>.makeStream(bufferingPolicy: .unbounded)
+        milestones = pair.stream
+        milestoneContinuation = pair.continuation
+    }
+
+    func waitForFirstVisibleTokenOrCompletion() async -> Milestone? {
+        var iterator = milestones.makeAsyncIterator()
+        return await iterator.next()
+    }
+
+    func observeVisibleToken(_ text: String) {
+        var shouldSignal = false
+        lock.lock()
+        if stopReturned {
+            appendBounded(text, to: &textObservedAfterStopReturned)
+        } else {
+            appendBounded(text, to: &tailObservedBeforeStopReturned)
+        }
+        if !sawVisibleToken {
+            sawVisibleToken = true
+            shouldSignal = true
+        }
+        lock.unlock()
+
+        if shouldSignal {
+            milestoneContinuation.yield(.firstVisibleToken)
+        }
+    }
+
+    func completeTurn() {
+        lock.lock()
+        let shouldSignalCompletion = !sawVisibleToken
+        lock.unlock()
+
+        if shouldSignalCompletion {
+            milestoneContinuation.yield(.completedWithoutVisibleToken)
+        }
+        milestoneContinuation.finish()
+    }
+
+    func markStopReturned(wasInFlight: Bool, sawVisibleToken: Bool) {
+        lock.lock()
+        stopReturned = true
+        if !sawVisibleToken {
+            qualification = .noVisibleContent
+        } else if wasInFlight {
+            qualification = .inFlight
+        } else {
+            qualification = .completedBeforeStop
+        }
+        lock.unlock()
+    }
+
+    func snapshot() -> SessionCapture.StopObservation {
+        lock.lock()
+        defer { lock.unlock() }
+        return .init(
+            qualification: qualification ?? .cancelledBeforeObservation,
+            tailObservedBeforeStopReturned: tailObservedBeforeStopReturned,
+            textObservedAfterStopReturned: textObservedAfterStopReturned
+        )
+    }
+
+    private func appendBounded(_ text: String, to buffer: inout String) {
+        buffer += text
+        if buffer.count > Self.tailLimit {
+            buffer.removeFirst(buffer.count - Self.tailLimit)
+        }
     }
 }
 
@@ -482,6 +773,7 @@ public struct SessionCapture: Sendable {
         public let record: RunRecord?
         public let timeline: TimelineEvent
         public let elapsedMs: Double
+        let stopObservation: StopObservation?
 
         public init(
             index: Int,
@@ -495,7 +787,38 @@ public struct SessionCapture: Sendable {
             self.record = record
             self.timeline = timeline
             self.elapsedMs = elapsedMs
+            self.stopObservation = nil
         }
+
+        init(
+            index: Int,
+            step: SessionScript.Step,
+            record: RunRecord?,
+            timeline: TimelineEvent,
+            elapsedMs: Double,
+            stopObservation: StopObservation
+        ) {
+            self.index = index
+            self.step = step
+            self.record = record
+            self.timeline = timeline
+            self.elapsedMs = elapsedMs
+            self.stopObservation = stopObservation
+        }
+    }
+
+    enum StopQualification: Sendable, Equatable {
+        case inFlight
+        case completedBeforeStop
+        case noVisibleContent
+        case notPairedWithTurn
+        case cancelledBeforeObservation
+    }
+
+    struct StopObservation: Sendable, Equatable {
+        let qualification: StopQualification
+        let tailObservedBeforeStopReturned: String
+        let textObservedAfterStopReturned: String
     }
 
     /// Compact queue-timeline classification for a script step. Detectors
