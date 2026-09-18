@@ -782,7 +782,9 @@ final class GenerationQueue {
         // NOT supply an explicit grammar. An explicit caller grammar always
         // wins — we never overwrite a host-authored string. The derived grammar
         // pins the emitted tool-call envelope's `"name"` to the enum of the
-        // supplied tool names so the model can't drift off-format.
+        // supplied tool names so the model can't drift off-format. An explicit
+        // non-JSON tool dialect declines this JSON grammar; otherwise it would
+        // contradict the model's prompt template and suppress valid calls.
         //
         // Injection is `toolChoice`-aware (#1961). A tool-call-only union forces
         // a structured call (every branch begins with `{`), which is correct for
@@ -815,7 +817,11 @@ final class GenerationQueue {
                 mode = .permissive
             }
             if let mode,
-               let derived = ToolGrammarBuilder().buildGrammar(for: config.tools, mode: mode) {
+               let derived = ToolGrammarBuilder().buildGrammar(
+                   for: config.tools,
+                   mode: mode,
+                   dialect: backend.capabilities.toolDialect
+               ) {
                 config.grammar = derived
             }
         }

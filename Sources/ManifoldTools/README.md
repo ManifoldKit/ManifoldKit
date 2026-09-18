@@ -19,7 +19,12 @@ swift run --disable-default-traits manifold-tools --backend ollama --scenario 02
     --ollama-base-url http://localhost:11434 --model llama3.1:8b
 ```
 
-Every run writes a transcript to `tmp/manifold-tools/<ISO timestamp>.jsonl` with one JSON row per event (`prompt`, `tool_call`, `tool_result`, `token_delta`, `final`, `assertion`).
+Every run writes a transcript to `tmp/manifold-tools/<ISO timestamp>.jsonl` with one JSON row per event (`prompt`, `tool_call`, `tool_result`, `token_delta`, `final`, `assertion`). Failures that previously looked like a clean no-call are separate diagnostic rows: `tool_call_parse_failed`, `tool_call_truncated`, `throttle_diagnostic`, `tool_iteration_limit_exceeded`, and `run_token_budget_exceeded`.
+
+Tool parse/truncation rows carry `scenario`, `turn`, the original UTF-8 byte
+count, and a `rawBodyPrefix` capped at 4,096 UTF-8 bytes. The
+`rawBodyTruncated` flag distinguishes a complete short body from a bounded
+prefix, keeping malformed model output inspectable without unbounded JSONL.
 
 Exit codes:
 
