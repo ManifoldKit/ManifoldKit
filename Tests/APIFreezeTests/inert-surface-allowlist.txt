@@ -105,6 +105,7 @@ MCPNetworkPathObserver  # reason: experimental (ManifoldMCP) — MCP client seam
 MCPOAuthRedirectListener  # reason: experimental (ManifoldMCP) — MCP client seam; conformers/consumers are hosts or not-yet-built.
 MCPSessionLifecyclePolicy  # reason: experimental (ManifoldMCP) — MCP client seam; conformers/consumers are hosts or not-yet-built.
 MCPTransportKind  # reason: experimental (ManifoldMCP) — MCP client seam; conformers/consumers are hosts or not-yet-built.
+ManifoldBootstrapError  # reason: host-facing error — thrown by public bootstrap entry points; downstream apps distinguish overlapping construction from configuration replacement.
 ManifoldCapability  # reason: host-facing introspection — FeatureMatrix capability enum a host queries; no in-repo reader by design.
 ManifoldIntentConfiguration  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
 ManifoldMCPHost  # reason: experimental (ManifoldMCPHost) — runtime-backed MCP server surface; host-consumed.

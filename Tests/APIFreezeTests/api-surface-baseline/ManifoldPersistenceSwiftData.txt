@@ -60,6 +60,12 @@ ManifoldBootstrap.videoGenerationService Var
 ManifoldBootstrap.videoRuntime Var
 ManifoldBootstrap.webSearchRuntime Var
 ManifoldBootstrap.webSearchRuntimePort Var
+ManifoldBootstrapError Enum
+ManifoldBootstrapError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
+ManifoldBootstrapError.__derived_enum_equals(_:_:) Func
+ManifoldBootstrapError.configurationChanged EnumElement
+ManifoldBootstrapError.constructionInProgress EnumElement
+ManifoldBootstrapError.errorDescription Var
 ManifoldMigrationPlan Enum
 ManifoldMigrationPlan conformances: Copyable,Escapable,SchemaMigrationPlan,SendableMetatype
 ManifoldMigrationPlan.schemas Var

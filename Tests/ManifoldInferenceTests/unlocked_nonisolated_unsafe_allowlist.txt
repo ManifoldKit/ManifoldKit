@@ -102,10 +102,3 @@ ManifoldHuggingFace/PendingDownloadStore.swift:private nonisolated(unsafe) stati
 # (mirrors `CloudImageEncoding._encodeHook`, same as URLSessionProvider's
 # fix) and no longer appears in Sources/ as an unlocked `nonisolated(unsafe)`
 # declaration, so it drops out of this allowlist entirely.
-
-# Documented as protected by the caller's synchronisation guarantees:
-# ManifoldConfiguration's `shared` setter (which updates this) is itself
-# guarded by an OSAllocatedUnfairLock, and tests set it synchronously before
-# any KeychainService call (see the doc comment above this declaration in
-# the source file).
-ManifoldSecrets/KeychainService.swift:nonisolated(unsafe) package static var serviceNameProvider: @Sendable () -> String = {
