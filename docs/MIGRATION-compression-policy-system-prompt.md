@@ -79,3 +79,12 @@ compensate for the missing parameter, remove that padding now that the real
 `DefaultCompressionPolicy`, `ContextWindowPreTurnCompressionPolicy`, and
 `FixedCountPreTurnCompressionPolicy` (ManifoldAppEval) are already updated;
 no action needed if you only use those.
+
+When `DefaultCompressionPolicy` is installed on `ConversationRuntime`, the
+runtime resolves the active backend's context window and tokenizer together on
+every compression pass. Switching models updates both trigger and output
+budgeting without rebuilding the policy. A backend that does not vend a
+tokenizer uses the chars/4 heuristic for that pass; the runtime does not retain
+the previous model's tokenizer. Direct calls to `DefaultCompressionPolicy`
+still use the `contextSize` and `tokenizer` supplied to its factory because no
+runtime-owned active model is available on that path.

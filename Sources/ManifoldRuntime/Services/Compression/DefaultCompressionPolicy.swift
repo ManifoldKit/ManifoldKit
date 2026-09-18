@@ -51,17 +51,19 @@ import ManifoldInference
 /// shrink `reservedTokens`** to response-only headroom. Keeping the inflated
 /// reservation while also subtracting `systemPrompt` double-counts.
 ///
-/// ### Residual: construction-time tokenizer / model swap
+/// ### Active-model budget resolution
 ///
-/// The tokenizer stays **construction-injected** (pass a real `tokenizer:` to
-/// the factories for a guaranteed budget); there is no call-time tokenizer
-/// override. With `tokenizer: nil` the whole budget, system prompt included,
-/// is **advisory** (a chars/4 heuristic that can diverge from the backend's
-/// real token count that drives the trigger). The same hole applies on
-/// **model swap**: a `DefaultCompressionPolicy` built against backend A's
-/// tokenizer keeps that tokenizer after the host switches to backend B —
-/// rebuild the policy (or accept advisory chars/4) when the active model's
-/// tokenizer changes.
+/// When this policy is installed on ``ConversationRuntime``, each compression
+/// pass uses one coherent snapshot of the active backend's context window and
+/// tokenizer. A supported model switch therefore changes both the trigger
+/// capacity and the output budget without reconstructing the runtime or policy.
+/// If the active backend does not vend a tokenizer, that pass uses the chars/4
+/// heuristic; it never reuses the previous model's tokenizer.
+///
+/// Direct calls to `compress` / `compressBeforeTurn` have no runtime from which
+/// to resolve an active model, so they continue to use the factory's
+/// construction-injected `contextSize` and `tokenizer` values. With a nil
+/// construction tokenizer, direct-call budgeting is advisory (chars/4).
 ///
 /// ## Trigger asymmetry
 ///
@@ -298,6 +300,44 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
         systemPrompt: String?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage] {
+        try await compress(
+            history: history,
+            sessionID: sessionID,
+            systemPrompt: systemPrompt,
+            contextSize: contextSize,
+            tokenizer: tokenizer,
+            generate: generate
+        )
+    }
+
+    /// Runtime-owned compression path. The coordinator resolves one active
+    /// model snapshot and passes that same capacity/tokenizer pair through the
+    /// whole pass so a switch cannot mix inputs from two backends.
+    package func compress(
+        history: [ChatMessage],
+        sessionID: UUID,
+        systemPrompt: String?,
+        activeModelBudget: ActiveModelCompressionBudget,
+        generate: @Sendable ([ChatMessage]) async throws -> String
+    ) async throws -> [ChatMessage] {
+        try await compress(
+            history: history,
+            sessionID: sessionID,
+            systemPrompt: systemPrompt,
+            contextSize: activeModelBudget.contextSize,
+            tokenizer: activeModelBudget.tokenizer,
+            generate: generate
+        )
+    }
+
+    private func compress(
+        history: [ChatMessage],
+        sessionID: UUID,
+        systemPrompt: String?,
+        contextSize: Int,
+        tokenizer: (any TokenizerProvider)?,
+        generate: @Sendable ([ChatMessage]) async throws -> String
+    ) async throws -> [ChatMessage] {
         // Guard the degenerate window: if the reservation (response headroom
         // + the REAL system-prompt cost, #1957) meets or exceeds the context
         // the history budget is zero, and every pass would report "over
@@ -327,6 +367,15 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
         return Double(promptTokens) / Double(contextSize) >= threshold
     }
 
+    package func shouldCompressBeforeTurn(
+        messageCount: Int,
+        lastPromptTokens: Int?,
+        activeModelBudget: ActiveModelCompressionBudget
+    ) -> Bool {
+        guard activeModelBudget.contextSize > 0, let promptTokens = lastPromptTokens else { return false }
+        return Double(promptTokens) / Double(activeModelBudget.contextSize) >= threshold
+    }
+
     public func compressBeforeTurn(
         history: [ChatMessage],
         sessionID: UUID,
@@ -334,5 +383,21 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage] {
         try await compress(history: history, sessionID: sessionID, systemPrompt: systemPrompt, generate: generate)
+    }
+
+    package func compressBeforeTurn(
+        history: [ChatMessage],
+        sessionID: UUID,
+        systemPrompt: String?,
+        activeModelBudget: ActiveModelCompressionBudget,
+        generate: @Sendable ([ChatMessage]) async throws -> String
+    ) async throws -> [ChatMessage] {
+        try await compress(
+            history: history,
+            sessionID: sessionID,
+            systemPrompt: systemPrompt,
+            activeModelBudget: activeModelBudget,
+            generate: generate
+        )
     }
 }
