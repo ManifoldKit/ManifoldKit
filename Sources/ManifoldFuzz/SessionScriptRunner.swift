@@ -87,6 +87,7 @@ public actor SessionScriptRunner {
     private let options: Options
     private let seed: UInt64
     private let harness: RunRecord.HarnessSnapshot
+    private let beforeEnqueue: (@Sendable () async -> Void)?
 
     public init(
         service: InferenceService,
@@ -98,6 +99,21 @@ public actor SessionScriptRunner {
         self.options = options
         self.seed = seed
         self.harness = harness ?? Self.defaultHarness()
+        self.beforeEnqueue = nil
+    }
+
+    init(
+        service: InferenceService,
+        options: Options = .init(),
+        seed: UInt64 = 0,
+        harness: RunRecord.HarnessSnapshot? = nil,
+        beforeEnqueue: @escaping @Sendable () async -> Void
+    ) {
+        self.service = service
+        self.options = options
+        self.seed = seed
+        self.harness = harness ?? Self.defaultHarness()
+        self.beforeEnqueue = beforeEnqueue
     }
 
     private static func defaultHarness() -> RunRecord.HarnessSnapshot {
@@ -303,8 +319,15 @@ public actor SessionScriptRunner {
         let estimatedPromptTokens = ContextWindowManager.estimateTokenCount(systemPrompt ?? "")
             + tuples.reduce(0) { $0 + ContextWindowManager.estimateTokenCount($1.content) }
 
+        if let beforeEnqueue {
+            await beforeEnqueue()
+        }
+
         // Enqueue on MainActor (InferenceService is MainActor-isolated).
         let enqueueResult: Result<(GenerationRequestToken, GenerationStream), Error> = await MainActor.run { [service, options] in
+            guard !Task.isCancelled else {
+                return .failure(CancellationError())
+            }
             do {
                 let messageValues: [Message] = tuples.map { tuple in
                     switch tuple.role {
@@ -496,16 +519,23 @@ public actor SessionScriptRunner {
             }
 
             let milestone = await probe.waitForFirstVisibleTokenOrCompletion()
+            if milestone == nil {
+                // A cancelled parent propagates to the structured child before
+                // the MainActor stop. The enqueue closure checks that inherited
+                // cancellation immediately before creating a request, so the
+                // ordering is safe in both directions: an existing request is
+                // stopped, while a not-yet-created request cannot appear later.
+                group.cancelAll()
+            }
             let stopStart = ContinuousClock.now
-            let wasInFlight = await MainActor.run { [service] in
+            await MainActor.run { [service] in
                 let active = service.isGenerating
                 service.stopGeneration()
-                return active
+                probe.markStopReturned(
+                    wasInFlight: active,
+                    milestone: milestone
+                )
             }
-            probe.markStopReturned(
-                wasInFlight: wasInFlight,
-                sawVisibleToken: milestone == .firstVisibleToken
-            )
             let stopElapsedMs = elapsedMs(since: stopStart)
 
             let record = await group.next() ?? Self.cancelledTurnRecord(
@@ -678,10 +708,12 @@ private final class TurnStopProbe: @unchecked Sendable {
         milestoneContinuation.finish()
     }
 
-    func markStopReturned(wasInFlight: Bool, sawVisibleToken: Bool) {
+    func markStopReturned(wasInFlight: Bool, milestone: Milestone?) {
         lock.lock()
         stopReturned = true
-        if !sawVisibleToken {
+        if milestone == nil {
+            qualification = .cancelledBeforeObservation
+        } else if milestone == .completedWithoutVisibleToken {
             qualification = .noVisibleContent
         } else if wasInFlight {
             qualification = .inFlight
@@ -807,7 +839,7 @@ public struct SessionCapture: Sendable {
         }
     }
 
-    enum StopQualification: Sendable, Equatable {
+    enum StopQualification: String, Codable, Sendable, Equatable {
         case inFlight
         case completedBeforeStop
         case noVisibleContent
@@ -815,7 +847,7 @@ public struct SessionCapture: Sendable {
         case cancelledBeforeObservation
     }
 
-    struct StopObservation: Sendable, Equatable {
+    struct StopObservation: Codable, Sendable, Equatable {
         let qualification: StopQualification
         let tailObservedBeforeStopReturned: String
         let textObservedAfterStopReturned: String
@@ -824,11 +856,71 @@ public struct SessionCapture: Sendable {
     /// Compact queue-timeline classification for a script step. Detectors
     /// read this to disambiguate (e.g., `stopRequested` before turn-2 is the
     /// signal for ``CancellationRaceDetector``).
-    public enum TimelineEvent: String, Sendable {
+    public enum TimelineEvent: String, Codable, Sendable {
         case executed           // send/regenerate completed via enqueue
         case stopRequested      // stop step fired stopGeneration
         case edited             // edit mutated the message array
         case deleted            // delete mutated the message array
         case indexOutOfRange    // edit/delete with an invalid index
+    }
+}
+
+/// Codable form of a multi-turn capture embedded in `record.json`. Step
+/// records are the original per-turn records and therefore have no nested
+/// session snapshot; only the representative top-level record receives this
+/// value before the sink writes it.
+struct SessionCaptureSnapshot: Codable, Sendable, Equatable {
+    struct StepSnapshot: Codable, Sendable, Equatable {
+        let index: Int
+        let step: SessionScript.Step
+        let record: RunRecord?
+        let timeline: SessionCapture.TimelineEvent
+        let elapsedMs: Double
+        let stopObservation: SessionCapture.StopObservation?
+    }
+
+    let script: SessionScript
+    let sessionID: UUID
+    let steps: [StepSnapshot]
+
+    init(_ capture: SessionCapture) {
+        script = capture.script
+        sessionID = capture.sessionID
+        steps = capture.steps.map {
+            StepSnapshot(
+                index: $0.index,
+                step: $0.step,
+                record: $0.record,
+                timeline: $0.timeline,
+                elapsedMs: $0.elapsedMs,
+                stopObservation: $0.stopObservation
+            )
+        }
+    }
+
+    func capture() -> SessionCapture {
+        SessionCapture(
+            script: script,
+            sessionID: sessionID,
+            steps: steps.map { snapshot in
+                if let stopObservation = snapshot.stopObservation {
+                    return SessionCapture.StepResult(
+                        index: snapshot.index,
+                        step: snapshot.step,
+                        record: snapshot.record,
+                        timeline: snapshot.timeline,
+                        elapsedMs: snapshot.elapsedMs,
+                        stopObservation: stopObservation
+                    )
+                }
+                return SessionCapture.StepResult(
+                    index: snapshot.index,
+                    step: snapshot.step,
+                    record: snapshot.record,
+                    timeline: snapshot.timeline,
+                    elapsedMs: snapshot.elapsedMs
+                )
+            }
+        )
     }
 }

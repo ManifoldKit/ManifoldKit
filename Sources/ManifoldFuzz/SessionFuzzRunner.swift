@@ -157,7 +157,8 @@ public actor SessionFuzzRunner {
                 // Record one representative record per finding. Prefer the
                 // last executed turn so detectors that fire on cross-turn
                 // state still get a record.json to repro against.
-                let representative = capture.turnRecords.last ?? fallbackRecord(for: capture, handle: handle)
+                var representative = capture.turnRecords.last ?? fallbackRecord(for: capture, handle: handle)
+                representative.sessionCapture = SessionCaptureSnapshot(capture)
                 await sink.recordRun(representative, findings: iterationFindings)
             }
         }

@@ -215,7 +215,9 @@ public struct EventRecorder: Sendable {
                     raw += text
                     growHead(&rawHead, appending: text, cap: Self.headPreserveCharacters)
                     events.append(.init(t: t, kind: "token", v: text))
-                    onVisibleToken?(text)
+                    if !text.isEmpty {
+                        onVisibleToken?(text)
+                    }
                 case .thinkingToken(let text):
                     if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                     thinkingRaw += text

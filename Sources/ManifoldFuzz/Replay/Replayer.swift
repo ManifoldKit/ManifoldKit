@@ -133,16 +133,12 @@ public struct Replayer: Sendable {
             )
         }
 
-        // 5. Run the recorded prompt attempts times.
-        let handle = try await factory.makeHandle()
-
-        var successes = 0
-        for _ in 0..<attempts {
-            let replayRecord = await runOnce(handle: handle, record: record)
-            if findingHashReproduced(originalHash: hash, record: replayRecord) {
-                successes += 1
-            }
-        }
+        // 5. Run the recorded prompt or session script `attempts` times.
+        let successes = try await reproductionCount(
+            record: record,
+            originalHash: hash,
+            attempts: attempts
+        )
 
         let rate = attempts > 0 ? Double(successes) / Double(attempts) : 0
         let threshold = Self.promotionThreshold(attempts: attempts)
@@ -185,15 +181,11 @@ public struct Replayer: Sendable {
         originalHash: String,
         attempts: Int
     ) async throws -> Int {
-        let handle = try await factory.makeHandle()
-        var successes = 0
-        for _ in 0..<attempts {
-            let replayRecord = await runOnce(handle: handle, record: record)
-            if findingHashReproduced(originalHash: originalHash, record: replayRecord) {
-                successes += 1
-            }
-        }
-        return successes
+        try await reproductionCount(
+            record: record,
+            originalHash: originalHash,
+            attempts: attempts
+        )
     }
 
     /// Loads + decodes the record for a hash. Public so `Shrinker` can materialise
@@ -424,12 +416,93 @@ public struct Replayer: Sendable {
         )
     }
 
+    /// Replays the original declarative session through the same runner that
+    /// captured it. This keeps companion `--replay` callers on their existing
+    /// API while restoring the cross-turn evidence a single representative
+    /// `RunRecord` cannot express.
+    private func runSessionOnce(
+        handle: FuzzRunner.BackendHandle,
+        record: RunRecord,
+        script: SessionScript
+    ) async -> SessionCapture {
+        let service = await MainActor.run {
+            SessionFuzzRunner.defaultServiceFactory(handle.backend, handle.backendName)
+        }
+        let runner = SessionScriptRunner(
+            service: service,
+            options: .init(
+                modelId: handle.modelId,
+                modelURL: handle.modelURL,
+                backendName: handle.backendName,
+                templateMarkers: handle.templateMarkers,
+                temperature: record.config.temperature,
+                topP: record.config.topP,
+                maxOutputTokens: record.config.maxTokens,
+                contextLimit: record.config.contextLimit,
+                memoryBudgetBytes: record.model.memoryBudgetBytes
+            ),
+            seed: record.config.seed
+        )
+        return await runner.execute(script)
+    }
+
+    private func reproductionCount(
+        record: RunRecord,
+        originalHash: String,
+        attempts: Int
+    ) async throws -> Int {
+        if let session = record.sessionCapture {
+            var successes = 0
+            for _ in 0..<attempts {
+                // Session replay needs fresh cross-turn state each attempt,
+                // matching SessionFuzzRunner's per-iteration handle lifecycle.
+                let handle = try await factory.makeHandle()
+                let replayCapture = await runSessionOnce(
+                    handle: handle,
+                    record: record,
+                    script: session.script
+                )
+                if findingHashReproduced(originalHash: originalHash, capture: replayCapture) {
+                    successes += 1
+                }
+            }
+            return successes
+        }
+
+        // Preserve the established single-turn behavior: one loaded handle is
+        // reused across attempts.
+        let handle = try await factory.makeHandle()
+        var successes = 0
+        for _ in 0..<attempts {
+            let replayRecord = await runOnce(handle: handle, record: record)
+            if findingHashReproduced(originalHash: originalHash, record: replayRecord) {
+                successes += 1
+            }
+        }
+        return successes
+    }
+
     /// Re-runs every detector against the new record and returns true if any
     /// emitted Finding shares the hash we were trying to reproduce.
     private func findingHashReproduced(originalHash: String, record: RunRecord) -> Bool {
         for detector in detectors {
             for finding in detector.inspect(record) {
                 if finding.hash == originalHash { return true }
+            }
+        }
+        return false
+    }
+
+    private func findingHashReproduced(originalHash: String, capture: SessionCapture) -> Bool {
+        for record in capture.turnRecords where findingHashReproduced(
+            originalHash: originalHash,
+            record: record
+        ) {
+            return true
+        }
+        for detector in SessionDetectorRegistry.all {
+            for finding in detector.inspect([capture]) where finding.hash == originalHash {
+                return true
             }
         }
         return false

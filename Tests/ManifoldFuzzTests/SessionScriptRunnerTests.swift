@@ -3,7 +3,7 @@ import XCTest
 import ManifoldInference
 import ManifoldTestSupport
 
-private final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
+final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
     private struct State {
         var isModelLoaded = true
         var isGenerating = false
@@ -12,6 +12,8 @@ private final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
         var leakIntoSuccessor: Bool
         var shouldPrefixResidue = false
         var stopObservedWhileGenerating = false
+        var generateCallCount = 0
+        var stopCallCount = 0
     }
 
     let capabilities = BackendCapabilities(
@@ -24,9 +26,14 @@ private final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
     private let lock = NSLock()
     private var state: State
     private let residue = " residue"
+    private let firstTurnTokens: [String]
 
-    init(leakIntoSuccessor: Bool) {
+    init(
+        leakIntoSuccessor: Bool,
+        firstTurnTokens: [String] = ["old response residue"]
+    ) {
         state = State(leakIntoSuccessor: leakIntoSuccessor)
+        self.firstTurnTokens = firstTurnTokens
     }
 
     var isModelLoaded: Bool {
@@ -47,6 +54,9 @@ private final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
         return state.stopObservedWhileGenerating
     }
 
+    var generateCallCount: Int { lock.withLock { state.generateCallCount } }
+    var stopCallCount: Int { lock.withLock { state.stopCallCount } }
+
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
         lock.withLock {
             state.isModelLoaded = true
@@ -62,6 +72,7 @@ private final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
         lock.lock()
         let turn = state.turn
         state.turn += 1
+        state.generateCallCount += 1
         state.isGenerating = true
         let prefixResidue = state.shouldPrefixResidue
         state.shouldPrefixResidue = false
@@ -75,7 +86,9 @@ private final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
             if turn == 0 {
                 // The stream deliberately remains open after its first token.
                 // Only a real stop can finish this turn and admit turn 2.
-                continuation.yield(.token("old response" + residue))
+                for token in firstTurnTokens {
+                    continuation.yield(.token(token))
+                }
             } else {
                 continuation.yield(.token(prefixResidue ? residue + " successor" : "clean successor"))
                 lock.lock()
@@ -90,6 +103,7 @@ private final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
     func stopGeneration() {
         lock.lock()
         let wasGenerating = state.isGenerating
+        state.stopCallCount += 1
         state.stopObservedWhileGenerating = wasGenerating
         if wasGenerating && state.leakIntoSuccessor {
             state.shouldPrefixResidue = true
@@ -106,6 +120,34 @@ private final class StopResidueBackend: InferenceBackend, @unchecked Sendable {
         lock.lock()
         state.isModelLoaded = false
         lock.unlock()
+    }
+}
+
+private actor EnqueueBarrier {
+    private var entered = false
+    private var released = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        entered = true
+        let waitingForEntry = entryWaiters
+        entryWaiters.removeAll()
+        for waiter in waitingForEntry { waiter.resume() }
+        guard !released else { return }
+        await withCheckedContinuation { releaseWaiters.append($0) }
+    }
+
+    func waitUntilEntered() async {
+        guard !entered else { return }
+        await withCheckedContinuation { entryWaiters.append($0) }
+    }
+
+    func release() {
+        released = true
+        let waiting = releaseWaiters
+        releaseWaiters.removeAll()
+        for waiter in waiting { waiter.resume() }
     }
 }
 
@@ -162,7 +204,7 @@ final class SessionScriptRunnerTests: XCTestCase {
     func test_adjacentStop_overlapsActiveTurn_andDetectsSuccessorPrefixResidue() async throws {
         let backend = StopResidueBackend(leakIntoSuccessor: true)
         let service = InferenceService(backend: backend, name: "StopResidueTest")
-        let runner = SessionScriptRunner(service: service)
+        let runner = SessionScriptRunner(service: service, options: .init(requestTimeout: 0.2))
         let script = SessionScript(
             id: "real-stop-residue",
             steps: [.send(text: "first"), .stop, .send(text: "second")]
@@ -216,6 +258,77 @@ final class SessionScriptRunnerTests: XCTestCase {
             CancellationRaceDetector().inspect([capture]).map(\.subCheck),
             ["stop-window-unexercised"]
         )
+    }
+
+    func test_adjacentStop_emptyTokensNeverQualifyVisibleWindow() async {
+        let backend = StopResidueBackend(
+            leakIntoSuccessor: false,
+            firstTurnTokens: ["", ""]
+        )
+        let service = InferenceService(backend: backend, name: "EmptyTokenStopWindow")
+        let runner = SessionScriptRunner(
+            service: service,
+            options: .init(requestTimeout: 0.2)
+        )
+        let capture = await runner.execute(.init(
+            id: "empty-token-stop-window",
+            steps: [.send(text: "first"), .stop, .send(text: "second")]
+        ))
+
+        XCTAssertEqual(capture.steps[1].stopObservation?.qualification, .noVisibleContent)
+        XCTAssertGreaterThanOrEqual(backend.stopCallCount, 1, "timeout cleanup must close the empty-token stream")
+        XCTAssertEqual(
+            CancellationRaceDetector().inspect([capture]).map(\.subCheck),
+            ["stop-window-unexercised"]
+        )
+    }
+
+    func test_preCancelledExecute_neverCreatesRequest_andReportsInterruptedWindow() async throws {
+        let backend = StopResidueBackend(leakIntoSuccessor: false)
+        let service = InferenceService(backend: backend, name: "PreCancelledStopWindow")
+        let runner = SessionScriptRunner(service: service, options: .init(requestTimeout: 0.2))
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await runner.execute(.init(
+                id: "pre-cancelled-stop-window",
+                steps: [.send(text: "first"), .stop]
+            ))
+        }
+
+        let capture = await task.value
+        XCTAssertEqual(capture.steps[1].stopObservation?.qualification, .cancelledBeforeObservation)
+        XCTAssertEqual(backend.generateCallCount, 0)
+        XCTAssertGreaterThanOrEqual(backend.stopCallCount, 1)
+        XCTAssertFalse(backend.isGenerating)
+    }
+
+    func test_cancelWhileChildWaitsBeforeEnqueue_cannotLeaveLaterGenerationActive() async {
+        let backend = StopResidueBackend(leakIntoSuccessor: false)
+        let service = InferenceService(backend: backend, name: "EnqueueBarrierStopWindow")
+        let barrier = EnqueueBarrier()
+        let runner = SessionScriptRunner(
+            service: service,
+            options: .init(requestTimeout: 0.2),
+            beforeEnqueue: {
+                await barrier.wait()
+            }
+        )
+        let task = Task {
+            await runner.execute(.init(
+                id: "cancel-before-enqueue",
+                steps: [.send(text: "first"), .stop]
+            ))
+        }
+
+        await barrier.waitUntilEntered()
+        task.cancel()
+        await barrier.release()
+        let capture = await task.value
+
+        XCTAssertEqual(capture.steps[1].stopObservation?.qualification, .cancelledBeforeObservation)
+        XCTAssertEqual(backend.generateCallCount, 0, "a child released after cleanup must not enqueue late")
+        XCTAssertGreaterThanOrEqual(backend.stopCallCount, 1, "parent cancellation still executes backend cleanup")
+        XCTAssertFalse(backend.isGenerating)
     }
 
     /// A `.send` step whose generation never completes (a `TokenEmissionGate`

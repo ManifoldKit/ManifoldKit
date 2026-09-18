@@ -51,6 +51,18 @@ final class ReplayTests: XCTestCase {
         }
     }
 
+    struct StopResidueFactory: FuzzBackendFactory {
+        func makeHandle() async throws -> FuzzRunner.BackendHandle {
+            FuzzRunner.BackendHandle(
+                backend: StopResidueBackend(leakIntoSuccessor: true),
+                modelId: "stop-residue-model",
+                modelURL: URL(string: "mem:stop-residue-model")!,
+                backendName: "mock",
+                templateMarkers: nil
+            )
+        }
+    }
+
     private var tempDir: URL!
 
     override func setUpWithError() throws {
@@ -285,6 +297,69 @@ final class ReplayTests: XCTestCase {
         XCTAssertEqual(result.attempts, 3)
         XCTAssertEqual(result.successfulReproductions, 3, "deterministic MockInferenceBackend must reproduce 3/3")
         XCTAssertEqual(result.reproduceRate, 1.0, accuracy: 1e-9)
+    }
+
+    func test_sessionFinding_roundTripsThroughSinkAndReplaysOriginalScript() async throws {
+        let factory = StopResidueFactory()
+        let script = SessionScript(
+            id: "persisted-stop-residue",
+            steps: [.send(text: "first"), .stop, .send(text: "second")]
+        )
+        let runner = SessionFuzzRunner(
+            config: .init(
+                backend: .mock,
+                iterations: 1,
+                seed: 42,
+                detectorFilter: ["cancellation-race"],
+                outputDir: tempDir,
+                quiet: true,
+                sessionScripts: true,
+                requestTimeout: 1
+            ),
+            factory: factory,
+            scripts: [script]
+        )
+        let report = await runner.run(reporter: TerminalReporter(quiet: true))
+        let finding = try XCTUnwrap(report.findings.first(where: {
+            $0.subCheck == "stopped-turn-tail-at-successor-prefix"
+        }))
+
+        let loader = Replayer(
+            findingsRoot: tempDir,
+            factory: factory,
+            gitRevResolver: { "unused-for-load" },
+            modelHashResolver: { _ in nil }
+        )
+        let decoded = try XCTUnwrap(loader.loadRecord(hash: finding.hash))
+        let decodedSession = try XCTUnwrap(decoded.sessionCapture)
+        XCTAssertEqual(decodedSession.script, script)
+        XCTAssertEqual(decodedSession.steps.count, script.steps.count)
+        XCTAssertEqual(
+            decodedSession.steps[1].stopObservation?.qualification,
+            .inFlight
+        )
+        XCTAssertTrue(
+            decodedSession.steps[1].stopObservation?
+                .tailObservedBeforeStopReturned.hasSuffix(" residue") == true
+        )
+        XCTAssertEqual(
+            CancellationRaceDetector().inspect([decodedSession.capture()]).map(\.hash),
+            [finding.hash]
+        )
+
+        let recordedGitRev = decoded.harness.packageGitRev
+        let replayer = Replayer(
+            findingsRoot: tempDir,
+            factory: factory,
+            gitRevResolver: { recordedGitRev },
+            modelHashResolver: { _ in nil }
+        )
+        let outcome = try await replayer.replay(hash: finding.hash, attempts: 1)
+        guard case .reproduced(let result) = outcome else {
+            return XCTFail("expected persisted session artifact to replay, got \(outcome)")
+        }
+        XCTAssertEqual(result.successfulReproductions, 1)
+        XCTAssertEqual(result.reproduceRate, 1)
     }
 
     func test_replay_reproduceRate_zero_whenBackendProducesDifferentOutput() async throws {
