@@ -1,4 +1,5 @@
 #if canImport(FoundationModels)
+import Foundation
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -13,10 +14,10 @@ import ManifoldFoundation
 ///
 /// Gated by `#if canImport(FoundationModels)` (always true on macOS 26+
 /// / iOS 26+ where the framework ships) and `#available(macOS 26, iOS 26, *)`
-/// in each test. The `makeBackend` factory creates a `FoundationBackend` in
-/// its initial unconfigured state — no session created. This is intentional:
-/// the pre-load invariants and the `capabilities` snapshot do not require a
-/// live session.
+/// in each test. The participant factory remains unloaded for the fast
+/// capability-gate assertion. Slow generation tests explicitly call
+/// `loadModel`, while `FoundationBackendUnitTests.test_generate_beforeLoad_throwsNoModelLoaded`
+/// separately pins the unloaded error contract.
 ///
 /// Scenarios that call `generate()` are gated behind `RUN_SLOW_TESTS=1` and
 /// an `#available` check, so they only run on nightly infrastructure where
@@ -51,31 +52,81 @@ final class FoundationLocalBackendContractTests: XCTestCase {
             ),
             requiresSlowTests: true,
             makeBackend: {
-                // No session created — factory returns the backend in its zero
-                // state. Generation scenarios gate themselves behind
-                // RUN_SLOW_TESTS=1 via the runner's hardware gate.
+                // The fast capability-gate check must not require Apple
+                // Intelligence. Generation tests use withLoadedBackend below.
                 FoundationBackend()
             }
         )
+    }
+
+    @available(macOS 26, iOS 26, *)
+    private func withLoadedBackend(
+        _ body: (FoundationBackend) async throws -> Void
+    ) async throws {
+        try LocalBackendContractRunner.skipIfHardwareGated(Self.participant)
+        try XCTSkipUnless(
+            FoundationBackend.isAvailable,
+            "Apple Intelligence not available on this device"
+        )
+
+        let backend = FoundationBackend()
+        try await backend.loadModel(
+            from: URL(fileURLWithPath: "/dev/null"),
+            plan: .systemManaged(requestedContextSize: 4096)
+        )
+        XCTAssertTrue(
+            backend.isModelLoaded,
+            "Generation contract fixture must return a loaded backend"
+        )
+
+        do {
+            try await body(backend)
+        } catch {
+            await backend.unloadModelAndWait()
+            throw error
+        }
+        await backend.unloadModelAndWait()
     }
 
     func test_generate_simplePrompt_emitsTokensInOrder() async throws {
         guard #available(macOS 26, iOS 26, *) else {
             throw XCTSkip("FoundationModels requires macOS 26 / iOS 26")
         }
-        try await LocalBackendContractRunner.assertSimplePromptEmitsTokensInOrder(
-            participant: Self.participant,
-            fixturesRoot: LocalBackendContractRunner.locateFixturesRoot()
-        )
+        try await withLoadedBackend { backend in
+            let stream = try backend.generate(
+                prompt: "Hello",
+                systemPrompt: nil,
+                config: GenerationConfig()
+            )
+            var visibleText = ""
+            for try await event in stream.events {
+                if case .token(let text) = event {
+                    visibleText += text
+                }
+            }
+            XCTAssertFalse(
+                visibleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                "Foundation model must emit non-empty visible text for a simple prompt"
+            )
+        }
     }
 
     func test_generate_stopsGenerating_afterStreamEnd() async throws {
         guard #available(macOS 26, iOS 26, *) else {
             throw XCTSkip("FoundationModels requires macOS 26 / iOS 26")
         }
-        try await LocalBackendContractRunner.assertStopsGeneratingAfterStreamEnd(
-            participant: Self.participant
-        )
+        try await withLoadedBackend { backend in
+            let stream = try backend.generate(
+                prompt: "ping",
+                systemPrompt: nil,
+                config: GenerationConfig()
+            )
+            for try await _ in stream.events {}
+            XCTAssertFalse(
+                backend.isGenerating,
+                "Foundation backend must stop generating after the stream ends"
+            )
+        }
     }
 
     func test_capabilityGate_disclaimedRequirementThrows() async throws {

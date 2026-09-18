@@ -52,8 +52,15 @@ each installed model's `/api/show` `capabilities` for `"tools"` — no fixed
 name list — so any installed native tool-caller (e.g. `llama3.1:8b`,
 `qwen3.5`, `gemma4`) works. It skips cleanly when none advertise `"tools"`.
 
+`OllamaVisionE2ETests` uses the same capability-first discovery for
+`"vision"`; a capable model such as `gemma3:4b` does not need `vl`, `llava`,
+or another legacy hint in its name. For this suite, `OLLAMA_TEST_MODEL` is a
+strict pin: a missing or non-vision model produces an honest skip instead of
+silently selecting a different installed model.
+
 To pin a specific model across these suites, set `OLLAMA_TEST_MODEL` (it must
-be installed; for the tool-calling suite it must also be tool-capable):
+be installed; the tool-calling and vision suites also require their respective
+advertised capability):
 
 ```bash
 OLLAMA_TEST_MODEL=qwen3.5:latest swift test --filter ManifoldE2ETests
