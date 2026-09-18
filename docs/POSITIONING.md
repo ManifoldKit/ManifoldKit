@@ -20,7 +20,7 @@
 persistence + multi-backend inference into one drop-in chat product.**
 
 **Category:** a full-stack, multi-backend, on-device + cloud AI chat framework
-for Apple platforms (iOS 18+ / macOS 15+). **Pre-1.0** — see the
+for Apple platforms (iOS 26+ / macOS 26+). **Pre-1.0** — see the
 [latest release](https://github.com/ManifoldKit/ManifoldKit/releases/latest) for the
 current version.
 
@@ -139,7 +139,7 @@ same `enqueue(...)` call, the same `GenerationStream`, the same
 ![Next Apple runtime plugs into the same GenerationStream protocol — ship on OS 26 now, adopt OS 27 after beta, without a rewrite](images/product/wwdc-backend-timing.png)
 
 ManifoldKit follows an **n-1 platform policy**: the current Apple OS and the one
-before it (iOS 18+ / macOS 15+). Everything Apple announced at WWDC 2026 —
+before it (iOS 26+ / macOS 26+). Everything Apple announced at WWDC 2026 —
 the opened Foundation Models framework, the `LanguageModel` provider protocol,
 the first-party Claude/Gemini packages, the Spotlight RAG tool — ships with
 **the newest OS cycle only**. ManifoldKit delivers multi-backend inference,
@@ -178,7 +178,7 @@ guaranteed" section that names what ManifoldKit deliberately does *not* do.
 
 ## 5. ManifoldKit vs. the field
 
-![Capability matrix — ManifoldKit fills the full stack while UI-only kits, engine wrappers, thin cloud clients, and Foundation Models-only cover partial layers; deployment floor iOS 18+ / macOS 15+](images/product/vs-field-matrix.png)
+![Capability matrix — ManifoldKit fills the full stack while UI-only kits, engine wrappers, thin cloud clients, and Foundation Models-only cover partial layers; deployment floor iOS 26+ / macOS 26+](images/product/vs-field-matrix.png)
 
 The Swift AI market is layered. ManifoldKit is the only entry that spans all of
 it as an installable package. (Stars/activity verified 2026-07-07.)
@@ -254,7 +254,7 @@ source today:
   server surface to expose them. No Swift competitor ships either side.
 - **Reasoning / thinking tokens** — first-class across backends that emit them.
 - **RAG with citations** — retrieval, grounding, and `CitationsView` — on
-  iOS 18 / macOS 15, not gated to the newest OS like Apple's Spotlight tool.
+  iOS 26 / macOS 26, not gated to the newest OS like Apple's Spotlight tool.
 - **Tool-approval gating** — human-in-the-loop `ToolApprovalGate` to sanitize or
   block a call before it runs.
 - **Metrics + cost estimation** — per-request token and cost observability.
@@ -334,17 +334,10 @@ ManifoldKit leads with:
    RAG with citations, and the reliability contract. None of that ships in
    `LanguageModelSession`.
 2. **Everything Apple announced is newest-OS-only.** ManifoldKit's n-1 policy
-   serves the iOS 18 / macOS 15 installed base those APIs will not reach for
+   serves the iOS 26 / macOS 26 installed base those APIs will not reach for
    one to two OS cycles. During exactly the window when the App Store fills
    with AI features, ManifoldKit is the way to ship them to everyone.
-3. **ManifoldKit rides the shift instead of fighting it.** Apple's new
-   provider protocols are one more backend surface: the `CoreAI` and
-   `SystemAIProviderExtension` trait stubs have been wired in `Package.swift`
-   since before the announcement, and adopting `LanguageModel` /
-   `LanguageModelExecutor` — both consuming conforming providers as
-   ManifoldKit backends *and* exposing ManifoldKit's backends as providers —
-   is an additive integration behind the same `InferenceBackend` protocol,
-   not a rewrite.
+3. **ManifoldKit rides the shift instead of fighting it.** Apple's provider protocols are another backend surface. The no-op `CoreAI` and `SystemAIProviderExtension` traits were retired; a future `LanguageModel` / `LanguageModelExecutor` integration needs a real target and an explicit tool-orchestration design behind the same `InferenceBackend` protocol.
 
 The pitch: **Apple opened the model layer. ManifoldKit is everything an app
 needs above the model layer — on the OSes people actually run today.**

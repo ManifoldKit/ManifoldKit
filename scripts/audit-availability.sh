@@ -1,28 +1,25 @@
 #!/usr/bin/env bash
 # audit-availability.sh — Flags @available / #available annotations that exceed
-# the Package.swift platform floors (macOS 15 / iOS 18) in targets that are not
+# the Package.swift platform floors (macOS 26 / iOS 26) in targets that are not
 # explicitly elevated to a higher OS floor.
 #
-# ManifoldKit targets n-1 (macOS 15 / iOS 18). Any usage of
-#   @available(macOS 16+, *)   or   #available(iOS 19+, *)
+# ManifoldKit targets n-1 (macOS 26 / iOS 26). Any usage of
+#   @available(macOS 27+, *)   or   #available(iOS 27+, *)
 # in general source files indicates either:
 #   (a) a real violation — we're gating on an API that doesn't exist at the floor, or
-#   (b) a legitimate Foundation Models guard — confined to ManifoldFoundation /
-#       ManifoldFoundationUmbrella (iOS 26 / macOS 26+ targets), which are exempted.
+#   (b) a legitimate higher-OS feature guard, which must have an explicit
+#       allowlist entry in this script.
 #
 # Allowed exceptions beyond (b):
 #   - @available(*, deprecated/unavailable/renamed/message ...) — these are
 #     deprecation markers, not OS-version gates; they carry no availability floor.
-#   - @available(iOS 18, macOS 15, *) at exactly the floor — always fine.
+#   - @available(iOS 26, macOS 26, *) at exactly the floor — always fine.
 #   - Comments (lines beginning with // or containing #available inside a comment)
 #     are skipped because they carry no runtime meaning.
 #
-# The script intentionally accepts iOS 26 / macOS 26 annotations in files outside
-# ManifoldFoundation because several modules check for Foundation Models
-# availability via `if #available(iOS 26, macOS 26, *)` before calling into the
-# ManifoldFoundation target. These are runtime guards, not compile-time policy
-# violations — the package still compiles on iOS 18 / macOS 15, and the
-# `#available` check is the correct pattern for conditional code paths.
+# The parser compares major versions only; it does not evaluate 26.x minor availability.
+# Keep explicit later-26.x and 27+ guards where their APIs require them; a reported
+# higher-major guard needs a reviewed feature boundary, not a weaker package floor.
 #
 # Usage:
 #   bash scripts/audit-availability.sh        # pass/fail, no output on success
@@ -34,8 +31,8 @@
 # ── Floor versions ─────────────────────────────────────────────────────────
 # Keep in sync with Package.swift `platforms:` block.
 #
-#   .iOS(.v18)    → floor = 18
-#   .macOS(.v15)  → floor = 15
+#   .iOS("26.0")    → floor = 26
+#   .macOS("26.0")  → floor = 26
 #
 # When Apple ships a new major OS and ManifoldKit bumps the floor, increment
 # FLOOR_IOS and FLOOR_MACOS here as well.
@@ -45,12 +42,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCES_DIR="${REPO_ROOT}/Sources"
 
-FLOOR_IOS=18
-FLOOR_MACOS=15
+FLOOR_IOS=26
+FLOOR_MACOS=26
 
 # ── Excluded paths ─────────────────────────────────────────────────────────
-# ManifoldFoundation and its umbrella re-export are explicitly gated to
-# iOS 26 / macOS 26 — all availability annotations inside them are intentional.
+# ManifoldFoundation contains public FoundationModels availability annotations.
 EXCLUDE_DIRS=(
     "${SOURCES_DIR}/ManifoldFoundation"
     "${SOURCES_DIR}/ManifoldFoundationUmbrella"
@@ -110,15 +106,6 @@ while IFS= read -r swift_file; do
                 esac
 
                 if (( ver > floor )); then
-                    # iOS 26 / macOS 26 annotations outside ManifoldFoundation
-                    # are legitimate runtime guards for Foundation Models feature
-                    # detection — skip them.
-                    if [[ "$plat" == "iOS"   && "$ver" -eq 26 ]] || \
-                       [[ "$plat" == "macOS" && "$ver" -eq 26 ]]; then
-                        [[ "$verbose" == "1" ]] && echo "  skipped (Foundation guard): ${swift_file}:${line_no}: ${line}"
-                        continue
-                    fi
-
                     rel_file="${swift_file#"${REPO_ROOT}/"}"
                     echo "::error file=${rel_file},line=${line_no}::@available(${plat} ${ver}, *) exceeds floor ${plat} ${floor} — ${rel_file}:${line_no}:"
                     printf '  %s\n' "$line"
@@ -149,14 +136,6 @@ while IFS= read -r swift_file; do
                 esac
 
                 if (( ver > floor )); then
-                    # iOS 26 / macOS 26 #available checks are the standard pattern
-                    # for opt-in Foundation Models paths — skip them.
-                    if [[ "$plat" == "iOS"   && "$ver" -eq 26 ]] || \
-                       [[ "$plat" == "macOS" && "$ver" -eq 26 ]]; then
-                        [[ "$verbose" == "1" ]] && echo "  skipped (Foundation guard): ${swift_file}:${line_no}: ${line}"
-                        continue
-                    fi
-
                     rel_file="${swift_file#"${REPO_ROOT}/"}"
                     echo "::error file=${rel_file},line=${line_no}::#available(${plat} ${ver}, *) exceeds floor ${plat} ${floor} — ${rel_file}:${line_no}:"
                     printf '  %s\n' "$line"

@@ -751,7 +751,7 @@ published product (not just the Experimental ones), see
 
 **Dependency rules:** Never import any backend family target (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) from UI; never import `ManifoldUIModelManagement` from `ManifoldUI` (CI lint enforces this). `ManifoldUIModelManagement` depends on `ManifoldUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter. All backend-family edges are unconditional; the companion-package families (`ManifoldMLX`, `ManifoldLlama`) depend on this package's `ManifoldInference` from their own repos.
 
-**Trait roster:** there are **no default traits** — plain `swift build` is the full core build. Surviving opt-in traits: `Server`, `Macros`; WWDC stubs `SystemAIProviderExtension`, `CoreAI`. Everything else was retired in the v0.48 train — see docs/MIGRATION-0.48.md; a `traits: ["MLX"]` / `["Llama"]` array now hard-errors at resolve time.
+**Trait roster:** there are **no default traits** — plain `swift build` is the full core build. Surviving opt-in traits: `Server`, `Macros`. Everything else was retired in the v0.48 train — see docs/MIGRATION-0.48.md; a `traits: ["MLX"]` / `["Llama"]` array now hard-errors at resolve time.
 
 ## Running tests
 
@@ -837,18 +837,19 @@ ManifoldKit targets **n-1**: the current Apple OS release and the one immediatel
 
 | Platform | Current (n) | Minimum (n-1) |
 |----------|-------------|---------------|
-| macOS    | 26          | 15            |
-| iOS      | 26          | 18            |
+| macOS    | 27          | 26            |
+| iOS      | 27          | 26            |
 
 When Apple ships a new major OS each September, bump both minimums and remove `#available` guards added for the previous floor. Do not use `Atomic`, `OSAllocatedUnfairLock`, or other APIs that post-date the minimum without checking their availability.
 
-**`swift-tools-version` ceiling = installed Xcode toolchain.** Core CI currently selects Xcode 26.3 / Swift 6.3; bumping the tools version above the toolchain CI actually selects breaks `resolve-check` and `fuzz`.
+**`swift-tools-version` ceiling = installed Xcode toolchain.** Core CI currently selects Xcode 26.3 / Swift 6.3; the floor change uses string platform versions so it does not require a tools-version bump.
 
 ## Hardware constraints (simulator / CI)
 
 The MLX and llama.cpp hardware constraints (global `llama_backend_init`, Metal-in-simulator gating, metallib guards) moved with the backends to the manifold-mlx / manifold-llama repos' docs. What remains relevant to core:
 
-- `FoundationBackend` requires iOS 26 / macOS 26. Gate accordingly.
+- `FoundationBackend` requires the iOS 26 / macOS 26 package floor. APIs first
+  introduced after that floor remain availability-gated.
 - Context window capped at 512 tokens in the simulator to avoid OOM.
 
 See [docs/HARDWARE-TOOLCHAIN.md](docs/HARDWARE-TOOLCHAIN.md) for the full cross-repo consolidation (process-global `llama_backend_init`, the #982 dual-llama hazard, Swift Testing/XCTest process separation, toolchain ceiling, CI runner shape).

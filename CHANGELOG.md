@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Features
+
+- Raise the minimum deployment targets to iOS 26 and macOS 26. This is the
+  current n-1 floor; APIs introduced in 26.2 and 27 remain availability-gated.
+
 ### Fixes
 
 - Reject overlapping bootstrap construction and direct configuration replacement with recoverable

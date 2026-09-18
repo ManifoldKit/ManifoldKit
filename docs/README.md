@@ -74,10 +74,11 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 | Doc | Covers |
 |-----|--------|
 | [**MIGRATION-INDEX.md**](MIGRATION-INDEX.md) | **Every migration note, newest first, with the release that shipped it.** Start here when a version bump breaks your build — the individual notes below are the highlights, not the full set. |
-| [MIGRATION-0.48.md](MIGRATION-0.48.md) | v0.48 packaging-release migration — retired traits, the manifold-mlx / manifold-llama companion packages, indexed by the literal error strings. **Shim sections are historical** — `ManifoldBackends` / `DefaultBackends` are gone; see [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md). |
+| [MIGRATION-0.48.md](MIGRATION-0.48.md) | v0.48 packaging-release migration — retired traits and the manifold-mlx / manifold-llama companion packages, indexed by the literal error strings. **Shim sections are historical** — `ManifoldBackends` / `DefaultBackends` are gone; see [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md). |
+| [MIGRATION-platform-floor-26.md](MIGRATION-platform-floor-26.md) | The iOS/macOS 26 deployment-floor increase and retirement of the two no-op WWDC trait stubs. |
 | [**MIGRATION-shims-retired.md**](MIGRATION-shims-retired.md) | **Current** import/registrar model after P7 removed `ManifoldBackends` / `DefaultBackends` / `ManifoldCloud`. Read this before trusting any 0.48 "still compiles" shim note. |
 | [MIGRATION-api-demotions-0.71.md](MIGRATION-api-demotions-0.71.md) | Public→package demotions in the 0.71 train. |
-| [FeatureMatrix.md](FeatureMatrix.md) | Remaining **SwiftPM traits only** (`Macros`, `Server`, WWDC stubs) — not the full product capability map. Most capabilities compile unconditionally or live in companion packages; see products in [AGENTS.md](../AGENTS.md) and [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md). |
+| [FeatureMatrix.md](FeatureMatrix.md) | Remaining **SwiftPM traits only** (`Macros`, `Server`) — not the full product capability map. Most capabilities compile unconditionally or live in companion packages; see products in [AGENTS.md](../AGENTS.md) and [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md). |
 | [TRAIT-COSTS.md](TRAIT-COSTS.md) | Per-trait binary impact for the remaining opt-in traits (`Server`, `Macros`). Heavy ML checkouts are companion-optional since v0.48. |
 | [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md) | Building or consuming a companion backend package (manifold-mlx / manifold-llama). |
 | [ANATOMY-OF-ONE-TURN.md](ANATOMY-OF-ONE-TURN.md) | File:line walk of one message turn — send → runtime → engine → backend → UI. |
@@ -121,5 +122,5 @@ and forward-looking design notes. Most are also linked from
 | [TESTING-CI-PRINCIPLES.md](TESTING-CI-PRINCIPLES.md) | CI/test design principles and gate rationale. |
 | [QA-EVALUATION-PROCESS.md](QA-EVALUATION-PROCESS.md) | How a release candidate is evaluated before it ships — the hand-run checks that sit outside `swift test`. |
 | [UI-REFRESH-2026.md](UI-REFRESH-2026.md) / [MIGRATION-ui-refresh.md](MIGRATION-ui-refresh.md) | The shipped 2026 UI refresh: design rationale and consumer-facing change inventory (issue #2307). |
-| [wwdc-2026-trait-stubs.md](wwdc-2026-trait-stubs.md) | The pre-wired stub traits for whatever Apple ships next. |
+| [wwdc-2026-trait-stubs.md](wwdc-2026-trait-stubs.md) | The investigation behind retiring the two no-op WWDC trait stubs. |
 | [plans/](plans) | In-flight release plans. |

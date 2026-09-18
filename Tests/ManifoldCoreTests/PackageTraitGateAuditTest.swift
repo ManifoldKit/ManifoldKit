@@ -112,9 +112,6 @@ final class PackageTraitGateAuditTest: XCTestCase {
     private static let allowedTraits: Set<String> = [
         "Server",
         "Macros",
-        // WWDC 2026 pre-emptive stubs — no targets, deliberately decorative.
-        "SystemAIProviderExtension",
-        "CoreAI",
     ]
 
     /// Traits retired across the v0.48 train. Their reappearance — as a
@@ -126,6 +123,7 @@ final class PackageTraitGateAuditTest: XCTestCase {
         "Ollama", "CloudSaaS",                 // PR A4
         "AnyLanguageModel",                    // PR A5
         "MLX", "Llama", "HuggingFace", "Fuzz", "FoundationOnly", // PR C2
+        "SystemAIProviderExtension", "CoreAI", // #2517
     ]
 
     func test_traitDefiningSymbolsAreGatedWhereverReferenced() throws {
@@ -189,7 +187,7 @@ final class PackageTraitGateAuditTest: XCTestCase {
             let formatted = violations.map { "  - \($0)" }.joined(separator: "\n")
             XCTFail("""
                 Package.swift references traits outside the post-C2 surface
-                (survivors: Server, Macros + the WWDC stubs). The MLX/Llama
+                (survivors: Server and Macros). The MLX/Llama
                 families live in the manifold-mlx / manifold-llama companion
                 packages (#1749) — retired traits must not reappear.
 

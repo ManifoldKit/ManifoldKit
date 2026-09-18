@@ -63,11 +63,8 @@ cs_make_workdir() {
 # "library". Remaining positional args are ManifoldKit product names to link
 # (e.g. "ManifoldKit", or "ManifoldInference ManifoldRuntime ...").
 #
-# tools-version 6.2 + platforms [.macOS(.v15)] matches every cold-start gate's
-# floor: 6.2 is required for source that calls `.macOS(.v26)`-gated API
-# elsewhere in the dependency graph, and pinning platforms to .v15
-# (ManifoldKit's n-1 floor) keeps the consumer buildable on every macOS
-# ManifoldKit supports, not just the latest.
+# tools-version 6.2 + platform `.macOS("26.0")` matches the supported
+# ManifoldKit floor while preserving the concrete local-package consumer shape.
 #
 # The dependency identity is pinned explicitly via `name: "ManifoldKit"`
 # rather than letting SwiftPM derive it from `.package(path:)`'s last path
@@ -106,7 +103,7 @@ import PackageDescription
 
 let package = Package(
     name: "$package_name",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS("26.0")],
     products: [
         $product_decl,
     ],

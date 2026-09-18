@@ -102,12 +102,9 @@ The default Apple speech transcriber returns a user-facing error on the
 simulator, so validate the real capture flow on device or macOS hardware
 before submission.
 
-## 5. iOS 18 vs iOS 26 deployment targeting
+## 5. Deployment target and Foundation Models
 
-`FoundationBackend` requires iOS 26 / macOS 26. If your app's deployment
-target is iOS 18, you must gate the Foundation Models code path at runtime
-and fall back to a different backend (or surface a "Foundation Models
-require iOS 26" placeholder) on iOS 18 devices.
+ManifoldKit now requires iOS 26 / macOS 26. `FoundationBackend` still depends on Apple Intelligence being available and provisioned on the device, so keep a usable cloud or companion-local backend when your app must work without it.
 
 ```swift
 import ManifoldFoundation
@@ -115,14 +112,11 @@ import ManifoldFoundation
 if FoundationBackend.isAvailable {
     vm.loadFoundationModelIfAvailable()
 } else {
-    // iOS 18 fallback: surface a different backend (Llama, Ollama, cloud)
-    // or a "Update to iOS 26 for on-device Apple intelligence" placeholder.
+    // Offer a configured cloud or companion-local backend.
 }
 ```
 
-`loadFoundationModelIfAvailable()` is a no-op on iOS 18 — it returns
-without throwing — so it's safe to call unconditionally if you'd rather
-let users without iOS 26 see the regular load failure UI.
+`loadFoundationModelIfAvailable()` reports ordinary model-availability failure when Apple Intelligence is unavailable; it is not a substitute for a fallback backend.
 
 ## 6. App Store review claims
 

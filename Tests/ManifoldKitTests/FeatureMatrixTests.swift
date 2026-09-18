@@ -13,20 +13,6 @@ import XCTest
 
 final class FeatureMatrixTests: XCTestCase {
 
-    // Traits that intentionally don't unlock a runtime capability (harness or
-    // build-time levers). Listed here so the "non-empty unlocks" assertion
-    // doesn't have to lie about them.
-    private let pendingMapping: Set<String> = [
-        // WWDC 2026 pre-emptive stubs, resolved against the macOS 27 beta SDK
-        // (#1577, see docs/wwdc-2026-trait-stubs.md): SystemAIProviderExtension
-        // has no SDK symbol (the real seam is FoundationModels.LanguageModelExecutor,
-        // a deferred either/or); CoreAI is a confirmed dead end (.aimodel runtime,
-        // no LM protocol). Both keep unlocks: [] and so must stay in this set —
-        // removing either fails the "non-empty unlocks" assertion below.
-        "SystemAIProviderExtension",
-        "CoreAI",
-    ]
-
     func testEveryMatrixTraitExistsInPackageManifest() throws {
         let manifestTraits = try parsePackageManifestTraits()
         let matrixNames = Set(FeatureMatrix.traits.map(\.name))
@@ -49,10 +35,9 @@ final class FeatureMatrixTests: XCTestCase {
 
     func testEveryTraitHasNonEmptyUnlocksUnlessPending() {
         for trait in FeatureMatrix.traits {
-            if pendingMapping.contains(trait.name) { continue }
             XCTAssertFalse(
                 trait.unlocks.isEmpty,
-                "Trait `\(trait.name)` has no capabilities listed. Either map it to one or more ManifoldCapability cases, or add it to FeatureMatrixTests.pendingMapping with a comment explaining why."
+                "Trait `\(trait.name)` has no capabilities listed. Map it to one or more ManifoldCapability cases rather than adding a no-op trait."
             )
         }
     }

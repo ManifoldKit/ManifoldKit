@@ -5,16 +5,16 @@
 
 A one-page tutorial for getting from "empty terminal" to "streaming tokens" without SwiftUI. If you're building a CLI, a server, an App Intents extension, a fuzz harness, or any non-SwiftUI consumer, start here.
 
-> **macOS version matters for backend choice.** ManifoldKit officially supports macOS 15+ (its `n-1` floor), but the simplest documented backend — Apple Foundation Models — is macOS 26 / iOS 26 only. The table below maps backend → minimum platform so you don't pick one that won't run.
+> **macOS version matters for backend choice.** ManifoldKit supports macOS 26+ / iOS 26+ (its n-1 floor). The table below maps backend to its platform requirements.
 >
 > | Backend           | Minimum platform              | Network? | Section            |
 > |-------------------|-------------------------------|----------|--------------------|
 > | Foundation Models | macOS 26 / iOS 26             | No       | [§1](#1-foundation-models-macos-26)         |
-> | Local GGUF (Llama)| macOS 15 / iOS 18 (Apple Silicon) | No       | [§2](#2-local-gguf-via-the-llama-backend-macos-15)         |
-> | Ollama / OpenAI / Anthropic | macOS 15 / iOS 18 | Yes      | [§3](#3-cloud--ollama-via-loadendpointbackendfrom) / [§3b REPL](#3b-interactive-repl-stdin-loop) |
-> | MLX (Apple Silicon) | macOS 15 / iOS 18 — **Xcode `.app` only, not `swift run`** | No | [§4](#4-mlx-via-the-manifold-mlx-companion-apple-silicon) |
+> | Local GGUF (Llama)| macOS 26 / iOS 26 (Apple Silicon) | No       | [§2](#2-local-gguf-via-the-llama-backend-macos-26)         |
+> | Ollama / OpenAI / Anthropic | macOS 26 / iOS 26 | Yes      | [§3](#3-cloud--ollama-via-loadendpointbackendfrom) / [§3b REPL](#3b-interactive-repl-stdin-loop) |
+> | MLX (Apple Silicon) | macOS 26 / iOS 26 — **Xcode `.app` only, not `swift run`** | No | [§4](#4-mlx-via-the-manifold-mlx-companion-apple-silicon) |
 >
-> If you're on macOS 15 and want a fully local model, skip directly to [§2](#2-local-gguf-via-the-llama-backend-macos-15). Foundation Models will not load.
+> For a fully local model, skip directly to [§2](#2-local-gguf-via-the-llama-backend-macos-26). Foundation Models will not load.
 
 Sections §1–§3b are complete, compile-tested examples: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`. §3 is a one-shot smoke test; [§3b](#3b-interactive-repl-stdin-loop) is the multi-turn REPL most CLIs actually want. §4 (MLX) is the exception — from a bare `swift run` it generates only when the **Metal Toolchain** component is installed (otherwise MLX aborts at model load); see the callout in that section.
 
@@ -88,7 +88,7 @@ import PackageDescription
 
 let package = Package(
     name: "ChatCLIFoundation",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS("26.0")],
     products: [
         .executable(name: "chat-cli-foundation", targets: ["ChatCLIFoundation"]),
     ],
@@ -151,9 +151,9 @@ Both `InferenceService.loadModel(...)` and `InferenceService.generate(...)` are 
 
 ---
 
-## 2. Local GGUF via the Llama backend (macOS 15+)
+## 2. Local GGUF via the Llama backend (macOS 26+)
 
-This is the section that closes the "I'm on macOS 15 and want to evaluate ManifoldKit" gap. The Llama backend loads GGUF files via llama.cpp + Metal and runs on every supported platform. Since v0.48 it ships in the [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama) companion package, so this example adds two `.package(...)` lines instead of one (which is why these snippets are not compile-checked against a core-only checkout).
+The Llama backend loads GGUF files via llama.cpp + Metal on supported Apple Silicon platforms. Since v0.48 it ships in the [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama) companion package, so this example adds two `.package(...)` lines instead of one (which is why these snippets are not compile-checked against a core-only checkout).
 
 **Get a model first.** Drop any GGUF file into `~/Documents/Models/`. SwiftUI hosts that use `ModelManagementSheet` discover both `~/Documents/Models` and the app-scoped Application Support directory — see [`docs/LOCAL-GGUF.md`](LOCAL-GGUF.md) for the full storage contract. Good starter picks:
 
@@ -176,7 +176,7 @@ import PackageDescription
 
 let package = Package(
     name: "ChatCLILlama",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS("26.0")],
     products: [
         .executable(name: "chat-cli-llama", targets: ["ChatCLILlama"]),
     ],
@@ -421,7 +421,7 @@ import PackageDescription
 
 let package = Package(
     name: "ChatCLICloud",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS("26.0")],
     products: [
         .executable(name: "chat-cli-cloud", targets: ["ChatCLICloud"]),
     ],
@@ -613,7 +613,7 @@ import PackageDescription
 
 let package = Package(
     name: "ChatCLIMLX",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS("26.0")],
     products: [
         .executable(name: "chat-cli-mlx", targets: ["ChatCLIMLX"]),
     ],

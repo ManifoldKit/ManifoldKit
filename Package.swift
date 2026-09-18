@@ -2,8 +2,8 @@
 
 // Trait reference (full table in README §2.4):
 //   - There are NO default traits. `swift build` builds the full core surface.
-//   - Opt-in traits: Server, Macros (genuine build-cost levers on leaf edges)
-//     plus the two WWDC 2026 stubs (SystemAIProviderExtension, CoreAI).
+//   - Opt-in traits: Server and Macros, the genuine build-cost levers on leaf
+//     edges.
 //   - Retired in v0.48: MCP, MCPBuiltinCatalog (PR A2); Voice, Tools,
 //     AppIntents, Skills (PR A3); Ollama, CloudSaaS (PR A4); AnyLanguageModel
 //     (PR A5 — became the always-compiled ManifoldAnyLanguageModel product,
@@ -24,8 +24,8 @@ import CompilerPluginSupport
 let package = Package(
     name: "ManifoldKit",
     platforms: [
-        .iOS(.v18),
-        .macOS(.v15),
+        .iOS("26.0"),
+        .macOS("26.0"),
     ],
     products: [
         // Umbrella product. Re-exports ManifoldInference + ManifoldRuntime +
@@ -159,10 +159,6 @@ let package = Package(
         // build-cost levers on leaf edges (Hummingbird, swift-syntax).
         .trait(name: "Server", description: "Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
         .trait(name: "Macros", description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph."),
-        // WWDC 2026 stubs resolved against the Xcode 27 beta SDK. Neither has
-        // associated targets or source files; see docs/wwdc-2026-trait-stubs.md.
-        .trait(name: "SystemAIProviderExtension", description: "No-op stub: the anticipated Siri/Writing Tools provider slot is not present in the Xcode 27 beta SDK."),
-        .trait(name: "CoreAI", description: "No-op stub: Core AI integration is provided by apple/coreai-models through FoundationModels.LanguageModelExecutor, not this trait."),
     ],
     dependencies: [
         // mlx-swift / mlx-swift-lm / mattt/llama.swift / swift-transformers /

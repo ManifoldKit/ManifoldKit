@@ -48,7 +48,7 @@ jobs:
     # PR C2 the core graph has no ML dependencies and no default traits, so an
     # ubuntu move is now viable — deferred to C4. Releases are rare, so staying
     # on the same macOS/Xcode family as CI is a small cost.
-    runs-on: macos-15
+    runs-on: macos-26
     # macOS jobs are org-capped at ~5 concurrent; an unbounded default (360
     # min) can stall the whole org queue if this job hangs (#2099 CI review).
     timeout-minutes: 45

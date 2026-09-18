@@ -147,7 +147,7 @@ echo "    Snippet captured: ${snippet_lines} lines."
 
 # ── Check 3: build the snippet in a fresh SwiftPM consumer ────────────────────
 #
-# We pin tools-version 6.2 and macOS .v15 (ManifoldKit's n-1 floor) to match
+# We pin tools-version 6.2 and macOS 26.0 (ManifoldKit's n-1 floor) to match
 # tiers 1-3. Name the package by absolute path so worktree directory names
 # don't break `.product(... package: "ManifoldKit")` resolution
 # (see `feedback_swiftpm_local_consumer_name` in CLAUDE.md).
@@ -168,7 +168,7 @@ import PackageDescription
 
 let package = Package(
     name: "ColdStartHumanConsumer",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS("26.0")],
     products: [
         .library(name: "HelloWorldApp", targets: ["HelloWorldApp"]),
     ],

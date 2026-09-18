@@ -221,10 +221,9 @@ The model inventory itself is now recursive: GGUF live nested as `Models/gguf/<F
 ### ManifoldFoundation hosted-runtime coverage (#2096, partially resolved)
 
 **What now runs.** The required `test` job and its Server/Macros satellites run
-on the GA `macos-26` Apple Silicon image with the repository's pinned Xcode
-26.3 toolchain. Foundation tests therefore reach their macOS-26 runtime guards
+on the GA `macos-26` Apple Silicon image with the repository's pinned Xcode 26.3 toolchain. Foundation tests therefore reach their macOS-26 runtime guards
 and can exercise SDK-backed construction, error and state paths instead of
-blanket-skipping only because the host is macOS 15. GitHub's
+blanket-skipping only because the host predates macOS 26. GitHub's
 [`macos-26` image inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md)
 records both the host generation and installed Xcode 26.3 toolchain; the image
 became [generally available on 26 February
@@ -238,11 +237,9 @@ integration sweep. The CI move proves minimum-runtime linkage and the
 non-generation contract paths; it does not qualify live Foundation inference,
 macOS 27, or iOS 27.
 
-**Scope.** The package continues to declare iOS 18 / macOS 15. Independent
-macOS-15 compile lanes remain while that is true; moving the qualification
-jobs to macOS 26 is preparation for the coordinated 1.0 floor change tracked
-by [#2517](https://github.com/ManifoldKit/ManifoldKit/issues/2517), not the floor
-change itself. `TestTargetGateAuditTest` pins the qualification jobs to
+**Scope.** The package declares iOS 26 / macOS 26. Independent macOS-15
+compile lanes are toolchain-compatibility checks only and do not qualify the
+supported runtime. `TestTargetGateAuditTest` pins the qualification jobs to
 `macos-26` and the Xcode 26.3 selection so this coverage cannot silently drift
 back to compile-only evidence.
 

@@ -219,8 +219,7 @@ in-core family products, and pass registrars to `quickStart(backends:)`.
 | `Macros` | Gates the `@ToolSchema` macro plugin and its ~647-file swift-syntax tree. Build-time-only cost; off by default. |
 | `SystemAIProviderExtension`, `CoreAI` | WWDC 2026 forward stubs — no targets attached. |
 
-Everything else is products now. If your `traits:` array contains anything not in
-this table, delete it.
+Everything else is products now. The two WWDC forward stubs above remained at v0.48 despite having no targets; they were removed later with the iOS 26 / macOS 26 floor change. See [MIGRATION-platform-floor-26.md](MIGRATION-platform-floor-26.md). If your `traits:` array contains anything not in this table, delete it.
 
 ---
 

@@ -87,7 +87,7 @@ lines.append("Generated from `Sources/ManifoldKit/FeatureMatrix.swift` by `scrip
 lines.append("Do not edit by hand — re-run the script.")
 lines.append("")
 lines.append("> **Remaining SwiftPM traits only.** This table lists the opt-in traits still")
-lines.append("> declared in `Package.swift` (`Macros`, `Server`, and WWDC stubs) — it is")
+lines.append("> declared in `Package.swift` (`Macros` and `Server`) — it is")
 lines.append("> **not** a full product or backend capability map. Most capabilities compile")
 lines.append("> unconditionally in core, or ship in the `manifold-mlx` / `manifold-llama`")
 lines.append("> companion packages. For the real surface see [AGENTS.md](../AGENTS.md)")

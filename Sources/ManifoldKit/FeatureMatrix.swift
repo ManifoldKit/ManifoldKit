@@ -75,10 +75,8 @@ public enum FeatureMatrix {
     /// The trait roster. Order matches `Package.swift` for diff-readability;
     /// `markdown()` alphabetizes for the rendered table.
     ///
-    /// When adding a trait to `Package.swift`, add it here too. If you don't
-    /// know yet which capabilities it unlocks, list it with `unlocks: []` and
-    /// add the name to `FeatureMatrixTests.pendingMapping` — that keeps CI
-    /// green while making the gap visible.
+    /// When adding a trait to `Package.swift`, add it here with at least one
+    /// capability it unlocks. A no-op trait is a manifest regression.
     public static let traits: [ManifoldTrait] = [
         // MLX / Llama / HuggingFace / Fuzz / FoundationOnly retired in v0.48
         // (PR C2, #1749): the MLX and llama.cpp families live in the
@@ -98,28 +96,6 @@ public enum FeatureMatrix {
             name: "Macros",
             description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph.",
             unlocks: [.toolCalling]
-        ),
-        // WWDC 2026 pre-emptive stubs. No targets, no source files — pure
-        // compile-condition placeholders. Resolved against the macOS 27 beta
-        // SDK 2026-06-16 (#1577); see docs/wwdc-2026-trait-stubs.md.
-        ManifoldTrait(
-            name: "SystemAIProviderExtension",
-            description: "Stub: a third-party \"system AI provider\" backend slot — anticipated pre-WWDC but NOT found in the macOS 27 beta SDK (no SystemAIProvider symbol anywhere). The real third-party model seam is FoundationModels.LanguageModelExecutor (macOS 27/iOS 27). Pure no-op stub.",
-            unlocks: []
-            // The anticipated extension point does not exist in the beta SDK.
-            // The real seam is FoundationModels.LanguageModelExecutor, but
-            // adopting it forks tool-loop ownership to FoundationModels and
-            // belongs in the companion mlx/llama repos — a deferred either/or
-            // (docs/wwdc-2026-trait-stubs.md). Stays in pendingMapping while
-            // unlocks is empty; do NOT remove until a real capability lands.
-        ),
-        ManifoldTrait(
-            name: "CoreAI",
-            description: "No-op stub: the bare CoreAI tensor runtime is not a backend seam, while apple/coreai-models exposes CoreAILanguageModel through FoundationModels.LanguageModelExecutor. A future integration would consume that package rather than this trait.",
-            unlocks: []
-            // Resolved shape documented in docs/wwdc-2026-trait-stubs.md. Stays in
-            // pendingMapping while unlocks is empty; do NOT remove until a real
-            // capability lands. Trait rename is out of scope for the docs PR.
         ),
     ]
 
@@ -151,7 +127,7 @@ public enum FeatureMatrix {
         lines.append("Do not edit by hand — re-run the script.")
         lines.append("")
         lines.append("> **Remaining SwiftPM traits only.** This table lists the opt-in traits still")
-        lines.append("> declared in `Package.swift` (`Macros`, `Server`, and WWDC stubs) — it is")
+        lines.append("> declared in `Package.swift` (`Macros` and `Server`) — it is")
         lines.append("> **not** a full product or backend capability map. Most capabilities compile")
         lines.append("> unconditionally in core, or ship in the `manifold-mlx` / `manifold-llama`")
         lines.append("> companion packages. For the real surface see [AGENTS.md](../AGENTS.md)")

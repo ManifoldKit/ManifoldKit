@@ -572,9 +572,9 @@ jobs:
 
       # ── availability-audit ────────────────────────────────────────────────
       # Flags @available / #available annotations that exceed the Package.swift
-      # platform floors (macOS 15 / iOS 18). Enforces the n-1 platform policy
-      # as compiler-truth: any annotation gating on macOS 16+ or iOS 19+
-      # outside the ManifoldFoundation* targets is a violation.
+      # platform floors (macOS 26 / iOS 26). Enforces the n-1 platform policy
+      # as compiler-truth: higher-major availability guards outside ManifoldFoundation*
+      # are reported for an explicit feature-boundary review.
       # See scripts/audit-availability.sh for the full exemption logic.
       - name: availability-audit — verify n-1 platform floor annotations
         if: always()
