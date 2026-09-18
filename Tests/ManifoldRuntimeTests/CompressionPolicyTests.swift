@@ -12,6 +12,59 @@ import ManifoldPersistenceTestSupport
 /// Integration coverage uses real SwiftData; existing lower-level cases stay in this suite.
 final class CompressionPolicyIntegrationTests: XCTestCase {
 
+    private struct ExactCharacterTokenizer: TokenizerProvider {
+        func tokenCount(_ text: String) -> Int { text.count }
+    }
+
+    private struct FixedCostTokenizer: TokenizerProvider {
+        let cost: Int
+        func tokenCount(_ text: String) -> Int { text.isEmpty ? 0 : cost }
+    }
+
+    /// Immutable test backend used to exercise the real
+    /// `InferenceService.loadModel` A→B switching path. The backend itself has
+    /// no mutable cross-thread state, so its unchecked conformance does not
+    /// mask a race.
+    private final class ModelSwitchBudgetBackend: InferenceBackend, TokenizerVendor, TokenUsageProvider, @unchecked Sendable {
+        let capabilities: BackendCapabilities
+        let tokenizer: any TokenizerProvider
+        let lastUsage: (promptTokens: Int, completionTokens: Int)?
+        var isModelLoaded: Bool { true }
+        var isGenerating: Bool { false }
+
+        init(
+            contextSize: Int32,
+            tokenizer: any TokenizerProvider,
+            promptTokens: Int? = nil
+        ) {
+            self.capabilities = BackendCapabilities(
+                supportedParameters: [],
+                maxContextTokens: contextSize,
+                requiresPromptTemplate: false,
+                supportsSystemPrompt: true
+            )
+            self.tokenizer = tokenizer
+            self.lastUsage = promptTokens.map { ($0, 1) }
+        }
+
+        func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
+
+        func generate(
+            prompt: String,
+            systemPrompt: String?,
+            config: GenerationConfig,
+            hints: GenerationRuntimeHints
+        ) throws -> GenerationStream {
+            GenerationStream(AsyncThrowingStream { continuation in
+                continuation.yield(.token("ok"))
+                continuation.finish()
+            })
+        }
+
+        func stopGeneration() {}
+        func unloadModel() {}
+    }
+
     private actor CompleteHistoryCapture {
         private(set) var history: [ChatMessage]?
 
@@ -928,5 +981,414 @@ final class CompressionPolicyIntegrationTests: XCTestCase {
         XCTAssertEqual(replacement.count, 1)
         XCTAssertEqual(replacement.first?.content, "summary-retaining-oldest-\(oldest.id.uuidString)")
         XCTAssertEqual(replacement.first?.kind, .memory("summary"))
+    }
+
+    /// A policy created while model A is active must follow model B after the
+    /// supported `InferenceService.loadModel` switch. This pins both halves of
+    /// the defect: B's smaller window triggers compression, and B's character
+    /// tokenizer determines the two-message replacement. Using A's captured
+    /// context skips compression; using A's captured tokenizer keeps all four
+    /// seed messages.
+    ///
+    /// Sabotage evidence: replacing the active-model snapshot with the
+    /// policy's construction inputs leaves six records and fails the retained
+    /// ID/count assertions below.
+    func test_defaultPolicyUsesActiveModelBudgetAfterSupportedSwitch() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let sessionID = UUID()
+        let typeA = ModelType(rawValue: "compression-budget-a")
+        let typeB = ModelType(rawValue: "compression-budget-b")
+        let tokenizerA = FixedCostTokenizer(cost: 1)
+        let backendA = ModelSwitchBudgetBackend(contextSize: 100, tokenizer: tokenizerA)
+        let backendB = ModelSwitchBudgetBackend(contextSize: 20, tokenizer: ExactCharacterTokenizer())
+        let service = InferenceService()
+        service.registerBackendFactory { modelType in
+            switch modelType {
+            case typeA: backendA
+            case typeB: backendB
+            default: nil
+            }
+        }
+
+        let modelA = ModelInfo(
+            name: "Compression A",
+            fileName: "compression-a.gguf",
+            url: URL(fileURLWithPath: "/tmp/compression-a.gguf"),
+            fileSize: 0,
+            modelType: typeA
+        )
+        let modelB = ModelInfo(
+            name: "Compression B",
+            fileName: "compression-b.gguf",
+            url: URL(fileURLWithPath: "/tmp/compression-b.gguf"),
+            fileSize: 0,
+            modelType: typeB
+        )
+        try await service.loadModel(from: modelA, plan: .testStub(effectiveContextSize: 100))
+
+        let policy = DefaultCompressionPolicy.truncating(
+            threshold: 0.5,
+            contextSize: 100,
+            reservedTokens: 2,
+            tokenizer: tokenizerA
+        )
+        let runtime = ConversationRuntime(
+            messageStore: stack.provider,
+            inferenceService: service,
+            preTurnCompressionPolicy: policy
+        )
+
+        let seed = [
+            ChatMessage(role: .user, content: "aaaaaaaa", timestamp: Date(timeIntervalSinceReferenceDate: 1), sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "bbbbbbbb", timestamp: Date(timeIntervalSinceReferenceDate: 2), sessionID: sessionID),
+            ChatMessage(role: .user, content: "cccccccc", timestamp: Date(timeIntervalSinceReferenceDate: 3), sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "dddddddd", timestamp: Date(timeIntervalSinceReferenceDate: 4), sessionID: sessionID, promptTokens: 12)
+        ]
+        try await stack.provider.performMessageMutations(seed.map(MessageStoreMutation.insert))
+
+        try await service.loadModel(from: modelB, plan: .testStub(effectiveContextSize: 20))
+        try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "next"),
+            config: TurnConfig()
+        ))
+        _ = try await drainUntilStreamFinished(from: runtime)
+
+        let persisted = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(persisted.count, 4, "B's 20-token window and tokenizer must replace the four-message seed with its two-message tail before the new turn")
+        XCTAssertFalse(persisted.contains { $0.id == seed[0].id })
+        XCTAssertFalse(persisted.contains { $0.id == seed[1].id })
+        XCTAssertTrue(persisted.contains { $0.id == seed[2].id })
+        XCTAssertTrue(persisted.contains { $0.id == seed[3].id })
+    }
+
+    /// A same-context switch can still cross the threshold when B tokenizes
+    /// persisted history more heavily. The A-era prompt count deliberately
+    /// stays below the threshold; only remeasuring with B exposes the need to
+    /// compress.
+    func test_defaultPolicyRemeasuresPreTurnTriggerWithActiveTokenizer() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let sessionID = UUID()
+        let typeA = ModelType(rawValue: "compression-light-tokenizer-a")
+        let typeB = ModelType(rawValue: "compression-heavy-tokenizer-b")
+        let tokenizerA = FixedCostTokenizer(cost: 1)
+        let backendA = ModelSwitchBudgetBackend(contextSize: 20, tokenizer: tokenizerA)
+        let backendB = ModelSwitchBudgetBackend(contextSize: 20, tokenizer: ExactCharacterTokenizer())
+        let service = InferenceService()
+        service.registerBackendFactory { modelType in
+            switch modelType {
+            case typeA: backendA
+            case typeB: backendB
+            default: nil
+            }
+        }
+
+        let modelA = ModelInfo(
+            name: "Light Tokenizer A",
+            fileName: "light-tokenizer-a.gguf",
+            url: URL(fileURLWithPath: "/tmp/light-tokenizer-a.gguf"),
+            fileSize: 0,
+            modelType: typeA
+        )
+        let modelB = ModelInfo(
+            name: "Heavy Tokenizer B",
+            fileName: "heavy-tokenizer-b.gguf",
+            url: URL(fileURLWithPath: "/tmp/heavy-tokenizer-b.gguf"),
+            fileSize: 0,
+            modelType: typeB
+        )
+        try await service.loadModel(from: modelA, plan: .testStub(effectiveContextSize: 20))
+
+        let policy = DefaultCompressionPolicy.truncating(
+            threshold: 0.5,
+            contextSize: 20,
+            reservedTokens: 2,
+            tokenizer: tokenizerA
+        )
+        let runtime = ConversationRuntime(
+            messageStore: stack.provider,
+            inferenceService: service,
+            preTurnCompressionPolicy: policy
+        )
+        let seed = [
+            ChatMessage(role: .user, content: "aaaaaaaa", timestamp: Date(timeIntervalSinceReferenceDate: 1), sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "bbbbbbbb", timestamp: Date(timeIntervalSinceReferenceDate: 2), sessionID: sessionID),
+            ChatMessage(role: .user, content: "cccccccc", timestamp: Date(timeIntervalSinceReferenceDate: 3), sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "dddddddd", timestamp: Date(timeIntervalSinceReferenceDate: 4), sessionID: sessionID, promptTokens: 4)
+        ]
+        try await stack.provider.performMessageMutations(seed.map(MessageStoreMutation.insert))
+
+        try await service.loadModel(from: modelB, plan: .testStub(effectiveContextSize: 20))
+        try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "next"),
+            config: TurnConfig()
+        ))
+        _ = try await drainUntilStreamFinished(from: runtime)
+
+        let persisted = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(persisted.count, 4)
+        XCTAssertFalse(persisted.contains { $0.id == seed[0].id })
+        XCTAssertFalse(persisted.contains { $0.id == seed[1].id })
+        XCTAssertTrue(persisted.contains { $0.id == seed[2].id })
+        XCTAssertTrue(persisted.contains { $0.id == seed[3].id })
+    }
+
+    /// A large wire prompt on a fresh session must not trigger compression of
+    /// an empty history. There is nothing to replace yet; the first user turn
+    /// should proceed normally even when the prompt alone crosses threshold.
+    func test_defaultPolicySkipsPreTurnCompressionForFreshSession() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let sessionID = UUID()
+        let tokenizer = ExactCharacterTokenizer()
+        let backend = ModelSwitchBudgetBackend(contextSize: 20, tokenizer: tokenizer)
+        let service = InferenceService(backend: backend, name: "Fresh Session")
+        let policy = DefaultCompressionPolicy.truncating(
+            threshold: 0.5,
+            contextSize: 20,
+            reservedTokens: 2,
+            tokenizer: tokenizer
+        )
+        let runtime = ConversationRuntime(
+            messageStore: stack.provider,
+            inferenceService: service,
+            preTurnCompressionPolicy: policy
+        )
+
+        try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "first"),
+            config: TurnConfig(systemPrompt: String(repeating: "s", count: 16))
+        ))
+        _ = try await drainUntilStreamFinished(from: runtime)
+
+        let persisted = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(persisted.count, 2)
+        XCTAssertTrue(persisted.contains { $0.role == .user && $0.content == "first" })
+        XCTAssertTrue(persisted.contains { $0.role == .assistant && $0.content == "ok" })
+    }
+
+    /// Post-turn compression has a separate dispatch path. Switching to B
+    /// must use B's tokenizer for the replacement history after B's reported
+    /// usage triggers compression.
+    func test_defaultPolicyUsesActiveModelBudgetForPostTurnCompression() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let sessionID = UUID()
+        let typeA = ModelType(rawValue: "compression-post-turn-a")
+        let typeB = ModelType(rawValue: "compression-post-turn-b")
+        let tokenizerA = FixedCostTokenizer(cost: 1)
+        let backendA = ModelSwitchBudgetBackend(contextSize: 100, tokenizer: tokenizerA)
+        let backendB = ModelSwitchBudgetBackend(
+            contextSize: 20,
+            tokenizer: ExactCharacterTokenizer(),
+            promptTokens: 12
+        )
+        let service = InferenceService()
+        service.registerBackendFactory { modelType in
+            switch modelType {
+            case typeA: backendA
+            case typeB: backendB
+            default: nil
+            }
+        }
+
+        let modelA = ModelInfo(
+            name: "Post-turn A",
+            fileName: "post-turn-a.gguf",
+            url: URL(fileURLWithPath: "/tmp/post-turn-a.gguf"),
+            fileSize: 0,
+            modelType: typeA
+        )
+        let modelB = ModelInfo(
+            name: "Post-turn B",
+            fileName: "post-turn-b.gguf",
+            url: URL(fileURLWithPath: "/tmp/post-turn-b.gguf"),
+            fileSize: 0,
+            modelType: typeB
+        )
+        try await service.loadModel(from: modelA, plan: .testStub(effectiveContextSize: 100))
+
+        let policy = DefaultCompressionPolicy.truncating(
+            threshold: 0.5,
+            contextSize: 100,
+            reservedTokens: 2,
+            tokenizer: tokenizerA
+        )
+        let runtime = ConversationRuntime(
+            messageStore: stack.provider,
+            inferenceService: service,
+            compressionPolicy: policy
+        )
+        let seed = [
+            ChatMessage(role: .user, content: "aaaaaaaa", timestamp: Date(timeIntervalSinceReferenceDate: 1), sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "bbbbbbbb", timestamp: Date(timeIntervalSinceReferenceDate: 2), sessionID: sessionID),
+            ChatMessage(role: .user, content: "cccccccc", timestamp: Date(timeIntervalSinceReferenceDate: 3), sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "dddddddd", timestamp: Date(timeIntervalSinceReferenceDate: 4), sessionID: sessionID)
+        ]
+        try await stack.provider.performMessageMutations(seed.map(MessageStoreMutation.insert))
+
+        try await service.loadModel(from: modelB, plan: .testStub(effectiveContextSize: 20))
+        try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "next"),
+            config: TurnConfig()
+        ))
+        _ = try await drainUntilHistoryCompressed(from: runtime)
+
+        let persisted = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(persisted.count, 3)
+        XCTAssertFalse(persisted.contains { $0.id == seed[0].id })
+        XCTAssertFalse(persisted.contains { $0.id == seed[1].id })
+        XCTAssertFalse(persisted.contains { $0.id == seed[2].id })
+        XCTAssertTrue(persisted.contains { $0.id == seed[3].id })
+        XCTAssertTrue(persisted.contains { $0.content == "next" })
+        XCTAssertTrue(persisted.contains { $0.content == "ok" })
+    }
+
+    /// The reverse switch must stop using A's smaller window for the pre-turn
+    /// trigger. If the construction-time context remains in force, the 12-token
+    /// usage crosses A's 20-token threshold and needlessly truncates persisted
+    /// history even though it occupies only 12% of B's window.
+    func test_defaultPolicyStopsCompressingAfterSwitchToLargerContext() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let sessionID = UUID()
+        let typeA = ModelType(rawValue: "compression-small-context-a")
+        let typeB = ModelType(rawValue: "compression-large-context-b")
+        let tokenizer = ExactCharacterTokenizer()
+        let backendA = ModelSwitchBudgetBackend(contextSize: 20, tokenizer: tokenizer)
+        let backendB = ModelSwitchBudgetBackend(contextSize: 100, tokenizer: tokenizer)
+        let service = InferenceService()
+        service.registerBackendFactory { modelType in
+            switch modelType {
+            case typeA: backendA
+            case typeB: backendB
+            default: nil
+            }
+        }
+
+        let modelA = ModelInfo(
+            name: "Small Context A",
+            fileName: "small-context-a.gguf",
+            url: URL(fileURLWithPath: "/tmp/small-context-a.gguf"),
+            fileSize: 0,
+            modelType: typeA
+        )
+        let modelB = ModelInfo(
+            name: "Large Context B",
+            fileName: "large-context-b.gguf",
+            url: URL(fileURLWithPath: "/tmp/large-context-b.gguf"),
+            fileSize: 0,
+            modelType: typeB
+        )
+        try await service.loadModel(from: modelA, plan: .testStub(effectiveContextSize: 20))
+
+        let policy = DefaultCompressionPolicy.truncating(
+            threshold: 0.5,
+            contextSize: 20,
+            reservedTokens: 2,
+            tokenizer: tokenizer
+        )
+        let runtime = ConversationRuntime(
+            messageStore: stack.provider,
+            inferenceService: service,
+            preTurnCompressionPolicy: policy
+        )
+        let seed = [
+            ChatMessage(role: .user, content: "aaaaaaaa", timestamp: Date(timeIntervalSinceReferenceDate: 1), sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "bbbbbbbb", timestamp: Date(timeIntervalSinceReferenceDate: 2), sessionID: sessionID),
+            ChatMessage(role: .user, content: "cccccccc", timestamp: Date(timeIntervalSinceReferenceDate: 3), sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "dddddddd", timestamp: Date(timeIntervalSinceReferenceDate: 4), sessionID: sessionID, promptTokens: 12)
+        ]
+        try await stack.provider.performMessageMutations(seed.map(MessageStoreMutation.insert))
+
+        try await service.loadModel(from: modelB, plan: .testStub(effectiveContextSize: 100))
+        try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "next"),
+            config: TurnConfig()
+        ))
+        _ = try await drainUntilStreamFinished(from: runtime)
+
+        let persisted = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(persisted.count, 6)
+        for message in seed {
+            XCTAssertTrue(persisted.contains { $0.id == message.id }, "B's larger context must retain persisted history record \(message.id)")
+        }
+    }
+
+    /// Switching from a tokenizer-vending model to a backend without one must
+    /// select the documented heuristic for B. Reusing A's fixed-cost tokenizer
+    /// would evict three seed records even though B's heuristic budget fits all
+    /// four.
+    func test_defaultPolicyFallsBackToHeuristicWhenActiveModelHasNoTokenizer() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let sessionID = UUID()
+        let typeA = ModelType(rawValue: "compression-tokenizer-a")
+        let typeB = ModelType(rawValue: "compression-no-tokenizer-b")
+        let tokenizerA = FixedCostTokenizer(cost: 50)
+        let backendA = ModelSwitchBudgetBackend(contextSize: 20, tokenizer: tokenizerA)
+        let backendB = MockInferenceBackend(capabilities: BackendCapabilities(
+            supportedParameters: [],
+            maxContextTokens: 20,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true
+        ))
+        let service = InferenceService()
+        service.registerBackendFactory { modelType in
+            switch modelType {
+            case typeA: backendA
+            case typeB: backendB
+            default: nil
+            }
+        }
+
+        let modelA = ModelInfo(
+            name: "Tokenizer A",
+            fileName: "tokenizer-a.gguf",
+            url: URL(fileURLWithPath: "/tmp/tokenizer-a.gguf"),
+            fileSize: 0,
+            modelType: typeA
+        )
+        let modelB = ModelInfo(
+            name: "No Tokenizer B",
+            fileName: "no-tokenizer-b.gguf",
+            url: URL(fileURLWithPath: "/tmp/no-tokenizer-b.gguf"),
+            fileSize: 0,
+            modelType: typeB
+        )
+        try await service.loadModel(from: modelA, plan: .testStub(effectiveContextSize: 20))
+
+        let policy = DefaultCompressionPolicy.truncating(
+            threshold: 0.5,
+            contextSize: 20,
+            reservedTokens: 2,
+            tokenizer: tokenizerA
+        )
+        let runtime = ConversationRuntime(
+            messageStore: stack.provider,
+            inferenceService: service,
+            preTurnCompressionPolicy: policy
+        )
+        let seed = [
+            ChatMessage(role: .user, content: "aaaaaaaa", timestamp: Date(timeIntervalSinceReferenceDate: 1), sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "bbbbbbbb", timestamp: Date(timeIntervalSinceReferenceDate: 2), sessionID: sessionID),
+            ChatMessage(role: .user, content: "cccccccc", timestamp: Date(timeIntervalSinceReferenceDate: 3), sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "dddddddd", timestamp: Date(timeIntervalSinceReferenceDate: 4), sessionID: sessionID, promptTokens: 12)
+        ]
+        try await stack.provider.performMessageMutations(seed.map(MessageStoreMutation.insert))
+
+        try await service.loadModel(from: modelB, plan: .testStub(effectiveContextSize: 20))
+        try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "next"),
+            config: TurnConfig()
+        ))
+        _ = try await drainUntilStreamFinished(from: runtime)
+
+        let persisted = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(persisted.count, 6)
+        for message in seed {
+            XCTAssertTrue(persisted.contains { $0.id == message.id }, "B's heuristic path must not reuse A's tokenizer and evict \(message.id)")
+        }
     }
 }

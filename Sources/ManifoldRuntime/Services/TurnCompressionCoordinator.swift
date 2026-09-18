@@ -50,7 +50,7 @@ enum CompressionWireSystemPrompt: Sendable, Equatable {
 /// Sendability discipline (invariant 5): this holds the ``TurnEventEmitter``
 /// — a bare `@Sendable (ConversationEvent) -> Void` sink — never a
 /// `@MainActor`-capturing wrapper. The only main-actor state read is the
-/// explicit `@MainActor` ``readContextWindowSize()`` hop.
+/// active-model budget snapshot hop.
 struct TurnCompressionCoordinator: Sendable {
     private let persistence: ConversationPersistencePort
     private let inferenceService: InferenceService
@@ -109,21 +109,44 @@ struct TurnCompressionCoordinator: Sendable {
             throw ConversationError.persistence(error)
         }
         let lastPromptTokens = existingHistory.last(where: { $0.role == .assistant })?.promptTokens
-        guard preTurnPolicy.shouldCompressBeforeTurn(
-            messageCount: existingHistory.count,
-            lastPromptTokens: lastPromptTokens
-        ) else { return }
+        let activeModelBudget = await inferenceService.activeModelCompressionBudgetAsync()
+        let systemPrompt: String?
+        if let defaultPolicy = preTurnPolicy as? DefaultCompressionPolicy,
+           let activeModelBudget {
+            systemPrompt = await resolveSystemPrompt(wireSystemPrompt, sessionID: sessionID)
+            guard defaultPolicy.shouldCompressBeforeTurn(
+                history: existingHistory,
+                systemPrompt: systemPrompt,
+                activeModelBudget: activeModelBudget
+            ) else { return }
+        } else {
+            guard preTurnPolicy.shouldCompressBeforeTurn(
+                messageCount: existingHistory.count,
+                lastPromptTokens: lastPromptTokens
+            ) else { return }
+            systemPrompt = await resolveSystemPrompt(wireSystemPrompt, sessionID: sessionID)
+        }
 
         let generate = makeCompressionGenerateClosure()
-        let systemPrompt = await resolveSystemPrompt(wireSystemPrompt, sessionID: sessionID)
         let compressed: [ChatMessage]
         do {
-            compressed = try await preTurnPolicy.compressBeforeTurn(
-                history: existingHistory,
-                sessionID: sessionID,
-                systemPrompt: systemPrompt,
-                generate: generate
-            )
+            if let defaultPolicy = preTurnPolicy as? DefaultCompressionPolicy,
+               let activeModelBudget {
+                compressed = try await defaultPolicy.compressBeforeTurn(
+                    history: existingHistory,
+                    sessionID: sessionID,
+                    systemPrompt: systemPrompt,
+                    activeModelBudget: activeModelBudget,
+                    generate: generate
+                )
+            } else {
+                compressed = try await preTurnPolicy.compressBeforeTurn(
+                    history: existingHistory,
+                    sessionID: sessionID,
+                    systemPrompt: systemPrompt,
+                    generate: generate
+                )
+            }
         } catch {
             throw ConversationError.preTurnCompressionFailed(error)
         }
@@ -178,7 +201,8 @@ struct TurnCompressionCoordinator: Sendable {
         hookRegistry: HookRegistry?
     ) async {
         guard let postTurnPolicy, let promptTokens else { return }
-        let contextSize = await readContextWindowSize()
+        let activeModelBudget = await inferenceService.activeModelCompressionBudgetAsync()
+        let contextSize = activeModelBudget?.contextSize ?? 0
         let contextUtilization = contextSize > 0 ? Double(promptTokens) / Double(contextSize) : 0
         guard contextSize > 0 && postTurnPolicy.shouldCompress(promptTokens: promptTokens, contextSize: contextSize, contextUtilization: contextUtilization) else { return }
 
@@ -219,12 +243,24 @@ struct TurnCompressionCoordinator: Sendable {
         }
 
         do {
-            let compressed = try await postTurnPolicy.compress(
-                history: history,
-                sessionID: sessionID,
-                systemPrompt: systemPrompt,
-                generate: generate
-            )
+            let compressed: [ChatMessage]
+            if let defaultPolicy = postTurnPolicy as? DefaultCompressionPolicy,
+               let activeModelBudget {
+                compressed = try await defaultPolicy.compress(
+                    history: history,
+                    sessionID: sessionID,
+                    systemPrompt: systemPrompt,
+                    activeModelBudget: activeModelBudget,
+                    generate: generate
+                )
+            } else {
+                compressed = try await postTurnPolicy.compress(
+                    history: history,
+                    sessionID: sessionID,
+                    systemPrompt: systemPrompt,
+                    generate: generate
+                )
+            }
             // Guard against an empty result — deleting all messages
             // without re-inserting anything would silently wipe the
             // conversation. Treat this as a policy error; preserve the
@@ -311,10 +347,4 @@ struct TurnCompressionCoordinator: Sendable {
         }
     }
 
-    /// Reads the backend's context window size from the main actor.
-    /// Returns 0 when unavailable — callers treat 0 as "skip compression".
-    @MainActor
-    private func readContextWindowSize() async -> Int {
-        inferenceService.capabilities?.contextWindowSize ?? 0
-    }
 }
