@@ -18,8 +18,8 @@ import ManifoldInference
 ///
 /// Skipped automatically when:
 /// - No Ollama server is reachable at `localhost:11434`.
-/// - No vision-capable model is installed (tries `vl`, `moondream`, `llava`
-///   substrings, or honours an explicit `OLLAMA_TEST_MODEL` override).
+/// - No installed model advertises the `"vision"` capability through
+///   `/api/show`, or an explicit `OLLAMA_TEST_MODEL` pin is missing/incapable.
 ///
 /// The image content is a single unambiguous solid color so the assertion can
 /// be tolerant of small-model phrasing: the bar is *non-empty grounded output*,
@@ -40,21 +40,14 @@ final class OllamaVisionE2ETests: XCTestCase {
             "Ollama server not running at localhost:11434"
         )
 
-        // Prefer an explicit override, then the common vision-model name
-        // substrings in descending availability order on typical dev boxes.
-        let candidates = ["vl", "moondream", "llava"]
-        var resolved: String?
-        for substring in candidates {
-            if let match = HardwareRequirements.findOllamaModel(nameContains: substring) {
-                resolved = match
-                break
-            }
-        }
-        guard let model = resolved else {
+        guard let model = HardwareRequirements.findOllamaVisionCapableModel() else {
             let installed = HardwareRequirements.listOllamaModels()?.joined(separator: ", ") ?? "<none>"
+            let pinned = ProcessInfo.processInfo.environment["OLLAMA_TEST_MODEL"]
+                .map { " Explicit pin: \($0)." } ?? ""
             throw XCTSkip(
-                "No vision-capable Ollama model installed (looked for: \(candidates.joined(separator: ", "))). "
-                + "Pull e.g. `qwen2.5vl:3b` or `moondream`, or set OLLAMA_TEST_MODEL. Installed: \(installed)"
+                "No installed Ollama model advertises the vision capability."
+                + pinned
+                + " Pull e.g. `gemma3:4b`, `qwen2.5vl:3b`, or `moondream`. Installed: \(installed)"
             )
         }
         modelName = model
