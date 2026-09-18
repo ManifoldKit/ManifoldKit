@@ -14,7 +14,7 @@ A one-page tutorial for getting from "empty terminal" to "streaming tokens" with
 > | Ollama / OpenAI / Anthropic | macOS 26 / iOS 26 | Yes      | [§3](#3-cloud--ollama-via-loadendpointbackendfrom) / [§3b REPL](#3b-interactive-repl-stdin-loop) |
 > | MLX (Apple Silicon) | macOS 26 / iOS 26 — **Xcode `.app` only, not `swift run`** | No | [§4](#4-mlx-via-the-manifold-mlx-companion-apple-silicon) |
 >
-> For a fully local model, skip directly to [§2](#2-local-gguf-via-the-llama-backend-macos-26). Foundation Models will not load.
+> For a fully local model, skip directly to [§2](#2-local-gguf-via-the-llama-backend-macos-26). Foundation Models still require Apple Intelligence to be available and provisioned.
 
 Sections §1–§3b are complete, compile-tested examples: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`. §3 is a one-shot smoke test; [§3b](#3b-interactive-repl-stdin-loop) is the multi-turn REPL most CLIs actually want. §4 (MLX) is the exception — from a bare `swift run` it generates only when the **Metal Toolchain** component is installed (otherwise MLX aborts at model load); see the callout in that section.
 

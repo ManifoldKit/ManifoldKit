@@ -23,6 +23,12 @@ let package = Package(
         .iOS("26.0"),
         .macOS("26.0")
     ],
+    dependencies: [
+        .package(
+            url: "https://github.com/ManifoldKit/ManifoldKit.git",
+            from: "0.78.0" // x-release-please-version
+        )
+    ],
     targets: [
         .executableTarget(
             name: "MyApp",

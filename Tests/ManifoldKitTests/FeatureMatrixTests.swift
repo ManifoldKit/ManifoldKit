@@ -29,7 +29,7 @@ final class FeatureMatrixTests: XCTestCase {
         let missingFromMatrix = manifestTraits.subtracting(matrixNames)
         XCTAssertTrue(
             missingFromMatrix.isEmpty,
-            "Package.swift declares trait(s) not in FeatureMatrix.swift: \(missingFromMatrix.sorted()). Add them to FeatureMatrix.traits with the capabilities they unlock (or unlocks: [] plus an entry in pendingMapping if it's a harness/build lever)."
+            "Package.swift declares trait(s) not in FeatureMatrix.swift: \(missingFromMatrix.sorted()). Add them to FeatureMatrix.traits with the capabilities they unlock."
         )
     }
 

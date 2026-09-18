@@ -178,8 +178,6 @@ guaranteed" section that names what ManifoldKit deliberately does *not* do.
 
 ## 5. ManifoldKit vs. the field
 
-![Capability matrix — ManifoldKit fills the full stack while UI-only kits, engine wrappers, thin cloud clients, and Foundation Models-only cover partial layers; deployment floor iOS 26+ / macOS 26+](images/product/vs-field-matrix.png)
-
 The Swift AI market is layered. ManifoldKit is the only entry that spans all of
 it as an installable package. (Stars/activity verified 2026-07-07.)
 
