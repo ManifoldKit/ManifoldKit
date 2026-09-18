@@ -340,6 +340,28 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
         SessionContractAsserter.assertEmpty(detector.inspect([capture]), detectorId: detector.id)
     }
 
+    /// A real-model stop can end on ordinary framing that the next answer
+    /// independently repeats. Preserve that overlap as a candidate, but make
+    /// its ambiguity explicit so replay cannot turn repetition into causality.
+    func test_sharedAnswerPrefix_isReportedOnlyAsAmbiguousCandidate() throws {
+        let sharedPrefix = "The capital of"
+        let turn1 = SessionFixture.record(raw: sharedPrefix)
+        let turn2 = SessionFixture.record(raw: "The capital of Germany is Berlin.")
+        let capture = SessionFixture.capture(
+            id: "race-shared-answer-prefix",
+            turns: [turn1, turn2],
+            stopAfterIndex: 0,
+            tailObservedBeforeStopReturned: sharedPrefix
+        )
+
+        let finding = try XCTUnwrap(detector.inspect([capture]).first)
+        XCTAssertEqual(finding.subCheck, "stopped-turn-tail-at-successor-prefix")
+        XCTAssertEqual(finding.severity, .flaky)
+        XCTAssertTrue(finding.trigger.contains("ambiguous stop-boundary overlap"))
+        XCTAssertTrue(finding.trigger.contains("manual triage"))
+        XCTAssertTrue(finding.trigger.contains("overlap alone does not prove leakage"))
+    }
+
     /// Adversarial: the user intentionally sent the same message twice.
     /// Turn 2's raw matches turn 1's raw (legitimate repetition), but no
     /// `stopRequested` step exists — must NOT fire.

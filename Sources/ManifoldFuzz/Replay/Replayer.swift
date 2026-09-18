@@ -3,10 +3,11 @@ import ManifoldInference
 
 /// Replays a previously-recorded fuzz finding to separate flakes from confirmed
 /// bugs. Resolves a finding hash to its stored `record.json`, refuses on git/model
-/// drift (top-3 DevEx abandonment risk — "it worked yesterday" non-repro), re-runs
-/// the exact recorded prompt + sampler config N times, and promotes the finding's
-/// severity from `.flaky` to `.confirmed` when the same detector hash fires in a
-/// quorum of attempts.
+/// drift (top-3 DevEx abandonment risk — "it worked yesterday" non-repro), and
+/// re-runs the exact recorded prompt + sampler config N times. Eligible findings
+/// move from `.flaky` to `.confirmed` when the same detector hash fires in a
+/// quorum of attempts. Cancellation observations remain manual-triage evidence
+/// because repeating an overlap does not establish its cause.
 ///
 /// Lives parallel to `FuzzRunner` rather than inside it: replay is a distinct
 /// mode of operation (no campaign loop, no corpus sampling, full input determinism)
@@ -19,9 +20,14 @@ public struct Replayer: Sendable {
         /// Count of attempts that hit the same finding hash.
         public let successfulReproductions: Int
         public let attempts: Int
-        /// Set to `.confirmed` when the result met the promotion threshold.
-        /// `nil` means the severity stays as it was.
+        /// Set to `.confirmed` when an eligible result met the promotion
+        /// threshold. `nil` means the severity stays as it was.
         public let newSeverity: Severity?
+        /// Classifies an artifact whose observations cannot establish causality
+        /// on their own and therefore need manual investigation. Classification
+        /// is independent of whether this replay reproduced the finding. These
+        /// artifacts are never promoted to `.confirmed`, regardless of rate.
+        public let requiresManualTriage: Bool
         /// Populated when `--force` was used despite drift.
         public let drift: DriftReport?
     }
@@ -142,7 +148,16 @@ public struct Replayer: Sendable {
 
         let rate = attempts > 0 ? Double(successes) / Double(attempts) : 0
         let threshold = Self.promotionThreshold(attempts: attempts)
-        let promoted = successes >= threshold
+        let detectorID = recordURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .lastPathComponent
+        // A repeated stop-boundary overlap proves that the observation is
+        // reproducible, not that bytes crossed from the stopped generation
+        // into its successor. Preserve the evidence without turning
+        // coincidence into a confirmed backend race.
+        let requiresManualTriage = detectorID == CancellationRaceDetector().id
+        let promoted = successes >= threshold && !requiresManualTriage
 
         // 6. Persist severity promotion back to disk — preserve schemaVersion.
         if promoted {
@@ -164,6 +179,7 @@ public struct Replayer: Sendable {
             successfulReproductions: successes,
             attempts: attempts,
             newSeverity: promoted ? .confirmed : nil,
+            requiresManualTriage: requiresManualTriage,
             drift: force && drift.any ? drift : nil
         )
         return .reproduced(result)

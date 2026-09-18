@@ -518,7 +518,9 @@ struct FuzzChatCLI {
         switch outcome {
         case .reproduced(let result):
             let verdict: String = {
-                if result.newSeverity == .confirmed {
+                if result.requiresManualTriage {
+                    return "manual triage required; overlap reproduction does not confirm a race"
+                } else if result.newSeverity == .confirmed {
                     return "promoted to confirmed"
                 } else {
                     return "remains flaky"

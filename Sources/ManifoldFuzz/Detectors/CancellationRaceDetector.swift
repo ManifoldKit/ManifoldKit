@@ -15,12 +15,12 @@ import Foundation
 /// they never count as clean cancellation coverage.
 ///
 /// Second, the old detector searched for a long common substring anywhere in
-/// turn 2. That duplicated `TurnBoundaryKVStateDetector` and still could not
-/// distinguish residue from legitimate repeated prose. Cancellation residue
-/// has stronger placement: a suffix of the stopped turn's observed tail must
-/// appear at the very start of its successor. This positional gate permits a
-/// short threshold while rejecting the original "which" / "where" / echoed
-/// prompt false positives when those words occur in the middle of turn 2.
+/// turn 2. The narrower observation recorded here is a suffix of the stopped
+/// turn's observed tail appearing at the very start of its successor. That
+/// positional gate rejects mid-answer "which" / "where" false positives, but
+/// it still cannot distinguish leaked state from an ordinary shared answer
+/// prefix. The finding therefore remains an ambiguous candidate that requires
+/// manual provenance work; replay repetition never confirms it as a race.
 ///
 /// `textObservedAfterStopReturned` means exactly that the recorder consumed
 /// the event after `stopGeneration()` returned. It does not prove when the
@@ -28,7 +28,7 @@ import Foundation
 /// have buffered it. Findings use "observed" language deliberately.
 public struct CancellationRaceDetector: SessionDetector {
     public let id = "cancellation-race"
-    public let humanName = "Cancellation race token interleave"
+    public let humanName = "Cancellation stop-boundary overlap candidate"
     public let inspiredBy = "8d6b013 — stop-while-decoding; #2361 — real in-flight stop + positional residue"
 
     /// Minimum positional suffix/prefix overlap, in Swift `Character`s.
@@ -92,9 +92,10 @@ public struct CancellationRaceDetector: SessionDetector {
                     detectorId: id,
                     subCheck: "stopped-turn-tail-at-successor-prefix",
                     severity: .flaky,
-                    trigger: "stopped-turn suffix '\(residue.prefix(60))' begins successor; "
+                    trigger: "ambiguous stop-boundary overlap requiring manual triage: "
+                        + "stopped-turn suffix '\(residue.prefix(60))' begins successor; "
                         + "\(afterStopCount) character(s) were observed after stop returned "
-                        + "(backend emission time unknown)",
+                        + "(backend emission time unknown; overlap alone does not prove leakage)",
                     modelId: turn2.record?.model.id ?? "unknown"
                 ))
             }
@@ -111,7 +112,8 @@ public struct CancellationRaceDetector: SessionDetector {
             detectorId: id,
             subCheck: "stop-window-unexercised",
             severity: .flaky,
-            trigger: "cancellation coverage not qualified: \(reason)",
+            trigger: "cancellation coverage not qualified: \(reason); manual triage required, "
+                + "and repetition cannot confirm a race",
             modelId: turn2.record?.model.id ?? turn1.record?.model.id ?? "unknown"
         )
     }

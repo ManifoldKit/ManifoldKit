@@ -365,6 +365,18 @@ final class ReplayTests: XCTestCase {
         }
         XCTAssertEqual(result.successfulReproductions, 1)
         XCTAssertEqual(result.reproduceRate, 1)
+        XCTAssertTrue(result.requiresManualTriage)
+        XCTAssertNil(result.newSeverity, "repeatable overlap cannot establish a cancellation race")
+
+        let persisted = try FindingsIndexCodec.load(from: tempDir)
+        let persistedFinding = try XCTUnwrap(
+            persisted.rows.first(where: { $0.finding.hash == finding.hash })?.finding
+        )
+        XCTAssertEqual(
+            persistedFinding.severity,
+            .flaky,
+            "manual-triage cancellation evidence must remain unconfirmed on disk"
+        )
     }
 
     func test_replay_reproduceRate_zero_whenBackendProducesDifferentOutput() async throws {
@@ -389,6 +401,29 @@ final class ReplayTests: XCTestCase {
         XCTAssertEqual(result.successfulReproductions, 0)
         XCTAssertEqual(result.reproduceRate, 0.0, accuracy: 1e-9)
         XCTAssertNil(result.newSeverity, "0/3 must not promote")
+    }
+
+    func test_cancellationArtifact_requiresManualTriageEvenWhenReplayDoesNotReproduce() async throws {
+        let hash = try seedRecord(
+            detectorId: "cancellation-race",
+            rendered: "old output",
+            subCheck: "stopped-turn-tail-at-successor-prefix",
+            trigger: "ambiguous stop-boundary overlap"
+        )
+        let replayer = Replayer(
+            findingsRoot: tempDir,
+            factory: StubFactory(tokens: ["different output"]),
+            gitRevResolver: { "aaaaaaa" },
+            modelHashResolver: { _ in nil }
+        )
+
+        let outcome = try await replayer.replay(hash: hash, attempts: 1)
+        guard case .reproduced(let result) = outcome else {
+            return XCTFail("expected .reproduced, got \(outcome)")
+        }
+        XCTAssertEqual(result.successfulReproductions, 0)
+        XCTAssertTrue(result.requiresManualTriage)
+        XCTAssertNil(result.newSeverity)
     }
 
     // MARK: - Promotion threshold
@@ -420,6 +455,7 @@ final class ReplayTests: XCTestCase {
         guard case .reproduced(let result) = outcome else {
             return XCTFail("expected .reproduced, got \(outcome)")
         }
+        XCTAssertFalse(result.requiresManualTriage)
         XCTAssertEqual(result.newSeverity, .confirmed, "3/3 must promote")
 
         // index.json should now carry severity=confirmed for this hash.

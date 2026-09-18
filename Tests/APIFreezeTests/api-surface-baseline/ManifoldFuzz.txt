@@ -356,6 +356,7 @@ Replayer.Result.attempts Var
 Replayer.Result.drift Var
 Replayer.Result.newSeverity Var
 Replayer.Result.reproduceRate Var
+Replayer.Result.requiresManualTriage Var
 Replayer.Result.successfulReproductions Var
 Replayer.findingDirectory(forHash:) Func
 Replayer.init(findingsRoot:factory:gitRevResolver:modelHashResolver:clock:detectors:) Constructor
