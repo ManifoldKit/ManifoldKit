@@ -372,7 +372,7 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
         systemPrompt: String?,
         activeModelBudget: ActiveModelCompressionBudget
     ) -> Bool {
-        guard activeModelBudget.contextSize > 0 else { return false }
+        guard !history.isEmpty, activeModelBudget.contextSize > 0 else { return false }
         let historyTokens = history.reduce(0) { partialResult, message in
             partialResult + ContextWindowManager.estimateTokenCount(
                 message,

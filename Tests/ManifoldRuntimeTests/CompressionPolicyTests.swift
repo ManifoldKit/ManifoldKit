@@ -1134,6 +1134,40 @@ final class CompressionPolicyIntegrationTests: XCTestCase {
         XCTAssertTrue(persisted.contains { $0.id == seed[3].id })
     }
 
+    /// A large wire prompt on a fresh session must not trigger compression of
+    /// an empty history. There is nothing to replace yet; the first user turn
+    /// should proceed normally even when the prompt alone crosses threshold.
+    func test_defaultPolicySkipsPreTurnCompressionForFreshSession() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let sessionID = UUID()
+        let tokenizer = ExactCharacterTokenizer()
+        let backend = ModelSwitchBudgetBackend(contextSize: 20, tokenizer: tokenizer)
+        let service = InferenceService(backend: backend, name: "Fresh Session")
+        let policy = DefaultCompressionPolicy.truncating(
+            threshold: 0.5,
+            contextSize: 20,
+            reservedTokens: 2,
+            tokenizer: tokenizer
+        )
+        let runtime = ConversationRuntime(
+            messageStore: stack.provider,
+            inferenceService: service,
+            preTurnCompressionPolicy: policy
+        )
+
+        try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "first"),
+            config: TurnConfig(systemPrompt: String(repeating: "s", count: 16))
+        ))
+        _ = try await drainUntilStreamFinished(from: runtime)
+
+        let persisted = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(persisted.count, 2)
+        XCTAssertTrue(persisted.contains { $0.role == .user && $0.content == "first" })
+        XCTAssertTrue(persisted.contains { $0.role == .assistant && $0.content == "ok" })
+    }
+
     /// Post-turn compression has a separate dispatch path. Switching to B
     /// must use B's tokenizer for the replacement history after B's reported
     /// usage triggers compression.
