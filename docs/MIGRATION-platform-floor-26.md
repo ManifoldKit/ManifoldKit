@@ -1,7 +1,7 @@
 # Migration: iOS and macOS 26 floor
 
 **Audience:** consumer
-**Status:** current
+**Status:** living
 
 The next ManifoldKit minor raises the package and example-app deployment targets
 from iOS 18 / macOS 15 to **iOS 26 / macOS 26**. This follows the project's n-1
