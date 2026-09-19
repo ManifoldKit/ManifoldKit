@@ -104,7 +104,7 @@ and enforced by `ManifoldMigrationPlanLightweightAuditTest`.
 ### 3. Traits
 
 There are no default traits: plain `swift build` is the full core build. The
-surviving opt-in traits are `Server` and `Macros` (plus the WWDC stubs). The
+surviving opt-in traits are `Server` and `Macros`. The
 trait *roster* is part of the surface — removing or renaming a trait breaks a
 consumer manifest that names it (SwiftPM hard-errors on an unknown trait, as the
 v0.48 retirement demonstrated). Post-1.0, retiring a trait is a breaking change
@@ -113,7 +113,7 @@ and follows the same major-version rule as removing a symbol.
 ### 4. Platform floors
 
 ManifoldKit targets **n-1**: the current Apple OS and the one before it (macOS
-26 / 15, iOS 26 / 18 today), and bumps both floors each September when Apple
+27 / 26, iOS 27 / 26 today), and bumps both floors each September when Apple
 ships a new major OS. Per **Policy 1** below, a floor bump is a **minor**
 release, announced one release ahead in the changelog: platform floors sit
 outside the API stability promise.

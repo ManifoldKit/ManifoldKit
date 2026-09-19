@@ -80,7 +80,7 @@ jobs:
     # the header comment above). `workflow_dispatch` has no PR context so the
     # clause short-circuits true there.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: macos-15
+    runs-on: macos-26
     # xcodebuild's SPM workspace resolution + a from-scratch `build-for-testing`
     # of the Advanced scheme (app + UI test bundle) is a few minutes on a cold
     # cache; sized with slack above that, matching build-modes.yml's budget.

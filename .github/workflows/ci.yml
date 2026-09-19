@@ -523,9 +523,9 @@ jobs:
     if: |
       needs.changes.outputs.already-validated != 'true' &&
       (needs.changes.outputs.affected != 'NONE' || github.event_name != 'pull_request')
-    # The package floor remains macOS 15. Qualification runs on macOS 26 so
-    # FoundationModels-backed guard paths execute on the oldest host in the
-    # planned 1.0 support matrix instead of skipping solely because of the OS.
+    # The package floor is macOS 26. This host executes FoundationModels-backed
+    # paths on the oldest supported runtime; Apple Intelligence still needs its
+    # own provisioned-device evidence.
     runs-on: macos-26  # Apple Silicon (arm64) standard runner
     # Backstop against an org-wide macOS-slot stall (see the `changes` job's
     # timeout-minutes comment). 150 is a backstop, not a budget: the worst
@@ -900,9 +900,11 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.api-any == 'true' &&
       needs.changes.outputs.already-validated != 'true'
-    # Retain an independent macOS 15 compile lane while that remains the
-    # declared package floor. The digester does not exercise runtime behavior.
-    runs-on: macos-15
+    # swift-api-digester must run on a host at the package deployment floor.
+    # The macOS-15 run built successfully but reported broad false removals;
+    # host/availability filtering is the likely cause, pending a macOS-26
+    # rerun with the same Xcode 26.3 pin. Runtime qualification belongs to `test`.
+    runs-on: macos-26
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment. Sized above the step-budget sum: 15 (dep
     # pre-fetch, fires when deps changed) + 25 (digester step) + setup slack.
@@ -1230,7 +1232,7 @@ jobs:
       needs.changes.outputs.cold-start == 'true' &&
       needs.changes.outputs.already-validated != 'true' &&
       (needs.test.result == 'success' || needs.test.result == 'skipped')
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
+    runs-on: macos-26  # executes the package at its supported runtime floor
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment for the rationale. 70 covers the six sequential
     # tiers (each step-level-timed at 10 min) plus setup/checkout slack.
@@ -1321,7 +1323,7 @@ jobs:
       needs.changes.outputs.persistence == 'true' &&
       needs.changes.outputs.already-validated != 'true' &&
       (needs.test.result == 'success' || needs.test.result == 'skipped')
-    runs-on: macos-15  # match the `test` job runner
+    runs-on: macos-26  # host the iOS 26 simulator from the supported generation
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment for the rationale.
     timeout-minutes: 25

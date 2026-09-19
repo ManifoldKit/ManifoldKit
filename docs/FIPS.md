@@ -138,7 +138,7 @@ mint tokens, or hold long-lived key material outside Keychain.
 
 ManifoldKit targets **n−1**: the current Apple OS release plus the one immediately
 before (see [CLAUDE.md](../CLAUDE.md) "Platform policy"). At the time of
-writing, that floor is **macOS 15** and **iOS 18**.
+writing, that floor is **macOS 26** and **iOS 26**.
 
 For any given deployment target, you must look up Apple's published FIPS
 certificate matching that OS version on NIST's

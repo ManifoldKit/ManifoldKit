@@ -20,10 +20,10 @@ Gate any code that touches the bridge accordingly; it compiles unconditionally
 but only *works* on the current OS.
 
 ManifoldKit's general platform floor is **n-1**: the current Apple OS release
-and the one immediately before it (currently macOS 26 / 15, iOS 26 / 18 — see
+and the one immediately before it (currently macOS 27 / 26, iOS 27 / 26 — see
 `CLAUDE.md` → Platform policy). `Package.swift`'s `platforms:` declares
-`.iOS(.v18)` / `.macOS(.v15)` as the package-wide minimum; `FoundationBackend`
-is the one target that needs a higher floor than the package minimum.
+`.iOS("26.0")` / `.macOS("26.0")` as the package-wide minimum. APIs introduced
+after 26 retain their own availability guards.
 
 ## Local-backend hardware gating (companion packages)
 
@@ -91,12 +91,9 @@ Don't assume core and a companion package need the same tools-version ceiling
 - **macOS qualification runners.** Core's required runtime-qualification job,
   cache prime and trait satellites run on the GA Apple Silicon `macos-26`
   image with Xcode 26.3 selected explicitly. This
-  exercises the oldest runtime in the planned 1.0 matrix while the package's
-  declared floor remains macOS 15 / iOS 18. The API-digester and cold-start
-  jobs retain independent `macos-15` compile coverage until the coordinated
-  floor change. The iOS 26 file-protection runtime check also retains its
-  `macos-15` host until its simulator selector is updated for the macOS 26
-  image's device inventory. GitHub's authoritative
+  exercises the oldest supported runtime: macOS 26 / iOS 26. The API-digester
+  retains an independent `macos-15` compile lane as a toolchain-compatibility
+  check, not as supported-runtime qualification. GitHub's authoritative
   [`macos-26` inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md)
   lists Xcode 26.3 and the installed iOS 26 simulators. Core also has Ubuntu
   lint jobs. Standard runner minutes are free for this public repository; a

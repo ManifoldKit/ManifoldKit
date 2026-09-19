@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
 
 # A `workflow_dispatch` triggered while a scheduled run is still in flight
-# would race on the SwiftPM cache key and double-bill the macos-15 runner.
+# would race on the SwiftPM cache key and double-bill the macos-26 runner.
 # Cancel the in-flight run so only one is ever active.
 concurrency:
   group: nightly-slow-tests
@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   slow:
-    runs-on: macos-15
+    runs-on: macos-26
     # Steps sum well past 30 on a cold cache (coverage alone is ~15m, plus the
     # full-package api-digester step and six test steps) — 45 gives headroom.
     timeout-minutes: 45
@@ -382,7 +382,7 @@ jobs:
   # a public symbol downstream-visible. Steps 2–6 use
   # `if: success() || failure()` so one failure doesn't mask the others.
   cold-start:
-    runs-on: macos-15
+    runs-on: macos-26
     # Must exceed the sum of the step budgets (6 × 10 min) plus checkout +
     # Swift CI setup + the issue-reporter step: a job-level timeout marks
     # steps `cancelled`, not `failure`, so the `if: failure()` reporter below
@@ -509,7 +509,7 @@ jobs:
   # more at the current 27-module scope) doesn't fit inside `slow`'s 30-minute
   # timeout alongside everything else that job already runs.
   api-surface-baseline:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 45
 
     steps:
@@ -534,7 +534,7 @@ jobs:
   # job above. Steps use `if: success() || failure()` so one failure doesn't
   # mask the rest.
   queue-merge-backstop:
-    runs-on: macos-15
+    runs-on: macos-26
     # Step budgets sum to 50 min (15+15+15+5); checkout + Swift CI setup +
     # the issue-reporter step need real headroom on top — a job-level timeout
     # marks steps `cancelled`, not `failure`, which would skip the
@@ -644,7 +644,7 @@ jobs:
   # optimization only — the script runs correctly without it, so it is omitted
   # here.
   doc-gates:
-    runs-on: macos-15
+    runs-on: macos-26
     # Step budgets sum to 30 min (20+10); checkout + Swift CI setup + the
     # issue-reporter step need headroom on top — a job-level timeout marks
     # steps `cancelled`, not `failure`, which would skip the `if: failure()`

@@ -1,15 +1,17 @@
-# WWDC 2026 Pre-emptive Trait Stubs
+# WWDC 2026 Trait-Stubs Disposition
 
 **Audience:** contributor
 **Status:** living
 
-Added 2026-05-31, 8 days before WWDC 2026 (June 8). **Updated 2026-06-16**
-against the shipped Xcode 27 / macOS 27 beta SDK — the pre-WWDC guesses below
-each section have been resolved against ground truth. Works toward issue #1577.
+Added 2026-05-31, 8 days before WWDC 2026 (June 8). The final Xcode 27.0 /
+macOS 27 SDK was checked on 2026-09-18. The pre-WWDC guesses below are
+historical investigation supporting issue #1577.
 
-Both traits remain pure-manifest stubs in `Package.swift`: no targets, no source
-files, `unlocks: []`. This document records what the beta SDK actually exposes so
-a later real-code PR can act on resolved facts instead of rumour.
+`SystemAIProviderExtension` and `CoreAI` were retired from `Package.swift` on
+2026-09-18. Neither unlocked a target or source file, and keeping names for
+unadopted APIs made a no-op build switch part of the public manifest. A future
+`LanguageModelExecutor` integration needs a real target and separate design
+decision; it does not revive either trait implicitly.
 
 ## `CoreAI` — resolved: reachable via the `apple/coreai-models` package + executor seam
 
@@ -37,11 +39,7 @@ runtime, not pre-bundled Apple `.aimodel` downloads — verified against a clone
 the repo: gallery LLM recipes incl. Qwen3-0.6B/4B, Qwen3-Coder-30B-A3B (MoE),
 Mistral-7B, gpt-oss-20b; constrained generation via the vendored `xgrammar`.)
 
-**Recommendation (deferred, out of scope here):** the `CoreAI` trait name remains
-misleading — it implies a *bare-framework* seam, when the real path is the
-`apple/coreai-models` package via `LanguageModelExecutor`. A later real-code PR
-should rename or retire it. We are **not** renaming traits in this docs-only
-change; renaming a `Package.swift` trait is a manifest decision for that PR.
+**Disposition.** `CoreAI` was retired as a no-op trait. A future integration, if it becomes useful, should add a real target for the `apple/coreai-models` / `LanguageModelExecutor` seam rather than restoring a manifest switch.
 
 ## `SystemAIProviderExtension` — investigation: symbol NOT FOUND in beta SDK
 
@@ -136,8 +134,8 @@ those backends.
 
 Both real seams are `@available(iOS 27.0, macOS 27.0, visionOS 27.0,
 watchOS 27.0, *)`, `tvOS` unavailable. That is **above** ManifoldKit's n-1 floor
-(macOS 15 / iOS 18), so any real adoption needs `#available(macOS 27, iOS 27, *)`
-guards and cannot ship unguarded until GA (~Sept 2026, when the floor bumps).
+(macOS 26 / iOS 26), so any real adoption needs `#available(macOS 27, iOS 27, *)`
+guards even after the floor bump.
 
 **Do not** bump `swift-tools-version` to chase the beta: core CI is pinned to
 Xcode 26.3 / Swift 6.3; bumping breaks `resolve-check` and `fuzz`. Probe the beta SDK
@@ -147,8 +145,8 @@ compile-only (as this investigation did) until GA.
 
 | Trait | Real surface | Verdict |
 |-------|--------------|---------|
-| `CoreAI` | bare framework: no LM protocol — **but `apple/coreai-models` package ships `CoreAILanguageModel`/`CoreAIExecutor`** | `.aimodel` reachable via the executor seam (same tool-loop-fork tradeoff); rename trait later |
-| `SystemAIProviderExtension` | none found in beta SDK | Symbol does not exist; stay a stub |
+| `CoreAI` | bare framework: no LM protocol — **but `apple/coreai-models` package ships `CoreAILanguageModel`/`CoreAIExecutor`** | Retired as a no-op trait; a future adapter needs a real target. |
+| `SystemAIProviderExtension` | none found in beta SDK | Retired as a no-op trait; no provider-extension symbol exists. |
 | (the real seam) | `FoundationModels.LanguageModelExecutor` | Viable but forks tool-loop ownership; companion-repo work; macOS 27 floor |
 
 ## How to activate post-GA (unchanged guidance)

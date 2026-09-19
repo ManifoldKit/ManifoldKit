@@ -9,7 +9,7 @@ app — chat or not. If you've read the CHANGELOG and concluded that
 is one consumer; the underlying ``VoiceConversationController`` is a
 chat-agnostic primitive that anything can drive.
 
-> **Platform.** SFSpeechRecognizer + AVFoundation; macOS 15+ / iOS 18+. The
+> **Platform.** SFSpeechRecognizer + AVFoundation; macOS 26+ / iOS 26+. The
 > iOS Simulator has no microphone — recording raises
 > `VoiceError.simulatorUnsupported`. Test on device.
 

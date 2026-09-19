@@ -13,15 +13,16 @@
 #
 # Simulator selection
 # -------------------
-# CI uses `name=iPhone 16` (available on every Xcode 26.x macOS-15 runner).
-# Locally the script picks the first booted iPhone simulator, falling back to
-# any available iPhone simulator.  Pass --destination to override both.
+# Both CI and local runs inspect the active Xcode simulator inventory. The
+# resolver selects an available iPhone whose runtime is between Package.swift's
+# iOS deployment floor and the active iOS Simulator SDK, preferring a booted
+# device and then the newest compatible runtime. Pass --destination to override.
 #
 # Usage
 # -----
 #   scripts/test-ios-simulator.sh                    # auto-pick simulator
-#   scripts/test-ios-simulator.sh --destination 'platform=iOS Simulator,name=iPhone 16'
-#   scripts/test-ios-simulator.sh --ci               # force CI name= form
+#   scripts/test-ios-simulator.sh --destination 'platform=iOS Simulator,id=<UDID>'
+#   scripts/test-ios-simulator.sh --ci               # CI inventory selection
 
 set -euo pipefail
 
@@ -42,8 +43,8 @@ Options:
   --destination '<xcodebuild destination string>'
       Override the simulator destination. Default: auto-pick from simctl.
   --ci
-      Use a name= destination suitable for GitHub Actions runners
-      (platform=iOS Simulator,name=iPhone 16).
+      Resolve an eligible installed iPhone from the GitHub Actions simulator
+      inventory. The explicit --destination override still wins.
   -h, --help
       Show this help.
 EOF
@@ -82,53 +83,124 @@ done
 # Resolve destination
 # ---------------------------------------------------------------------------
 
-# Helpers — intentionally mirror example-ui-tests.sh's approach.
-extract_simulator_id() {
-    printf '%s\n' "$1" \
-        | sed -E 's/.*\(([0-9A-F-]{36})\) \((Booted|Shutdown|Creating|Booting)\)[[:space:]]*$/\1/'
+# The deployment floor is the lower bound for a runnable simulator. Keep this
+# derived from the manifest so the gate fails loudly when a future floor bump
+# has no matching installed runtime instead of silently testing an older OS.
+ios_deployment_floor() {
+    local floor
+    floor="$(sed -nE 's/^[[:space:]]*\.iOS\("([0-9]+(\.[0-9]+)*)"\),?[[:space:]]*$/\1/p' Package.swift | head -n 1)"
+    if [[ -z "$floor" ]]; then
+        echo "Could not read the iOS deployment floor from Package.swift." >&2
+        return 1
+    fi
+    printf '%s\n' "$floor"
 }
 
-extract_simulator_name() {
-    printf '%s\n' "$1" \
-        | sed -E 's/^[[:space:]]+(.+) \([0-9A-F-]{36}\) \((Booted|Shutdown|Creating|Booting)\)[[:space:]]*$/\1/'
+# `xcodebuild -showsdks` reflects the selected Xcode, rather than a runtime
+# that another Xcode installation may have left visible to CoreSimulator.
+ios_simulator_sdk_version() {
+    local sdks version
+    if ! sdks="$(xcodebuild -showsdks)"; then
+        echo "Could not read the active iOS Simulator SDK from xcodebuild -showsdks." >&2
+        return 1
+    fi
+    version="$(printf '%s\n' "$sdks" | sed -nE 's/.*-sdk[[:space:]]+iphonesimulator([0-9]+(\.[0-9]+)*).*/\1/p' | head -n 1)"
+    if [[ -z "$version" ]]; then
+        echo "Could not read the active iOS Simulator SDK from xcodebuild -showsdks." >&2
+        return 1
+    fi
+    printf '%s\n' "$version"
 }
 
-pick_simulator_line() {
-    xcrun simctl list devices available | grep -E "$1" | head -n 1 || true
-}
-
-resolve_local_destination() {
-    local line=""
-
-    # 1. Prefer a currently-booted iPhone (saves the boot wait).
-    line="$(pick_simulator_line '^[[:space:]]+iPhone .*\([0-9A-F-]{36}\) \(Booted\)[[:space:]]*$')"
-
-    # 2. Any available iPhone simulator.
-    if [[ -z "$line" ]]; then
-        line="$(pick_simulator_line '^[[:space:]]+iPhone .*\([0-9A-F-]{36}\) \((Shutdown|Creating|Booting)\)[[:space:]]*$')"
+resolve_inventory_destination() {
+    local minimum_os maximum_os simctl_json selection
+    if ! minimum_os="$(ios_deployment_floor)"; then
+        return 1
+    fi
+    if ! maximum_os="$(ios_simulator_sdk_version)"; then
+        return 1
+    fi
+    if ! simctl_json="$(xcrun simctl list devices available -j)"; then
+        echo "Could not read the available iOS Simulator inventory from simctl." >&2
+        return 1
     fi
 
-    if [[ -z "$line" ]]; then
-        echo "No available iPhone simulator found." >&2
-        echo "Run 'xcrun simctl list devices available' and pass --destination manually." >&2
-        exit 1
+    if ! selection="$(printf '%s' "$simctl_json" | python3 -c '
+import json
+import re
+import sys
+
+minimum = tuple(int(part) for part in sys.argv[1].split("."))
+maximum = tuple(int(part) for part in sys.argv[2].split("."))
+
+def comparable(version):
+    return version + (0,) * (3 - len(version))
+
+def runtime_version(runtime):
+    match = re.search(r"\.iOS-([0-9]+(?:-[0-9]+)*)$", runtime)
+    if match is None:
+        return None
+    return tuple(int(part) for part in match.group(1).split("-"))
+
+try:
+    inventory = json.load(sys.stdin)
+    runtimes = inventory["devices"]
+except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+    raise SystemExit(f"Malformed simctl device inventory: {error}")
+
+candidates = []
+seen_iPhones = []
+for runtime, devices in runtimes.items():
+    version = runtime_version(runtime)
+    if version is None:
+        continue
+    for device in devices:
+        name = device.get("name", "")
+        if not name.startswith("iPhone "):
+            continue
+        seen_iPhones.append("{} (iOS {})".format(name, ".".join(map(str, version))))
+        if device.get("isAvailable", True) is False or device.get("availabilityError"):
+            continue
+        state = device.get("state", "Shutdown")
+        if state not in {"Booted", "Shutdown", "Creating", "Booting"}:
+            continue
+        if not (comparable(minimum) <= comparable(version) <= comparable(maximum)):
+            continue
+        udid = device.get("udid")
+        if not isinstance(udid, str) or not udid:
+            continue
+        candidates.append((state != "Booted", tuple(-part for part in comparable(version)), name.lower(), udid, name, version, state))
+
+if not candidates:
+    installed = ", ".join(sorted(set(seen_iPhones))) or "none"
+    raise SystemExit(
+        "No available iPhone simulator satisfies iOS "
+        f"{sys.argv[1]} through {sys.argv[2]}. Installed iPhones: {installed}"
+    )
+
+_, _, _, udid, name, version, state = sorted(candidates)[0]
+print("{}\t{}\t{}\t{}".format(udid, name, ".".join(map(str, version)), state))
+' "$minimum_os" "$maximum_os")"; then
+        return 1
     fi
 
-    local sim_id sim_name
-    sim_id="$(extract_simulator_id "$line")"
-    sim_name="$(extract_simulator_name "$line")"
+    local sim_id sim_name sim_runtime sim_state
+    IFS=$'\t' read -r sim_id sim_name sim_runtime sim_state <<< "$selection"
+    if [[ -z "$sim_id" || -z "$sim_name" || -z "$sim_runtime" || -z "$sim_state" ]]; then
+        echo "Simulator selector returned malformed destination data." >&2
+        return 1
+    fi
     DESTINATION="platform=iOS Simulator,id=$sim_id"
-    echo "Using simulator: $sim_name ($sim_id)" >&2
+    echo "Using iOS simulator: $sim_name ($sim_id), iOS $sim_runtime ($sim_state)" >&2
 }
 
 if [[ -n "$DESTINATION" ]]; then
     echo "Using destination: $DESTINATION" >&2
 elif [[ "$CI_MODE" -eq 1 ]]; then
-    # GitHub Actions macos-15 runners with Xcode 26.x ship iPhone 16 simulators.
-    DESTINATION="platform=iOS Simulator,name=iPhone 16"
-    echo "CI mode — destination: $DESTINATION" >&2
+    echo "CI mode — resolving an eligible installed iPhone." >&2
+    resolve_inventory_destination
 else
-    resolve_local_destination
+    resolve_inventory_destination
 fi
 
 # ---------------------------------------------------------------------------

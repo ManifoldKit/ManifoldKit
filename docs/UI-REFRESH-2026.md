@@ -233,7 +233,7 @@ restore the pre-refresh appearance in one modifier group.
 
 ## 9. OS fallback matrix
 
-Floor stays iOS 18 / macOS 15; glass behind `#available(iOS 26, macOS 26, *)`.
+The package floor is iOS 26 / macOS 26; the glass paths retain their `#available(iOS 26, macOS 26, *)` guards for the SwiftUI APIs.
 iOS fallback: identical geometry in `.regularMaterial`. macOS fallback:
 graceful, not identical — chrome is system-owned on every version, and there
 is no pre-26 `backgroundExtensionEffect` equivalent. Shimmer/live states and
@@ -273,8 +273,7 @@ free — never hand-roll glass-look backgrounds.
   `defaultPartView()`.
 - `HardcodedColorAuditTest` + sabotage, registered with
   `AuditSabotageCoverageAuditTest`.
-- Availability seams: glass paths compile under the 26 SDK and fall back
-  below (macOS 15 CI exercises the fallback naturally).
+- Availability seams: glass paths compile under the 26 SDK; later API seams retain their own availability coverage.
 - Accessibility invariants: Reduce Motion disables shimmer/spin; Dynamic Type
   scales shape/type; VoiceOver labels on state badges and send/stop.
 
