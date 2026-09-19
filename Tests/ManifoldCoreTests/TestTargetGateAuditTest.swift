@@ -79,7 +79,7 @@ import XCTest
 ///
 /// ``testTargetNames(packageManifest:)``, ``gatedTargetNames(scriptContent:)``,
 /// ``ciFilterTargetNames(workflowContent:)`` and
-/// ``qualificationRunnerViolations(ciWorkflow:setupAction:)`` are pure
+/// ``platformFloorRunnerViolations(ciWorkflow:setupAction:)`` are pure
 /// `static func`s so the in-file sabotage tests exercise the exact functions
 /// the audit runs.
 final class TestTargetGateAuditTest: XCTestCase {
@@ -151,11 +151,12 @@ final class TestTargetGateAuditTest: XCTestCase {
         }
     }
 
-    /// The runtime-qualification jobs must stay on the minimum host in the
-    /// planned 1.0 matrix and must all select the same pinned toolchain. A
-    /// macOS-15 host plus a macOS-26 SDK is compile evidence only: the
-    /// Foundation test classes skip before touching their runtime paths.
-    func test_runtimeQualificationJobsUseMacOS26AndPinnedXcode() throws {
+    /// Jobs that inspect or execute the package at its minimum deployment
+    /// floor must stay on macOS 26 and use the shared pinned toolchain. A
+    /// macOS-15 host plus a macOS-26 SDK is compile evidence only: runtime
+    /// tests skip there, while swift-api-digester may availability-filter its
+    /// interface. CI must verify the precise mechanism on macOS 26/Xcode 26.3.
+    func test_platformFloorJobsUseMacOS26AndPinnedXcode() throws {
         let repoRoot = try Self.locateRepoRoot()
         let workflow = try String(
             contentsOf: repoRoot.appendingPathComponent(".github/workflows/ci.yml"),
@@ -166,13 +167,13 @@ final class TestTargetGateAuditTest: XCTestCase {
             encoding: .utf8
         )
 
-        let violations = Self.qualificationRunnerViolations(
+        let violations = Self.platformFloorRunnerViolations(
             ciWorkflow: workflow,
             setupAction: setupAction
         )
         XCTAssertTrue(
             violations.isEmpty,
-            "Runtime qualification runner/toolchain drifted:\n  - \(violations.joined(separator: "\n  - "))"
+            "Platform-floor runner/toolchain drifted:\n  - \(violations.joined(separator: "\n  - "))"
         )
     }
 
@@ -377,7 +378,7 @@ final class TestTargetGateAuditTest: XCTestCase {
     /// Plants active drift beside misleading commented-out "good" lines. The
     /// predicate must inspect active YAML lines, reject per-job Xcode
     /// overrides, and fail when a required job disappears.
-    func test_sabotage_qualificationRunnerViolationsDetectsHostAndToolchainDrift() {
+    func test_sabotage_platformFloorRunnerViolationsDetectsHostAndToolchainDrift() {
         func job(_ name: String) -> String {
             """
               \(name):
@@ -386,7 +387,7 @@ final class TestTargetGateAuditTest: XCTestCase {
                   \(name == "test" ? "uses" : "- uses"): ./.github/actions/setup-swift-ci # shared pin
             """
         }
-        let validWorkflow = Self.runtimeQualificationJobNames.map(job).joined(separator: "\n")
+        let validWorkflow = Self.platformFloorJobNames.map(job).joined(separator: "\n")
         let validAction = """
             inputs:
               xcode-version:
@@ -397,7 +398,7 @@ final class TestTargetGateAuditTest: XCTestCase {
                   with:
                     xcode-version: ${{ inputs.xcode-version }} # pass through
             """
-        XCTAssertTrue(Self.qualificationRunnerViolations(
+        XCTAssertTrue(Self.platformFloorRunnerViolations(
             ciWorkflow: validWorkflow,
             setupAction: validAction
         ).isEmpty)
@@ -410,7 +411,7 @@ final class TestTargetGateAuditTest: XCTestCase {
                 of: "  cache-prime:",
                 with: "  cache-prime:\n    \(override)"
             )
-            XCTAssertTrue(Self.qualificationRunnerViolations(
+            XCTAssertTrue(Self.platformFloorRunnerViolations(
                 ciWorkflow: workflowWithOverride,
                 setupAction: validAction
             ).contains { $0.contains("override") })
@@ -424,11 +425,12 @@ final class TestTargetGateAuditTest: XCTestCase {
             of: "default: \"26.3\" # shared default",
             with: "# default: \"26.3\"\n    default: \"26.4\""
         )
-        let violations = Self.qualificationRunnerViolations(
+        let violations = Self.platformFloorRunnerViolations(
             ciWorkflow: badWorkflow,
             setupAction: badAction
         )
         XCTAssertTrue(violations.contains { $0.contains("`cache-prime`") && $0.contains("macos-26") })
+        XCTAssertTrue(violations.contains { $0.contains("`api-digester-check`") && $0.contains("macos-26") })
         XCTAssertTrue(violations.contains { $0.contains("`cache-prime`") && $0.contains("setup-swift-ci") })
         XCTAssertTrue(violations.contains { $0.contains("`server-tests`") && $0.contains("missing") })
         XCTAssertTrue(violations.contains { $0.contains("Xcode 26.3") })
@@ -578,17 +580,16 @@ final class TestTargetGateAuditTest: XCTestCase {
         return found
     }
 
-    /// Pins the jobs that turn SDK compilation into minimum-runtime evidence.
-    /// Other jobs deliberately remain on macOS 15 while that is the package's
-    /// declared floor, so this checks an explicit list instead of banning
-    /// `macos-15` across the workflow.
-    static func qualificationRunnerViolations(
+    /// Pins jobs that inspect or execute the package at its deployment floor.
+    /// Other jobs may compile cross-target on macOS 15, so this checks an
+    /// explicit list instead of banning `macos-15` across the workflow.
+    static func platformFloorRunnerViolations(
         ciWorkflow: String,
         setupAction: String
     ) -> [String] {
         var violations: [String] = []
 
-        for jobName in Self.runtimeQualificationJobNames {
+        for jobName in Self.platformFloorJobNames {
             guard let block = Self.workflowJobBlock(named: jobName, in: ciWorkflow) else {
                 violations.append("missing qualification job `\(jobName)`")
                 continue
@@ -615,8 +616,8 @@ final class TestTargetGateAuditTest: XCTestCase {
         return violations
     }
 
-    private static let runtimeQualificationJobNames = [
-        "cache-prime", "test", "server-tests", "macros-tests",
+    private static let platformFloorJobNames = [
+        "cache-prime", "test", "server-tests", "macros-tests", "api-digester-check",
     ]
 
     private static func activeTrimmedLines(in text: String) -> [String] {

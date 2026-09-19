@@ -900,9 +900,11 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.api-any == 'true' &&
       needs.changes.outputs.already-validated != 'true'
-    # This is a compile-only compatibility lane. It does not qualify the macOS
-    # 26 runtime floor.
-    runs-on: macos-15
+    # swift-api-digester must run on a host at the package deployment floor.
+    # The macOS-15 run built successfully but reported broad false removals;
+    # host/availability filtering is the likely cause, pending a macOS-26
+    # rerun with the same Xcode 26.3 pin. Runtime qualification belongs to `test`.
+    runs-on: macos-26
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment. Sized above the step-budget sum: 15 (dep
     # pre-fetch, fires when deps changed) + 25 (digester step) + setup slack.
