@@ -293,6 +293,11 @@ for p in "${CHANGED[@]}"; do
       log "changed: $p → target ManifoldInferenceTests (AgentsMdAuditTest runs it)"
       continue
       ;;
+    AGENTS.md|AGENTS.reference.md|release-please-config.json)
+      changed_targets_add "ManifoldInferenceTests"
+      log "changed: $p → target ManifoldInferenceTests (AgentsMdAuditTest reads it)"
+      continue
+      ;;
     # scripts/demo-coverage.sh itself is a `.sh` file, so it's already caught
     # by the blanket scripts/*.sh force-include below. These two `.tsv` data
     # files are NOT `.sh`, so without this case they'd fall through to the

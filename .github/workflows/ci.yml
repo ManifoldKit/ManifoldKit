@@ -8,6 +8,9 @@ on:
       - "Tests/**"
       - "Package.swift"
       - "Package.resolved"
+      - "AGENTS.md"
+      - "AGENTS.reference.md"
+      - "release-please-config.json"
       - ".github/workflows/ci.yml"
       # CompanionCompatAdjudicationAuditTest (ManifoldCoreTests) reads this
       # file at runtime to check the four premises its checked-in CodeQL
@@ -91,6 +94,9 @@ on:
       - "Tests/**"
       - "Package.swift"
       - "Package.resolved"
+      - "AGENTS.md"
+      - "AGENTS.reference.md"
+      - "release-please-config.json"
       - ".github/workflows/ci.yml"
       # CompanionCompatAdjudicationAuditTest (ManifoldCoreTests) reads this
       # file at runtime to check the four premises its checked-in CodeQL
