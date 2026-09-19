@@ -5,7 +5,7 @@
 
 This document traces one message turn end to end: a user calls
 `ChatViewModel.sendMessage(_:)`, and some milliseconds-to-seconds later a
-persisted assistant `ChatMessage` exists and the UI has observed it. Every
+persisted assistant `PersistedChatMessage` exists and the UI has observed it. Every
 other doc in this repo teaches a recipe (`QUICKSTART*.md`, `RECIPES.md`) or a
 layer-ownership boundary (`API-DESIGN.md`); this one is the opposite angle —
 one linear walk through the real call stack, with a source anchor at every
@@ -29,7 +29,7 @@ is far more stable than any specific line number.
 | `TurnKind` | Which of the four turn shapes this is. `SingleTurnDriver` switches on it once and never again. |
 | `ConversationStreamHandle` | An opaque token identifying one in-flight generation stream, returned by `processTurn` and passed back into `cancel(_:)`. |
 | `PromptSlot` | One named block of system-prompt content (persona instructions, RAG context, tool guidance) contributed by a `HistoryProvider`/`PromptContextProvider` and folded into the composed system prompt. |
-| `StructuredMessage` | The wire-shaped message (`role` + `[MessagePart]`) that actually crosses to a backend — distinct from the persisted `ChatMessage` and the cloud-wire payload types (see AGENTS.md's message-types table). |
+| `StructuredMessage` | The wire-shaped message (`role` + `[MessagePart]`) that actually crosses to a backend — distinct from the persisted `PersistedChatMessage` and the cloud-wire payload types (see AGENTS.md's message-types table). |
 | `GenerationEvent` | The engine-layer event vocabulary (`ManifoldInference`): tokens, thinking, tool calls, completion. |
 | `ConversationEvent` | The runtime-layer event vocabulary (`ManifoldRuntime`), a superset: everything `GenerationEvent` has, plus persistence identity (`messageInserted`/`messageRemoved`), history shaping, compression, and multi-agent handoff. |
 
@@ -43,10 +43,13 @@ cancellation that arrives mid-assembly and is checked too late).
 
 **Assembly** builds the system prompt, gathers RAG/tool/agent context, and
 constructs the `[StructuredMessage]` history that will cross the wire. It
-touches the persistence store (for prior history and session state) but not
-the network. It can fail (a `PromptContextProvider` throwing, a RAG retrieval
-error) and those failures are reported as `ConversationError` before any
-token is requested.
+touches the persistence store (for prior history and session state). Context
+assembly makes no generation request yet, but it is not guaranteed to be
+network-free: a custom `PromptContextProvider`, embedding backend, or opted-in
+reranker can perform I/O during retrieval (see
+[`RAGService`](../Sources/ManifoldRuntime/Services/RAGService.swift)). It can
+fail (a provider throwing, a RAG retrieval error) and those failures are
+reported as `ConversationError` before any token is requested.
 
 **Streaming** is the `enqueue` call and everything after: the backend request,
 the token/thinking/tool-call event flow, and the terminal write-back. It is
@@ -150,7 +153,8 @@ other three are variations on the same launch step.
 `launchGenerationTask` hands off to
 [`runGenerationTurn`](../Sources/ManifoldRuntime/Services/ConversationTurnExecutor.swift),
 the long private method that is the actual body of a turn. Its first half is
-pure assembly — no network yet.
+primarily assembly; it may perform provider/retrieval I/O, but no generation
+request has been issued yet.
 
 It builds a `PromptContextRequest` and unconditionally emits
 `.beforeContextAssembly` / `.contextAssembled` (even when no providers are
@@ -372,7 +376,7 @@ Use it as a lens on the next PR that touches this path:
    fourth stopping condition) doesn't need its own cancellation plumbing —
    it should reuse `cancelAsync`, not invent a parallel stop signal.
 6. **Is the persisted record and the wire-visible record the same shape?**
-   §4 and §5 both note places where the persisted `ChatMessage` and the
+   §4 and §5 both note places where the persisted `PersistedChatMessage` and the
    `[StructuredMessage]` sent to the backend are constructed from the same
    source but are not identical (attachment splicing, `kind.isWireVisible`
    filtering, the synthetic boundary message). A change to one without the

@@ -125,7 +125,7 @@ final class CompressionGoldenTests: XCTestCase {
     /// Returns a ``ScriptedGenerationBackend`` that emits a usage event so
     /// the post-turn compression gate activates (requires non-nil promptTokens).
     /// `maxContextTokens: 256` gives a non-zero context size; the executor's
-    /// `readContextWindowSize()` reads `capabilities.contextWindowSize` which
+    /// The active-model budget snapshot reads `capabilities.contextWindowSize`, which
     /// is `Int(maxContextTokens)`, so 256 is both representable and above zero.
     private func makeUsageBackend(
         promptTokens: Int = 50,

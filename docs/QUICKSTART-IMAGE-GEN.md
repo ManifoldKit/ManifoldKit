@@ -21,8 +21,8 @@ inference streams `GenerationEvent`.
 >
 > | Backend | Platforms | Memory |
 > |---|---|---|
-> | `FluxDiffusionBackend` | macOS 15+ (Apple Silicon) | ~7 GB headroom — a memory floor, not an API gate; impractical on iPhone |
-> | `MLXDiffusionBackend` | iOS 18+ / macOS 15+ | Checked at load time; throws `MLXDiffusionError.insufficientMemory` if the device can't fit the model |
+> | `FluxDiffusionBackend` | macOS 26+ (Apple Silicon) | ~7 GB headroom — a memory floor, not an API gate; impractical on iPhone |
+> | `MLXDiffusionBackend` | iOS 26+ / macOS 26+ | Checked at load time; throws `MLXDiffusionError.insufficientMemory` if the device can't fit the model |
 >
 > Bring-your-own URL — the backends take a **local directory** and do not
 > download. See [§4](#4-getting-a-model) for the bundled downloader and the
@@ -45,7 +45,7 @@ in v0.48). In your consumer `Package.swift`:
 dependencies: [
     .package(
         url: "https://github.com/ManifoldKit/ManifoldKit.git",
-        from: "0.77.0" // x-release-please-version
+        from: "0.78.0" // x-release-please-version
     ),
     .package(
         url: "https://github.com/ManifoldKit/manifold-mlx.git",
@@ -146,7 +146,7 @@ RAM — the caller doesn't need a separate guard. It auto-detects the
 `stabilityai/sdxl-turbo` (1024×1024) and `stabilityai/stable-diffusion-2-1-base`
 (512×512) layouts; other layouts throw `MLXDiffusionError.unsupportedModelLayout`.
 
-> **iPhone note.** `MLXDiffusionBackend` runs on iOS 18+, but SDXL Turbo (~10 GB)
+> **iPhone note.** `MLXDiffusionBackend` runs on iOS 26+, but SDXL Turbo (~10 GB)
 > will not fit on a phone — use `stable-diffusion-2-1-base` (~3 GB) there.
 > `loadModel` throws `MLXDiffusionError.insufficientMemory` rather than
 > OOM-crashing when a model is too large for the device.

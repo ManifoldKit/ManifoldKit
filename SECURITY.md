@@ -61,7 +61,7 @@ resolves them. The build modes map to product graphs (see
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.77.0" // x-release-please-version
+    from: "0.78.0" // x-release-please-version
 )
 // For local inference add the companion package(s) and registrars:
 // .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.1.0")
@@ -91,7 +91,7 @@ and the import-graph rule in the same audit):
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.77.0" // x-release-please-version
+    from: "0.78.0" // x-release-please-version
 )
 // Cloud backends always compile since v0.48; depend on the ManifoldOllama
 // product (and not ManifoldCloudSaaS) for the ollama-mode link surface.
@@ -99,8 +99,9 @@ and the import-graph rule in the same audit):
 
 Same `offline` guarantees, plus:
 
-- HTTP traffic is permitted only via `URLSessionProvider`, which honours the runtime
-  kill-switch `URLSessionProvider.networkDisabled`.
+- Ollama HTTP sessions obtained from `URLSessionProvider` honour the runtime
+  kill-switch `URLSessionProvider.networkDisabled`. The switch does not govern
+  other networking surfaces such as MCP transports or downloads.
 - `OllamaBackend` is the only HTTP-speaking backend present in the binary; no SaaS
   cloud code is linked.
 
@@ -118,7 +119,7 @@ Same `offline` guarantees, plus:
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.77.0" // x-release-please-version
+    from: "0.78.0" // x-release-please-version
 )
 // Cloud backends always compile since v0.48; depend on the ManifoldCloudSaaS
 // product for the SaaS link surface.
@@ -134,7 +135,7 @@ transport-security boundary.
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.77.0" // x-release-please-version
+    from: "0.78.0" // x-release-please-version
 )
 // All cloud backends are compiled in. Add the manifold-mlx / manifold-llama
 // companion packages for the maximum-surface build.
@@ -148,7 +149,7 @@ narrower mode for shipping production binaries.
 | Mechanism                                                                                                                | Enforces                                                                                                            |
 |--------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|
 | [`TrafficBoundaryAuditTest`](Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)                                | Rule classes 1–7: `URLSession` import allowlist, C interop / dynamic dispatch ban, hostname literals allowlist, privacy-API allowlist, `Package.swift` hygiene, import-graph layering, trait-name validity. |
-| [`DenyAllURLProtocolTests`](Tests/ManifoldTestSupportTests/DenyAllURLProtocolTests.swift) and [`URLSessionProviderNetworkDisabledTests`](Tests/ManifoldBackendsTests/URLSessionProviderNetworkDisabledTests.swift) | Runtime network isolation: when `networkDisabled` is set, every URL request fails closed.                          |
+| [`DenyAllURLProtocolTests`](Tests/ManifoldTestSupportTests/DenyAllURLProtocolTests.swift) and [`URLSessionProviderNetworkDisabledTests`](Tests/ManifoldBackendsTests/URLSessionProviderNetworkDisabledTests.swift) | URLSessionProvider boundary: when `networkDisabled` is set, newly obtained cloud-backend sessions fail closed. Existing cached sessions and networking outside this provider are not a process-wide kill-switch. |
 | Per-mode symbol audit in `scripts/build-modes.sh` (nightly, `.github/workflows/build-modes.yml`)                          | Cloud backend code is not *linked* into a product graph that excludes it (link-out claim; the compile-out traits were retired in v0.48). |
 | Plain `swift test` CI invocations (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)) | Every CI job exercises the full core surface (there are no default traits since v0.48); signature regressions surface as compile errors. |
 

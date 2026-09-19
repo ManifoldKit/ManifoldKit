@@ -65,6 +65,11 @@ public struct RunRecord: Codable, Sendable, Equatable {
     /// entries. Additive field — see `init(from:)` for why this doesn't need
     /// a `schemaVersion` bump.
     public var truncated: Bool
+    /// Additive session-script evidence used by the real sink/replay path.
+    /// Internal because consumers still replay through ``Replayer`` rather
+    /// than constructing this persistence shape directly. Legacy and
+    /// single-turn records decode with no session capture.
+    var sessionCapture: SessionCaptureSnapshot?
 
     public init(
         schemaVersion: Int = RunRecord.currentSchema,
@@ -114,6 +119,7 @@ public struct RunRecord: Codable, Sendable, Equatable {
         self.toolResults = toolResults
         self.toolDefinitions = toolDefinitions
         self.truncated = truncated
+        self.sessionCapture = nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -121,7 +127,7 @@ public struct RunRecord: Codable, Sendable, Equatable {
         case runId, ts, harness, model, config, prompt, events, raw, rendered
         case thinkingRaw, thinkingParts, thinkingCompleteCount, templateMarkers
         case memory, timing, phase, error, stopReason
-        case toolCalls, toolResults, toolDefinitions, truncated
+        case toolCalls, toolResults, toolDefinitions, truncated, sessionCapture
     }
 
     /// Decodes a record, defaulting `schemaVersion` to `1` when the field is
@@ -155,6 +161,7 @@ public struct RunRecord: Codable, Sendable, Equatable {
         // Default `false` for legacy records written before the EventRecorder
         // buffering cap landed — none of them could have been truncated.
         self.truncated = try c.decodeIfPresent(Bool.self, forKey: .truncated) ?? false
+        self.sessionCapture = try c.decodeIfPresent(SessionCaptureSnapshot.self, forKey: .sessionCapture)
     }
 
     /// Errors surfaced by `validate(schemaVersion:)`.

@@ -98,13 +98,59 @@ public enum HardwareRequirements {
         guard let query = normalizedModelSelector(substring) else {
             return selectOllamaModel(from: models, environment: environment)
         }
-        for model in models {
-            if let name = model["name"] as? String,
-               name.localizedCaseInsensitiveContains(query) {
-                return name
-            }
+        return selectOllamaModel(
+            from: models,
+            nameContains: query,
+            environment: environment
+        )
+    }
+
+    static func selectOllamaModel(
+        from models: [[String: Any]],
+        nameContains substring: String,
+        environment: [String: String] = [:]
+    ) -> String? {
+        let names = models.compactMap { $0["name"] as? String }
+        if let override = normalizedModelSelector(environment["OLLAMA_TEST_MODEL"]),
+           names.contains(override) {
+            return override
         }
-        return nil
+        return names.first {
+            $0.localizedCaseInsensitiveContains(substring)
+        }
+    }
+
+    /// Returns the name of an installed vision-capable Ollama model.
+    ///
+    /// An explicit `OLLAMA_TEST_MODEL` is a strict pin: it is returned only
+    /// when installed and `/api/show` advertises `"vision"`. A missing or
+    /// incapable pin returns `nil` instead of silently running the live suite
+    /// against a different model. Without a pin, capability discovery checks
+    /// every installed model and does not depend on naming conventions.
+    static func findOllamaVisionCapableModel(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        guard let names = listOllamaModels() else { return nil }
+        return selectOllamaVisionCapableModel(
+            from: names,
+            environment: environment,
+            isVisionCapable: { ollamaModelIsVisionCapable($0) }
+        )
+    }
+
+    static func selectOllamaVisionCapableModel(
+        from names: [String],
+        environment: [String: String] = [:],
+        isVisionCapable: (String) -> Bool
+    ) -> String? {
+        guard !names.isEmpty else { return nil }
+        if let override = normalizedModelSelector(environment["OLLAMA_TEST_MODEL"]) {
+            guard names.contains(override), isVisionCapable(override) else {
+                return nil
+            }
+            return override
+        }
+        return names.first(where: isVisionCapable)
     }
 
     /// Returns the list of installed Ollama model names, or `nil` if the server
@@ -162,6 +208,11 @@ public enum HardwareRequirements {
     /// transport/decoding failure (treated as "not tool-capable").
     public static func ollamaModelIsToolCapable(_ name: String) -> Bool {
         ollamaModelCapabilities(name)?.contains("tools") ?? false
+    }
+
+    /// Probes Ollama's `/api/show` for a `"vision"` capability.
+    static func ollamaModelIsVisionCapable(_ name: String) -> Bool {
+        ollamaModelCapabilities(name)?.contains("vision") ?? false
     }
 
     /// Fetches the `capabilities` array for a model from `/api/show`

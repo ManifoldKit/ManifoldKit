@@ -146,6 +146,7 @@ fi
 CHANGED=()
 while IFS= read -r __line; do
   [[ -n "$__line" ]] && CHANGED+=("$__line")
+# fail-open-ok: grep exits 1 for valid all-blank or empty stdin; the loop then emits NONE.
 done < <(grep -v '^[[:space:]]*$' || true)
 unset __line
 if [[ ${#CHANGED[@]} -eq 0 ]]; then
@@ -296,6 +297,21 @@ for p in "${CHANGED[@]}"; do
     AGENTS.md|AGENTS.reference.md|release-please-config.json)
       changed_targets_add "ManifoldInferenceTests"
       log "changed: $p → target ManifoldInferenceTests (AgentsMdAuditTest reads it)"
+      continue
+      ;;
+    scripts/lint-plan-status.sh)
+      changed_targets_add "ManifoldInferenceTests"
+      log "changed: $p → target ManifoldInferenceTests (plan lifecycle mirror + AgentsMdPlansStatusAuditTest)"
+      continue
+      ;;
+    scripts/extract-snippets.sh|scripts/local-integration-sweep.sh)
+      changed_targets_add "ManifoldCoreTests"
+      log "changed: $p → target ManifoldCoreTests (script contract tests run it)"
+      continue
+      ;;
+    scripts/lint-doc-claims.sh)
+      changed_targets_add "ManifoldCoreTests"
+      log "changed: $p → target ManifoldCoreTests (DocClaimsAuditTest runs the PR-time mirror fixture)"
       continue
       ;;
     # scripts/demo-coverage.sh itself is a `.sh` file, so it's already caught

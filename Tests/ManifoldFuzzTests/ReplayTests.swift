@@ -51,6 +51,21 @@ final class ReplayTests: XCTestCase {
         }
     }
 
+    struct StopResidueFactory: FuzzBackendFactory {
+        func makeHandle() async throws -> FuzzRunner.BackendHandle {
+            FuzzRunner.BackendHandle(
+                backend: StopResidueBackend(
+                    leakIntoSuccessor: true,
+                    requiresToolsForResidue: true
+                ),
+                modelId: "stop-residue-model",
+                modelURL: URL(string: "mem:stop-residue-model")!,
+                backendName: "mock",
+                templateMarkers: nil
+            )
+        }
+    }
+
     private var tempDir: URL!
 
     override func setUpWithError() throws {
@@ -287,6 +302,83 @@ final class ReplayTests: XCTestCase {
         XCTAssertEqual(result.reproduceRate, 1.0, accuracy: 1e-9)
     }
 
+    func test_sessionFinding_roundTripsThroughSinkAndReplaysOriginalScript() async throws {
+        let factory = StopResidueFactory()
+        let script = SessionScript(
+            id: "persisted-stop-residue",
+            steps: [.send(text: "first"), .stop, .send(text: "second")]
+        )
+        let runner = SessionFuzzRunner(
+            config: .init(
+                backend: .mock,
+                iterations: 1,
+                seed: 42,
+                detectorFilter: ["cancellation-race"],
+                outputDir: tempDir,
+                quiet: true,
+                sessionScripts: true,
+                tools: true,
+                requestTimeout: 1
+            ),
+            factory: factory,
+            scripts: [script]
+        )
+        let report = await runner.run(reporter: TerminalReporter(quiet: true))
+        let finding = try XCTUnwrap(report.findings.first(where: {
+            $0.subCheck == "stopped-turn-tail-at-successor-prefix"
+        }))
+
+        let loader = Replayer(
+            findingsRoot: tempDir,
+            factory: factory,
+            gitRevResolver: { "unused-for-load" },
+            modelHashResolver: { _ in nil }
+        )
+        let decoded = try XCTUnwrap(loader.loadRecord(hash: finding.hash))
+        XCTAssertFalse(decoded.toolDefinitions.isEmpty, "the captured finding must depend on advertised tools")
+        let decodedSession = try XCTUnwrap(decoded.sessionCapture)
+        XCTAssertEqual(decodedSession.script, script)
+        XCTAssertEqual(decodedSession.steps.count, script.steps.count)
+        XCTAssertEqual(
+            decodedSession.steps[1].stopObservation?.qualification,
+            .inFlight
+        )
+        XCTAssertTrue(
+            decodedSession.steps[1].stopObservation?
+                .tailObservedBeforeStopReturned.hasSuffix(" residue") == true
+        )
+        XCTAssertEqual(
+            CancellationRaceDetector().inspect([decodedSession.capture()]).map(\.hash),
+            [finding.hash]
+        )
+
+        let recordedGitRev = decoded.harness.packageGitRev
+        let replayer = Replayer(
+            findingsRoot: tempDir,
+            factory: factory,
+            gitRevResolver: { recordedGitRev },
+            modelHashResolver: { _ in nil }
+        )
+        let outcome = try await replayer.replay(hash: finding.hash, attempts: 1)
+        guard case .reproduced(let result) = outcome else {
+            return XCTFail("expected persisted session artifact to replay, got \(outcome)")
+        }
+        XCTAssertEqual(result.successfulReproductions, 1)
+        XCTAssertEqual(result.reproduceRate, 1)
+        XCTAssertTrue(result.requiresManualTriage)
+        XCTAssertNil(result.newSeverity, "repeatable overlap cannot establish a cancellation race")
+
+        let persisted = try FindingsIndexCodec.load(from: tempDir)
+        let persistedFinding = try XCTUnwrap(
+            persisted.rows.first(where: { $0.finding.hash == finding.hash })?.finding
+        )
+        XCTAssertEqual(
+            persistedFinding.severity,
+            .flaky,
+            "manual-triage cancellation evidence must remain unconfirmed on disk"
+        )
+    }
+
     func test_replay_reproduceRate_zero_whenBackendProducesDifferentOutput() async throws {
         let hash = try seedRecord(
             rendered: String(repeating: "ha ", count: 60),
@@ -309,6 +401,29 @@ final class ReplayTests: XCTestCase {
         XCTAssertEqual(result.successfulReproductions, 0)
         XCTAssertEqual(result.reproduceRate, 0.0, accuracy: 1e-9)
         XCTAssertNil(result.newSeverity, "0/3 must not promote")
+    }
+
+    func test_cancellationArtifact_requiresManualTriageEvenWhenReplayDoesNotReproduce() async throws {
+        let hash = try seedRecord(
+            detectorId: "cancellation-race",
+            rendered: "old output",
+            subCheck: "stopped-turn-tail-at-successor-prefix",
+            trigger: "ambiguous stop-boundary overlap"
+        )
+        let replayer = Replayer(
+            findingsRoot: tempDir,
+            factory: StubFactory(tokens: ["different output"]),
+            gitRevResolver: { "aaaaaaa" },
+            modelHashResolver: { _ in nil }
+        )
+
+        let outcome = try await replayer.replay(hash: hash, attempts: 1)
+        guard case .reproduced(let result) = outcome else {
+            return XCTFail("expected .reproduced, got \(outcome)")
+        }
+        XCTAssertEqual(result.successfulReproductions, 0)
+        XCTAssertTrue(result.requiresManualTriage)
+        XCTAssertNil(result.newSeverity)
     }
 
     // MARK: - Promotion threshold
@@ -340,6 +455,7 @@ final class ReplayTests: XCTestCase {
         guard case .reproduced(let result) = outcome else {
             return XCTFail("expected .reproduced, got \(outcome)")
         }
+        XCTAssertFalse(result.requiresManualTriage)
         XCTAssertEqual(result.newSeverity, .confirmed, "3/3 must promote")
 
         // index.json should now carry severity=confirmed for this hash.

@@ -9,9 +9,8 @@ A one-page tutorial for getting from "empty SwiftUI project" to "working chat UI
 
 ## Prerequisites
 
-- Xcode 16+ on macOS, or Swift 6.1+ toolchain. ManifoldKit's own `Package.swift` declares `// swift-tools-version: 6.1` and platforms `.iOS(.v18)` / `.macOS(.v15)`; consumer packages should match (or go higher) to avoid SwiftPM version-resolution churn.
-- **If your app's own manifest declares `.macOS(.v26)` / `.iOS(.v26)`**, use `// swift-tools-version: 6.2` (or newer) in *that* package — those platform enum cases were introduced in PackageDescription 6.2; under 6.1 the manifest fails with `'v26' is unavailable`. ManifoldKit itself stays on 6.1 / macOS 15 floor; only the consumer targeting the new OS need bump. CLI recipes that target Foundation on macOS 26 already use 6.2 — see [`QUICKSTART-CLI.md`](QUICKSTART-CLI.md) §1.
-- A SwiftUI app target on iOS 18+ / macOS 15+ (Apple Foundation Models require iOS 26+ / macOS 26+). Prefer an **Xcode app target** (or a real `.app` bundle) for SwiftUI hosts — a bare SwiftPM `executableTarget` `@main App` often fails to activate a window or lacks a bundle identifier, which complicates screenshots and TCC.
+- Xcode 16+ on macOS, or Swift 6.1+ toolchain. ManifoldKit's own `Package.swift` declares `// swift-tools-version: 6.1` and platforms `.iOS("26.0")` / `.macOS("26.0")`; consumer packages should match (or go higher) to avoid SwiftPM version-resolution churn.
+- A SwiftUI app target on iOS 26+ / macOS 26+. Prefer an **Xcode app target** (or a real `.app` bundle) for SwiftUI hosts — a bare SwiftPM `executableTarget` `@main App` often fails to activate a window or lacks a bundle identifier, which complicates screenshots and TCC.
 - Familiarity with SwiftUI's `App` protocol and `@State`. No prior knowledge of MLX, llama.cpp, MCP, or any specific backend is assumed.
 
 ## Install
@@ -21,7 +20,7 @@ Add ManifoldKit to your `Package.swift` (or Xcode's *Package Dependencies*):
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.77.0" // x-release-please-version
+    from: "0.78.0" // x-release-please-version
 )
 ```
 
@@ -37,7 +36,7 @@ The umbrella re-exports `ManifoldRuntime`, `ManifoldPersistenceSwiftData`, the b
 
 ## Hello World
 
-`ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, and wires up a `ChatViewModel` in one async call — a wired runtime in one call, then one more step (model selection) for a live chat. Errors normalise to [`ManifoldKitError`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift).
+`ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, and wires up a `ChatViewModel` in one async call. It restores or selects an available model/endpoint and dispatches its load; if none is available, the host supplies a model-selection or endpoint-configuration surface. Loading may still be in flight when the call returns. Errors normalise to [`ManifoldKitError`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```swift
 import SwiftUI
@@ -97,9 +96,9 @@ ManifoldConfiguration.shared.features = .init(
 Both flags default to `true`, so existing apps keep today's composer; opt out only where you don't want the capability.
 
 > [!IMPORTANT]
-> **The backend cliff: no registered backend → a *runtime* throw, not a compile error.** If **zero** inference backends are registered when you call it, `ManifoldKit.quickStart()` throws [`ManifoldKitError.noBackendsRegistered`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift) — it compiles fine, then fails at launch. This is deliberate: it surfaces the real cause at the assembly boundary instead of a confusing "No model loaded" on the first turn. Since v0.48 the cloud backends (Ollama, OpenAI, Claude) always compile, so a `quickStart()` build always has cloud support — the throw only fires if nothing was *registered* (e.g. you bypassed `quickStart()` and registered no backend yourself). For **local** inference add a companion package — [manifold-llama](https://github.com/ManifoldKit/manifold-llama) (GGUF) or [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) (MLX) — and pass its registrar to `quickStart(backends:)`; on iOS 26 / macOS 26+ the built-in Foundation Models backend is available with no extra package. See [Customizing backends](#customizing-backends).
+> **Backend diagnostics are runtime checks, not compile-time checks.** The default `quickStart()` path registers the compiled-in cloud and Foundation families. If that leaves a cloud-only runtime with no configured endpoint, startup logs an actionable warning and returns a session so the host can add an endpoint afterward. With `includeDefaultBackends: false`, only the registrars passed in `backends` run; empty registration (including Foundation-only registration below its OS floor) throws [`ManifoldKitError.noBackendsRegistered`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift). A registered local backend with no installed model does **not** trigger that error: registration and model readiness are separate. For **local** inference add a companion package — [manifold-llama](https://github.com/ManifoldKit/manifold-llama) (GGUF) or [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) (MLX) — and pass its registrar to `quickStart(backends:)`; on iOS 26 / macOS 26+ the built-in Foundation Models backend is available with no extra package. See [Customizing backends](#customizing-backends).
 
-> **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSession` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and seed through the canonical composite accessor `bootstrap.persistenceStores` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see the [Building a Chat UI](../Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md) DocC article for the worked example.
+> **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSession` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. Model selection and loading are separate: the selected load is dispatched before return but may still be in flight, so observe `viewModel.modelLoadState` before sending. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and seed through the canonical composite accessor `bootstrap.persistenceStores` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see the [Building a Chat UI](../Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md) DocC article for the worked example.
 
 ```swift
 import ManifoldKit
@@ -139,7 +138,7 @@ This section covers the paths that fill that gap on first launch (starter seed d
 
 ### Seeding a starter model (recommended for local-first apps)
 
-The curated starter is a GGUF, so add the `manifold-llama` companion package and pass `backends: [LlamaBackends.self]`. ManifoldKit downloads Qwen3-0.6B-Instruct Q4\_K\_M (~484 MB) before returning, runs the selection policy, and dispatches the load before returning. Without the registrar the seed is deliberately skipped and no model loads (see `QuickStartSeed`).
+The curated starter is a GGUF, so add the `manifold-llama` companion package and pass `backends: [LlamaBackends.self]`. When seeding is needed, ManifoldKit downloads Qwen3-0.6B-Instruct Q4\_K\_M (~484 MB), runs the selection policy, and dispatches the load before returning. Without the registrar this GGUF seed is deliberately skipped; another available model, such as Foundation Models, can still be selected (see `QuickStartSeed`).
 
 That dispatch is fire-and-forget (`dispatchSelectedLoad()`), so the load is typically still in flight when `quickStart()` returns and the view appears — `ChatViewModel.isModelLoaded` is not guaranteed `true` on the first observation. Read `viewModel.modelLoadState` (`.idle` / `.loading` / `.loaded` / `.failed(error)`) to drive an accurate "starting up" indicator instead of assuming the composer is immediately live (#2222).
 
@@ -344,7 +343,7 @@ If you don't want the full model-management UI (e.g. cloud-only apps that seed a
 // Package.swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.77.0" // x-release-please-version
+    from: "0.78.0" // x-release-please-version
 ),
 .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),  // GGUF / llama.cpp
 .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"),    // MLX (+ image gen)
@@ -406,7 +405,7 @@ The value-typed front door has the matching `LLM.localOnly(from:backends:)`.
 > [!IMPORTANT]
 > **This is registration-level exclusion, not link-level.** `localOnly` / `includeDefaultBackends: false` guarantee no cloud backend can be *selected or dispatched* — but the cloud code is still compiled and linked through the `ManifoldKit` umbrella. For true link-time exclusion (e.g. a FIPS posture, or proving the binary contains no networking symbols) depend on the individual products instead of the umbrella — see [`docs/FIPS.md`](FIPS.md).
 
-On iOS 26 / macOS 26+, `localOnly()` with no `backends` still yields a working chat via Apple Foundation Models. On older OSes, pass a companion local registrar (`[LlamaBackends.self]` / `[MLXBackends.self]`) — with no registrar that can serve the OS, `localOnly()` throws `ManifoldKitError.noBackendsRegistered` at bootstrap rather than launching a chat with no selectable model. To also stop accidental network egress at runtime (e.g. from a misconfigured custom endpoint), flip the `URLSessionProvider.networkDisabled` kill-switch — see [Host configuration seams](#host-configuration-seams) below.
+At the iOS 26 / macOS 26 package floor, `localOnly()` with no `backends` can yield a working chat via Apple Foundation Models when Apple Intelligence is available. For a local model independent of that service, pass a companion registrar (`[LlamaBackends.self]` / `[MLXBackends.self]`). With no registrar that can serve the device, `localOnly()` throws `ManifoldKitError.noBackendsRegistered` at bootstrap rather than launching a chat with no selectable model. To also stop accidental cloud-backend requests through newly obtained `URLSessionProvider` sessions (e.g. from a misconfigured custom endpoint), flip `URLSessionProvider.networkDisabled` — see [Host configuration seams](#host-configuration-seams) below. This setting does not disable MCP transports, downloads, existing cached sessions, or arbitrary networking in the host process.
 
 ### Foundation-only quickstart (no cloud, no companion packages)
 
@@ -458,7 +457,7 @@ struct MyChatApp: App {
 
 `FoundationBackends` is re-exported by the `ManifoldKit` umbrella (`@_exported import` — see `Sources/ManifoldKit/Exports.swift`), so no extra product or import is needed beyond `ManifoldKit` itself. This is the same registration-level exclusion as `localOnly()` above, just spelled out with the general `quickStart(backends:includeDefaultBackends:)` primitive and an explicit registrar list of one.
 
-On iOS 18–25 / macOS 15–25 the snippet *compiles and links* fine, but the unguarded `quickStart` call **throws `ManifoldKitError.noBackendsRegistered`**: below the Foundation Models floor `FoundationBackends` registers a factory that can never produce a usable backend, and `quickStart` fails fast rather than launching a chat that can never generate. A Foundation-only app must therefore gate the call with `#available(iOS 26, macOS 26, *)` (as the snippet does) or include a fallback registrar for older OSes — a companion local registrar (`LlamaBackends.self` / `MLXBackends.self`) or the compiled-in cloud families. See the [compatibility matrix](../README.md#compatibility-matrix) in the README. Headless (non-SwiftUI) consumers get an even leaner dependency set — just `ManifoldInference` + `ManifoldFoundation`, no `ManifoldKit` umbrella at all — via [`QUICKSTART-CLI.md` §1](QUICKSTART-CLI.md#1-foundation-models-macos-26).
+At the iOS 26 / macOS 26 package floor, `FoundationBackends` can register a usable backend when Apple Intelligence is enabled and provisioned. A Foundation-only app can still include a companion local registrar (`[LlamaBackends.self]` / `[MLXBackends.self]`) or the compiled-in cloud families for devices where Apple Intelligence is unavailable. See the [compatibility matrix](../README.md#compatibility-matrix) in the README. Headless (non-SwiftUI) consumers get an even leaner dependency set — just `ManifoldInference` + `ManifoldFoundation`, no `ManifoldKit` umbrella at all — via [`QUICKSTART-CLI.md` §1](QUICKSTART-CLI.md#1-foundation-models-macos-26).
 
 ## Host configuration seams
 
@@ -471,7 +470,7 @@ ManifoldKit exposes a number of powerful extension points that most apps never n
 | `ModelRegistry.foundationModelProvider` | [`Sources/ManifoldInference/Services/ModelRegistry.swift`](../Sources/ManifoldInference/Services/ModelRegistry.swift) | Closure reporting Apple Foundation availability so `refresh()` prepends the built-in model (`quickStart` wires this on 26+). | `registry.foundationModelProvider = { FoundationBackend.isAvailable }` |
 | `ConversationRuntimeOptions` | [`Sources/ManifoldRuntime/Services/ConversationRuntimeOptions.swift`](../Sources/ManifoldRuntime/Services/ConversationRuntimeOptions.swift) | Injection points threaded through `ManifoldBootstrap`: custom compression/history providers, generation hooks, per-turn context, an auxiliary model. | `var o = ConversationRuntimeOptions(); o.compressionPolicy = MyPolicy()` |
 | `PinnedSessionDelegate.pinnedHosts` | [`Sources/ManifoldCloudCore/PinnedSessionDelegate.swift`](../Sources/ManifoldCloudCore/PinnedSessionDelegate.swift) | TLS certificate/public-key pinning per host — set before any network request. | `PinnedSessionDelegate.pinnedHosts = ["api.example.com": [spkiHash]]` |
-| `URLSessionProvider.networkDisabled` | [`Sources/ManifoldCloudCore/URLSessionProvider.swift`](../Sources/ManifoldCloudCore/URLSessionProvider.swift) | Global runtime kill-switch — cloud sessions throw `CloudBackendError.networkDisabled` instead of issuing requests. Pairs with `localOnly`. | `URLSessionProvider.networkDisabled = true` |
+| `URLSessionProvider.networkDisabled` | [`Sources/ManifoldCloudCore/URLSessionProvider.swift`](../Sources/ManifoldCloudCore/URLSessionProvider.swift) | Provider-scoped runtime switch — newly obtained cloud sessions throw `CloudBackendError.networkDisabled`. It does not stop MCP, downloads, cached sessions, or host-app networking. Pairs with `localOnly`. | `URLSessionProvider.networkDisabled = true` |
 | `ChatViewModel.onFirstMessage` | [`Sources/ManifoldUI/ViewModels/ChatViewModel.swift`](../Sources/ManifoldUI/ViewModels/ChatViewModel.swift) | Fired after the first user message in a session (`quickStart` uses it for auto-titling; replace to AI-title). | `vm.onFirstMessage = { session, text in await retitle(session, text) }` |
 | `ChatViewModel.onSessionBranched` | [`Sources/ManifoldUI/ViewModels/ChatViewModel.swift`](../Sources/ManifoldUI/ViewModels/ChatViewModel.swift) | Fired when a session is branched (edit/regenerate fork) with the new session id (`quickStart` wires this to reload sessions and switch both `sessionManager.activeSession` and `viewModel`'s own active session to the branch — replace to customize the navigation). | `vm.onSessionBranched = { newID in await reload(newID) }` |
 | `ChatViewModel.onFirstLaunch` | [`Sources/ManifoldUI/ViewModels/ChatViewModel.swift`](../Sources/ManifoldUI/ViewModels/ChatViewModel.swift) | Replaces the default first-run behaviour (invoked by `autoSelectFirstRunModel()`; skips default Foundation auto-selection) — present onboarding, choose your own first model. | `vm.onFirstLaunch = { showOnboarding = true }` |
@@ -513,6 +512,28 @@ The full walkthrough — package wiring, the minimal headless example, a SwiftUI
 > **Lighter-weight than full BYO-UI:** if you only need to restyle bubbles, change brand colors, or override how *some* messages render, you don't have to rebuild the message list. Keep `ChatView` and reach for the in-framework theming seams instead — `.chatTheme(_:)` for tokens, `.messageBubbleStyle(_:)` for bubble chrome, and `.chatMessageRenderer(_:)` (with a `params.defaultMessageView()` fallback) for per-message overrides. See the **Theming the Chat UI** DocC article. Drop to full BYO-UI only when you need to replace the transcript, scroll-anchoring, and composer wholesale.
 
 ## Customizing storage
+
+### One process-wide configuration
+
+ManifoldKit v1 supports one `ManifoldConfiguration` for the whole process. Every
+`ManifoldBootstrap` initializer and `build` overload shares one construction
+coordinator: an overlapping attempt fails with
+`ManifoldBootstrapError.constructionInProgress`. Replacing the configuration
+installed by an active construction invalidates that installation: construction
+throws `.configurationChanged` if it otherwise completes; an earlier construction
+failure retains its original error. Rollback never overwrites a newer writer.
+Both bootstrap errors are recoverable; wait for the active construction to finish
+or stop the competing configuration writer before retrying.
+
+The coordinator covers construction only. It does not track completed graph
+lifetimes, so constructing a second graph with a different configuration while
+the first remains alive is unsupported even when the calls are sequential.
+Identity changes after graph construction and simultaneous graphs with distinct
+credential namespaces, storage identities, or trust policies are also
+unsupported. Security-policy fields remain live process-wide values. Existing
+consumers continue reading `networkPolicy`, `customHostTrustPolicy`, and
+`allowUnpinnedCredentialedHosts` at their existing enforcement points; bootstrap
+does not snapshot these fields or add policy checks to every request.
 
 `ManifoldKit.quickStart(configuration:)` accepts a `ManifoldConfiguration`. Override the bundle identifier so two ManifoldKit-based apps on the same machine don't collide on the shared SwiftData store path:
 

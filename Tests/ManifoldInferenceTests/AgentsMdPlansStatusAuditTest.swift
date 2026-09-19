@@ -121,6 +121,19 @@ final class AgentsMdPlansStatusAuditTest: XCTestCase {
         statusValue.lowercased().hasPrefix("active")
     }
 
+    /// Terminal plans belong in git history, not the live plans directory.
+    /// Keep this deliberately lexical: a status like “Completed — shipped” is
+    /// unambiguous, while a cosmetic file edit must never reset lifecycle.
+    static func isTerminalStatus(_ statusValue: String) -> Bool {
+        let normalized = statusValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["closed", "complete", "completed", "superseded", "rejected", "executed", "done"].contains { terminal in
+            guard normalized.hasPrefix(terminal) else { return false }
+            guard normalized.count > terminal.count else { return true }
+            let next = normalized[normalized.index(normalized.startIndex, offsetBy: terminal.count)]
+            return !next.isLetter
+        }
+    }
+
     /// Runs `arguments` in `repoRoot` and returns trimmed stdout, or `nil` on
     /// any non-zero exit / launch failure.
     private static func runGit(_ arguments: [String], repoRoot: URL) -> String? {
@@ -199,7 +212,9 @@ final class AgentsMdPlansStatusAuditTest: XCTestCase {
             .deletingLastPathComponent() // <repo>
         let plansURL = repoRoot.appendingPathComponent("docs/plans")
         guard FileManager.default.fileExists(atPath: plansURL.path) else {
-            throw XCTSkip("docs/plans not found at \(plansURL.path)")
+            throw NSError(domain: "AgentsMdPlansStatusAuditTest", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "docs/plans not found at \(plansURL.path); plan lifecycle audit would be inert",
+            ])
         }
         return plansURL
     }
@@ -223,11 +238,6 @@ final class AgentsMdPlansStatusAuditTest: XCTestCase {
             $0.pathExtension == "md" && $0.lastPathComponent != "README.md"
         }
 
-        XCTAssertFalse(
-            planFiles.isEmpty,
-            "Expected at least one plan file directly under docs/plans/ — path or filter probably wrong"
-        )
-
         var missing: [String] = []
         for fileURL in planFiles {
             let content = try String(contentsOf: fileURL, encoding: .utf8)
@@ -248,6 +258,19 @@ final class AgentsMdPlansStatusAuditTest: XCTestCase {
                 the file if the plan is fully executed/superseded (git history is the archive).
                 """)
         }
+    }
+
+    func testNoTerminalPlansRemainInLiveDirectory() throws {
+        let plansURL = try Self.locatePlansDirectory()
+        let entries = try FileManager.default.contentsOfDirectory(at: plansURL, includingPropertiesForKeys: [.isRegularFileKey])
+        let terminal = try entries
+            .filter { $0.pathExtension == "md" && $0.lastPathComponent != "README.md" }
+            .filter { url in
+                guard let status = Self.statusValue(in: try String(contentsOf: url, encoding: .utf8)) else { return false }
+                return Self.isTerminalStatus(status)
+            }
+            .map(\.lastPathComponent)
+        XCTAssertTrue(terminal.isEmpty, "Terminal plan(s) must be removed from docs/plans/ (git history is the archive): \(terminal.sorted().joined(separator: ", "))")
     }
 
     /// #2226: a non-"Active" plan whose last commit predates the threshold
@@ -274,6 +297,9 @@ final class AgentsMdPlansStatusAuditTest: XCTestCase {
                 continue
             }
             let lastCommit = Self.lastCommitDate(for: fileURL, repoRoot: repoRoot)
+            if lastCommit == nil {
+                print("warning: plan age unknown for \(fileURL.lastPathComponent) (shallow/gitless history); stale-plan check was not evaluated")
+            }
             if Self.isStale(statusValue: statusValue, lastCommitDate: lastCommit) {
                 let ageDays = lastCommit.map { Int(Date().timeIntervalSince($0) / 86400) }
                 stale.append("\(fileURL.lastPathComponent) (Status: \(statusValue.prefix(40)), last commit \(ageDays.map { "\($0)d ago" } ?? "unknown") ago)")
@@ -335,6 +361,25 @@ final class AgentsMdPlansStatusAuditTest: XCTestCase {
         )
     }
 
+    /// Runs the required PR-time mirror's own red/green fixture so its shell
+    /// implementation cannot drift silently from this authoritative audit.
+    func test_sabotage_planStatusLintMirrorSelfTest() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [
+            Self.locateRepoRoot().appendingPathComponent("scripts/lint-plan-status.sh").path,
+            "--self-test",
+        ]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0, "Plan-status mirror self-test failed:\n\(output)")
+        XCTAssertTrue(output.contains("red fixture and healthy control passed"), "Self-test did not report both controls: \(output)")
+    }
+
     /// #2226 sabotage: exercises `isStale` (the real staleness predicate the
     /// audit runs) directly against planted status values and fabricated
     /// commit dates — no real git history needed, so this stays deterministic.
@@ -375,6 +420,13 @@ final class AgentsMdPlansStatusAuditTest: XCTestCase {
         // isActiveStatus / statusValue extraction sanity, since isStale composes them.
         XCTAssertTrue(Self.isActiveStatus("Active. D1–D3 executed via v0.69.0"))
         XCTAssertFalse(Self.isActiveStatus("~80% executed via v0.67.0"))
+        XCTAssertTrue(Self.isTerminalStatus("Completed — shipped"), "Terminal lifecycle state must be detected")
+        XCTAssertTrue(Self.isTerminalStatus("Superseded: use the new plan"), "Terminal lifecycle state must be detected")
+        XCTAssertTrue(Self.isTerminalStatus("CLOSED as campaign.**"), "Legacy bold-wrapped terminal state must be detected")
+        XCTAssertTrue(Self.isTerminalStatus("Rejected — no longer proceeding"), "Terminal lifecycle state must be detected")
+        XCTAssertTrue(Self.isTerminalStatus("Executed: all work shipped"), "Terminal lifecycle state must be detected")
+        XCTAssertTrue(Self.isTerminalStatus("Done."), "Terminal lifecycle state must be detected")
+        XCTAssertFalse(Self.isTerminalStatus("Active — phase 2 open"), "Active plan must remain live")
         XCTAssertEqual(
             Self.statusValue(in: "# Plan\n\n**Status:** Reviewed (3× adversarial personas)"),
             "Reviewed (3× adversarial personas)"

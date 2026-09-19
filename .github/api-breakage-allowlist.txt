@@ -515,3 +515,5 @@ API breakage: constructor ImageGenerationConfigSnapshot.init(steps:width:height:
 API breakage: var SessionManagerViewModel.messageSearchSessionResolveCap has been removed
 API breakage: var SessionListService.messageSearchSessionResolveCap has been removed
 API breakage: var EnvironmentValues.endpointStore has been removed
+API breakage: enumelement MCPHostTransportError.invalidAuthorizationToken has been added as a new enum case
+API breakage: constructor MCPHostHTTPTransport.init(port:maxMessageBytes:) has been removed

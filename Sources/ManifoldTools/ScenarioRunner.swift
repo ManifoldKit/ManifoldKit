@@ -80,7 +80,7 @@ public final class ScenarioRunner {
             StructuredMessage(role: "user", content: scenario.userPrompt)
         ]
 
-        let allDefinitions = registry?.definitions ?? []
+        let allDefinitions = registry?.registeredDefinitionsSnapshot ?? []
         // When passAllRegisteredTools is true (decoy-pressure mode) every
         // registered tool is advertised to the model so distractors are visible.
         // Otherwise only required tools are forwarded — preserves the baseline
@@ -93,6 +93,8 @@ public final class ScenarioRunner {
                 scenario.requiredTools.isEmpty || scenario.requiredTools.contains($0.name)
             }
         }
+
+        registry?.warnIfTooManyTools(definitions)
 
         logger?.append(.prompt(
             scenarioId: scenario.id,
@@ -107,6 +109,9 @@ public final class ScenarioRunner {
         var accumulatedText = ""
         var toolCallsExecuted: [String] = []
         var toolResults: [ToolResultRecord] = []
+        // A Scenario currently contains one user turn. Internal tool iterations
+        // remain part of that same turn, so every stream diagnostic uses turn 1.
+        let scenarioTurn = 1
         // `.toolResult` carries only the call id (not the tool name), so map
         // each result back to its originating `.toolCall` by id. This is robust
         // to any short-circuit path (cancellation/byte-budget) that emits a
@@ -162,17 +167,51 @@ public final class ScenarioRunner {
                     // after, so the `for await` loop ends on its own.
                     continue
 
+                case .toolCallParseFailed(let rawBody):
+                    logger?.appendToolCallParseFailed(
+                        scenarioId: scenario.id,
+                        turn: scenarioTurn,
+                        rawBody: rawBody
+                    )
+
+                case .toolCallTruncated(let rawBody):
+                    logger?.appendToolCallTruncated(
+                        scenarioId: scenario.id,
+                        turn: scenarioTurn,
+                        rawBody: rawBody
+                    )
+
+                case .throttleDiagnostic(let reason):
+                    logger?.appendThrottleDiagnostic(
+                        scenarioId: scenario.id,
+                        turn: scenarioTurn,
+                        reason: reason
+                    )
+
+                case .toolIterationLimitExceeded(let iterations):
+                    logger?.appendToolIterationLimitExceeded(
+                        scenarioId: scenario.id,
+                        turn: scenarioTurn,
+                        iterations: iterations
+                    )
+
+                case .runTokenBudgetExceeded(let tokensUsed, let limit):
+                    logger?.appendRunTokenBudgetExceeded(
+                        scenarioId: scenario.id,
+                        turn: scenarioTurn,
+                        tokensUsed: tokensUsed,
+                        limit: limit
+                    )
+
                 case .prefillProgress, .promptRendered, .usage, .thinkingToken,
                      .thinkingCompleted, .thinkingSignature, .kvCacheReuse,
-                     .throttleDiagnostic, .toolCallStart, .toolCallArgumentsDelta,
+                     .toolCallStart, .toolCallArgumentsDelta,
                      .toolProgress, .toolDispatchStarted, .toolDispatchCompleted,
-                     .toolCallApproved, .toolCallParseFailed, .toolCallTruncated,
-                     .handoffRequested, .toolIterationLimitExceeded,
-                     .runTokenBudgetExceeded:
-                    // Observational / lifecycle markers. Tool accounting flows
-                    // through `.toolCall` / `.toolResult`; the runner reconstructs
-                    // its Outcome from those alone. Stay exhaustive so a new
-                    // GenerationEvent case forces a compile error here.
+                     .toolCallApproved, .handoffRequested:
+                    // Metrics, reasoning detail, and lifecycle markers are not
+                    // failures and are already represented by terminal output or
+                    // tool accounting. Stay exhaustive so a new GenerationEvent
+                    // case forces a deliberate logging decision here.
                     continue
                 }
             }

@@ -477,7 +477,7 @@ jobs:
       github.event_name == 'push' &&
       needs.changes.outputs.already-validated == 'true' &&
       needs.changes.outputs.deps == 'true'
-    runs-on: macos-15  # must match the test jobs' runner so cache keys collide
+    runs-on: macos-26  # prime on the same host/toolchain as runtime qualification
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment for the rationale.
     timeout-minutes: 20
@@ -529,7 +529,10 @@ jobs:
     if: |
       needs.changes.outputs.already-validated != 'true' &&
       (needs.changes.outputs.affected != 'NONE' || github.event_name != 'pull_request')
-    runs-on: macos-15  # Apple Silicon (arm64) standard runner to reduce spend
+    # The package floor is macOS 26. This host executes FoundationModels-backed
+    # paths on the oldest supported runtime; Apple Intelligence still needs its
+    # own provisioned-device evidence.
+    runs-on: macos-26  # Apple Silicon (arm64) standard runner
     # Backstop against an org-wide macOS-slot stall (see the `changes` job's
     # timeout-minutes comment). 150 is a backstop, not a budget: the worst
     # legitimate step-budget sum is 15 (dep pre-fetch) + 3×30 (test steps) =
@@ -691,18 +694,10 @@ jobs:
       #   manifold-llama companion packages.
       # - ManifoldBackendsTests runs the surviving cloud/Foundation/mock tests.
       #
-      # KNOWN GAP (#2096, documented + deferred — do not "fix" without re-opening
-      # that decision): the `Foundation*` suites inside ManifoldBackendsTests
-      # (FoundationBackendUnitTests, FoundationBackendToolCallingTests,
-      # FoundationLocalBackendContractTests, FoundationBackendMetricEmissionTests,
-      # Conformance/FoundationBackendContractTests, etc.) compile here — this
-      # runner has an iOS/macOS 26 SDK — but every test method's setUp() throws
-      # `XCTSkip` at runtime because `runs-on: macos-15` is macOS 15, and
-      # `FoundationBackend` requires the macOS 26 OS (not just SDK) to be
-      # actually running. No GitHub-hosted macos-26 runner exists yet, so this
-      # backend family's suite has never asserted anything in CI, on any PR, on
-      # any merge. See docs/QA-PRACTICES.md § "ManifoldFoundation CI coverage
-      # gap" for the accepted-gap rationale and the revisit trigger.
+      # The required test job now runs on macOS 26, so FoundationModels-backed
+      # guard and state tests can execute on their minimum runtime. Tests that
+      # require Apple Intelligence still skip honestly when the hosted runner
+      # has no provisioned system model; see docs/QA-PRACTICES.md.
       # - Server tests run in the sibling `server-tests` job behind a paths
       #   filter so Hummingbird only compiles when server code changes.
       # - Macro tests run in the sibling `macros-tests` job behind a paths
@@ -822,8 +817,8 @@ jobs:
       # target. In selective mode this suite runs via ci-selective-test.sh
       # when it appears in the affected set.
       #
-      # KNOWN GAP (#2096): Foundation* classes still XCTSkip on macos-15 —
-      # FoundationBackend needs macOS 26 actually running. See
+      # Foundation guard/state tests run on this macOS 26 host. Live inference
+      # remains hardware/provisioning-gated and may still XCTSkip; see
       # docs/QA-PRACTICES.md.
       - name: Test — ManifoldBackendsTests (own process, parallel) [full]
         id: test-backends
@@ -911,7 +906,11 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.api-any == 'true' &&
       needs.changes.outputs.already-validated != 'true'
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
+    # swift-api-digester must run on a host at the package deployment floor.
+    # The macOS-15 run built successfully but reported broad false removals;
+    # host/availability filtering is the likely cause, pending a macOS-26
+    # rerun with the same Xcode 26.3 pin. Runtime qualification belongs to `test`.
+    runs-on: macos-26
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment. Sized above the step-budget sum: 15 (dep
     # pre-fetch, fires when deps changed) + 25 (digester step) + setup slack.
@@ -1053,7 +1052,7 @@ jobs:
     # never run on merge_group) — this suite's merged-tree signal comes from the
     # nightly backstop instead (≤24h; see the queue-validated step's comment).
     if: needs.changes.outputs.server == 'true' && needs.changes.outputs.already-validated != 'true'
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
+    runs-on: macos-26  # match the runtime-qualification host
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment. Sized above the step-budget sum: 15 (dep
     # pre-fetch, fires when deps changed) + 12 (test step) + setup slack.
@@ -1124,7 +1123,7 @@ jobs:
     # never run on merge_group) — this suite's merged-tree signal comes from the
     # nightly backstop instead (≤24h; see the queue-validated step's comment).
     if: needs.changes.outputs.macros == 'true' && needs.changes.outputs.already-validated != 'true'
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
+    runs-on: macos-26  # match the runtime-qualification host
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment. Sized above the step-budget sum: 15 (dep
     # pre-fetch, fires when deps changed) + 12 (test step) + setup slack.
@@ -1239,7 +1238,7 @@ jobs:
       needs.changes.outputs.cold-start == 'true' &&
       needs.changes.outputs.already-validated != 'true' &&
       (needs.test.result == 'success' || needs.test.result == 'skipped')
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
+    runs-on: macos-26  # executes the package at its supported runtime floor
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment for the rationale. 70 covers the six sequential
     # tiers (each step-level-timed at 10 min) plus setup/checkout slack.
@@ -1330,7 +1329,7 @@ jobs:
       needs.changes.outputs.persistence == 'true' &&
       needs.changes.outputs.already-validated != 'true' &&
       (needs.test.result == 'success' || needs.test.result == 'skipped')
-    runs-on: macos-15  # match the `test` job runner
+    runs-on: macos-26  # host the iOS 26 simulator from the supported generation
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment for the rationale.
     timeout-minutes: 25

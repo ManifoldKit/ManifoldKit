@@ -1,8 +1,9 @@
 # ManifoldE2ETests
 
-Hardware-gated end-to-end tests. **These do not run in CI** (`.github/workflows/ci.yml`
-runs only the mock-friendly suites). They exist for developer pre-push verification
-and skip cleanly when the required hardware/fixtures are missing.
+End-to-end tests. This target contains mock-backed pipeline coverage as well as
+hardware/server-gated live backend cases. It is not selected by the per-PR
+`ci.yml` test job; run it locally for end-to-end verification. Live
+Ollama/Foundation/Cloud cases skip when prerequisites are unavailable.
 
 Each test guards itself with one of:
 
@@ -51,11 +52,23 @@ each installed model's `/api/show` `capabilities` for `"tools"` — no fixed
 name list — so any installed native tool-caller (e.g. `llama3.1:8b`,
 `qwen3.5`, `gemma4`) works. It skips cleanly when none advertise `"tools"`.
 
+`OllamaVisionE2ETests` uses the same capability-first discovery for
+`"vision"`; a capable model such as `gemma3:4b` does not need `vl`, `llava`,
+or another legacy hint in its name. For this suite, `OLLAMA_TEST_MODEL` is a
+strict pin: a missing or non-vision model produces an honest skip instead of
+silently selecting a different installed model.
+
 To pin a specific model across these suites, set `OLLAMA_TEST_MODEL` (it must
-be installed; for the tool-calling suite it must also be tool-capable):
+be installed; the tool-calling and vision suites also require their respective
+advertised capability):
 
 ```bash
 OLLAMA_TEST_MODEL=qwen3.5:latest swift test --filter ManifoldE2ETests
 ```
 
 The tests skip automatically when `localhost:11434` is unreachable.
+
+The target intentionally mixes XCTest and Swift Testing files. The profile runner
+keeps the Swift Testing invocation separate from the XCTest batch to avoid the
+known mixed-runner `libmalloc` abort; use `scripts/test.sh --profile local` for
+the complete three-invocation gate.

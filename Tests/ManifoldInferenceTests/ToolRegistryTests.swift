@@ -142,26 +142,33 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertTrue(hiddenResult.content.contains("Sunny in Paris"))
     }
 
-    func test_register_override_replacesExistingTool() async {
+    func test_register_caseInsensitiveDuplicate_keepsOnlyLaterTool() async {
+        // Sabotage-evidence:
+        //   M1: keep the first executor instead of assigning the replacement → the advertised-name and dispatch assertions fail.
+        //   M2: give the second executor a distinct name → the one-slot assertion fails.
+        //   M3: N/A — registration has no capability gate and always runs.
         let registry = ToolRegistry()
 
         let first = TypedToolExecutor<CityArgs, WeatherResult>(
-            definition: ToolDefinition(name: "get_weather", description: "v1", parameters: .object([:]))
+            definition: ToolDefinition(name: "Get_Weather", description: "v1", parameters: .object([:]))
         ) { _ in WeatherResult(summary: "v1", celsius: 1.0) }
 
         let second = TypedToolExecutor<CityArgs, WeatherResult>(
-            definition: ToolDefinition(name: "get_weather", description: "v2", parameters: .object([:]))
+            definition: ToolDefinition(name: "GET_WEATHER", description: "v2", parameters: .object([:]))
         ) { _ in WeatherResult(summary: "v2", celsius: 2.0) }
 
         registry.register(first)
         registry.register(second)
 
+        XCTAssertEqual(registry.definitions.count, 1, "differently-cased duplicates must occupy one registry slot")
+        XCTAssertEqual(registry.definitions.first?.name, "GET_WEATHER", "the later registration's definition must be advertised")
+
         let result = await registry.dispatch(
             ToolCall(id: "call-o", toolName: "get_weather", arguments: #"{"city":"Paris"}"#)
         )
         XCTAssertEqual(result.errorKind, nil)
-        XCTAssertTrue(result.content.contains("v2"), "Override must win on dispatch. Got: \(result.content)")
-        XCTAssertFalse(result.content.contains("v1"))
+        XCTAssertTrue(result.content.contains("v2"), "the later registration must win dispatch; got: \(result.content)")
+        XCTAssertFalse(result.content.contains("v1"), "the first executor must be unreachable after replacement")
     }
 
     // MARK: - dispatch: unknown tool

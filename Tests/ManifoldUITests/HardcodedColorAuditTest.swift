@@ -2,7 +2,7 @@ import XCTest
 import Foundation
 
 /// Guards against regression on issue #2307 (`docs/UI-REFRESH-2026.md` §7 /
-/// `docs/UI-REFRESH-2026-PLAN.md` §1.4): raw palette-`Color` literals used in
+/// `https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/UI-REFRESH-2026-PLAN.md` §1.4): raw palette-`Color` literals used in
 /// style positions (`.foregroundStyle`, `.foregroundColor`, `.tint`,
 /// `.background`, `.fill`, `.stroke`) across the three modules the 2026 UI
 /// refresh themes — `Sources/ManifoldUI`, `Sources/ManifoldUIModelManagement`,
@@ -75,7 +75,7 @@ final class HardcodedColorAuditTest: XCTestCase {
     ]
 
     /// Diagnostic-only view files exempted entirely (taxonomy category c).
-    /// These are dev/debug surfaces (`docs/UI-REFRESH-2026-PLAN.md` §1.3)
+    /// These are dev/debug surfaces (`https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/UI-REFRESH-2026-PLAN.md` §1.3)
     /// never in scope for the visual refresh.
     static let categoryCFiles: Set<String> = [
         "ArchitectView.swift",

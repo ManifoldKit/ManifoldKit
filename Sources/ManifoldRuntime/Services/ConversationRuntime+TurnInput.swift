@@ -127,6 +127,10 @@ public enum TurnKind: Sendable, Codable {
     /// last copied message is `.user`, the runtime drives a generation turn
     /// on the new session.
     ///
+    /// Copied messages retain their content, timestamps, semantic kind,
+    /// citations, agent identity, and historical token usage. Message IDs and
+    /// session IDs are replaced; transient delivery status is cleared. Copied
+    /// token counts describe the original generation, not new inference work.
     /// `newSessionTitle == nil` preserves the source session's title.
     case branch(
         messageID: UUID,

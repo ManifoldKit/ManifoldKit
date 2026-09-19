@@ -425,7 +425,7 @@ move `public` → `package` together, plus:
 **Zero-adopter evidence:** the plan's addendum (see link above) verified zero
 external adopters for the whole subsystem across all six consumer repos
 (three first-party apps, manifold-mlx, manifold-llama, manifold-eval) —
-`docs/plans/inert-code-audit-2026-07.md` item 51 first flagged it as
+[the historical inert-code audit, item 51](https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/inert-code-audit-2026-07.md) first flagged it as
 built-wired-tested-but-inert; the only place `enableResumableRuns` was ever
 flipped to `true` anywhere in this repo is
 `Tests/ManifoldPersistenceSwiftDataTests/ResumableRunEndToEndTests.swift`.

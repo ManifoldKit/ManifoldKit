@@ -71,20 +71,20 @@ struct MyChatApp: App {
 }
 ```
 
-> Important: The chat is inert until you select a model. `quickStart()` registers
-> the compiled-in backends but loads none, so on first run the composer reads
+> Important: `quickStart()` restores or creates a session and selects a usable
+> model or endpoint when one is available, then dispatches its load. Loading is
+> asynchronous, so observe the view model's load state before assuming the
+> first turn is ready. If no model or endpoint is available, the composer reads
 > "No model loaded." Present `ModelManagementSheet` (from the opt-in
 > `ManifoldUIModelManagement` module) bound to `showModelManagement`, or seed a
 > model at launch.
 
-> Warning: **The no-backend cliff.** With no backend registered — no companion
-> backend package linked (`manifold-mlx`, `manifold-llama`, …) and no registrar
-> passed via `quickStart(backends:)` — `quickStart()` compiles but throws
-> `ManifoldKitError` `.noBackendsRegistered` at runtime: there is nothing to
-> generate with. Add a companion package and inject its registrar (e.g.
-> `quickStart(backends: [LlamaBackends.self])`). The cloud and Foundation
-> families compile in unconditionally, so a cloud-only setup with no configured
-> endpoint launches but logs an actionable warning instead of throwing.
+> Warning: **The no-backend cliff.** If you explicitly exclude the default
+> families (`includeDefaultBackends: false`) and no backend is registered,
+> `quickStart()` throws `ManifoldKitError.noBackendsRegistered` at runtime.
+> The default path registers the compiled-in cloud and Foundation families; a
+> cloud-only setup with no configured endpoint launches but logs an actionable
+> warning instead of throwing, so an app can add an endpoint after startup.
 
 ### The guided path
 

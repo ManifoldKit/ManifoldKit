@@ -3,10 +3,11 @@ import ManifoldInference
 
 /// Replays a previously-recorded fuzz finding to separate flakes from confirmed
 /// bugs. Resolves a finding hash to its stored `record.json`, refuses on git/model
-/// drift (top-3 DevEx abandonment risk — "it worked yesterday" non-repro), re-runs
-/// the exact recorded prompt + sampler config N times, and promotes the finding's
-/// severity from `.flaky` to `.confirmed` when the same detector hash fires in a
-/// quorum of attempts.
+/// drift (top-3 DevEx abandonment risk — "it worked yesterday" non-repro), and
+/// re-runs the exact recorded prompt + sampler config N times. Eligible findings
+/// move from `.flaky` to `.confirmed` when the same detector hash fires in a
+/// quorum of attempts. Cancellation observations remain manual-triage evidence
+/// because repeating an overlap does not establish its cause.
 ///
 /// Lives parallel to `FuzzRunner` rather than inside it: replay is a distinct
 /// mode of operation (no campaign loop, no corpus sampling, full input determinism)
@@ -19,9 +20,14 @@ public struct Replayer: Sendable {
         /// Count of attempts that hit the same finding hash.
         public let successfulReproductions: Int
         public let attempts: Int
-        /// Set to `.confirmed` when the result met the promotion threshold.
-        /// `nil` means the severity stays as it was.
+        /// Set to `.confirmed` when an eligible result met the promotion
+        /// threshold. `nil` means the severity stays as it was.
         public let newSeverity: Severity?
+        /// Classifies an artifact whose observations cannot establish causality
+        /// on their own and therefore need manual investigation. Classification
+        /// is independent of whether this replay reproduced the finding. These
+        /// artifacts are never promoted to `.confirmed`, regardless of rate.
+        public let requiresManualTriage: Bool
         /// Populated when `--force` was used despite drift.
         public let drift: DriftReport?
     }
@@ -133,20 +139,25 @@ public struct Replayer: Sendable {
             )
         }
 
-        // 5. Run the recorded prompt attempts times.
-        let handle = try await factory.makeHandle()
-
-        var successes = 0
-        for _ in 0..<attempts {
-            let replayRecord = await runOnce(handle: handle, record: record)
-            if findingHashReproduced(originalHash: hash, record: replayRecord) {
-                successes += 1
-            }
-        }
+        // 5. Run the recorded prompt or session script `attempts` times.
+        let successes = try await reproductionCount(
+            record: record,
+            originalHash: hash,
+            attempts: attempts
+        )
 
         let rate = attempts > 0 ? Double(successes) / Double(attempts) : 0
         let threshold = Self.promotionThreshold(attempts: attempts)
-        let promoted = successes >= threshold
+        let detectorID = recordURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .lastPathComponent
+        // A repeated stop-boundary overlap proves that the observation is
+        // reproducible, not that bytes crossed from the stopped generation
+        // into its successor. Preserve the evidence without turning
+        // coincidence into a confirmed backend race.
+        let requiresManualTriage = detectorID == CancellationRaceDetector().id
+        let promoted = successes >= threshold && !requiresManualTriage
 
         // 6. Persist severity promotion back to disk — preserve schemaVersion.
         if promoted {
@@ -168,6 +179,7 @@ public struct Replayer: Sendable {
             successfulReproductions: successes,
             attempts: attempts,
             newSeverity: promoted ? .confirmed : nil,
+            requiresManualTriage: requiresManualTriage,
             drift: force && drift.any ? drift : nil
         )
         return .reproduced(result)
@@ -185,15 +197,11 @@ public struct Replayer: Sendable {
         originalHash: String,
         attempts: Int
     ) async throws -> Int {
-        let handle = try await factory.makeHandle()
-        var successes = 0
-        for _ in 0..<attempts {
-            let replayRecord = await runOnce(handle: handle, record: record)
-            if findingHashReproduced(originalHash: originalHash, record: replayRecord) {
-                successes += 1
-            }
-        }
-        return successes
+        try await reproductionCount(
+            record: record,
+            originalHash: originalHash,
+            attempts: attempts
+        )
     }
 
     /// Loads + decodes the record for a hash. Public so `Shrinker` can materialise
@@ -424,12 +432,94 @@ public struct Replayer: Sendable {
         )
     }
 
+    /// Replays the original declarative session through the same runner that
+    /// captured it. This keeps companion `--replay` callers on their existing
+    /// API while restoring the cross-turn evidence a single representative
+    /// `RunRecord` cannot express.
+    private func runSessionOnce(
+        handle: FuzzRunner.BackendHandle,
+        record: RunRecord,
+        script: SessionScript
+    ) async -> SessionCapture {
+        let service = await MainActor.run {
+            SessionFuzzRunner.defaultServiceFactory(handle.backend, handle.backendName)
+        }
+        let runner = SessionScriptRunner(
+            service: service,
+            options: .init(
+                modelId: handle.modelId,
+                modelURL: handle.modelURL,
+                backendName: handle.backendName,
+                templateMarkers: handle.templateMarkers,
+                temperature: record.config.temperature,
+                topP: record.config.topP,
+                maxOutputTokens: record.config.maxTokens,
+                toolDefinitions: record.toolDefinitions,
+                contextLimit: record.config.contextLimit,
+                memoryBudgetBytes: record.model.memoryBudgetBytes
+            ),
+            seed: record.config.seed
+        )
+        return await runner.execute(script)
+    }
+
+    private func reproductionCount(
+        record: RunRecord,
+        originalHash: String,
+        attempts: Int
+    ) async throws -> Int {
+        if let session = record.sessionCapture {
+            var successes = 0
+            for _ in 0..<attempts {
+                // Session replay needs fresh cross-turn state each attempt,
+                // matching SessionFuzzRunner's per-iteration handle lifecycle.
+                let handle = try await factory.makeHandle()
+                let replayCapture = await runSessionOnce(
+                    handle: handle,
+                    record: record,
+                    script: session.script
+                )
+                if findingHashReproduced(originalHash: originalHash, capture: replayCapture) {
+                    successes += 1
+                }
+            }
+            return successes
+        }
+
+        // Preserve the established single-turn behavior: one loaded handle is
+        // reused across attempts.
+        let handle = try await factory.makeHandle()
+        var successes = 0
+        for _ in 0..<attempts {
+            let replayRecord = await runOnce(handle: handle, record: record)
+            if findingHashReproduced(originalHash: originalHash, record: replayRecord) {
+                successes += 1
+            }
+        }
+        return successes
+    }
+
     /// Re-runs every detector against the new record and returns true if any
     /// emitted Finding shares the hash we were trying to reproduce.
     private func findingHashReproduced(originalHash: String, record: RunRecord) -> Bool {
         for detector in detectors {
             for finding in detector.inspect(record) {
                 if finding.hash == originalHash { return true }
+            }
+        }
+        return false
+    }
+
+    private func findingHashReproduced(originalHash: String, capture: SessionCapture) -> Bool {
+        for record in capture.turnRecords where findingHashReproduced(
+            originalHash: originalHash,
+            record: record
+        ) {
+            return true
+        }
+        for detector in SessionDetectorRegistry.all {
+            for finding in detector.inspect([capture]) where finding.hash == originalHash {
+                return true
             }
         }
         return false

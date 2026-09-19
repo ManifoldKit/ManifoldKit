@@ -34,40 +34,10 @@ import XCTest
 /// literal directory prefix: `Sources/ManifoldUI/**` requires `Sources/ManifoldUI/`
 /// to exist. A literal file reference must exist as a file or directory.
 ///
-/// ## Allowlist
-///
-/// `knownBrokenReferences` carries references this PR cannot responsibly fix
-/// in-place. Each entry has a reason and should be removed the moment its
-/// owner lands the corresponding fix. DO NOT add an entry to silence a freshly
-/// introduced broken link — fix the link instead. The allowlist exists only
-/// for cross-PR ownership boundaries and genuinely-deleted targets.
-///
 /// ``auditMarkdown(repoRoot:)`` and ``auditWorkflows(repoRoot:)`` are already
 /// pure functions over a root URL, so the in-file sabotage test exercises
 /// them directly against a planted temp tree.
 final class DocSourcePathReferenceAuditTest: XCTestCase {
-
-    /// References that resolve to a missing path but are *not* this PR's to
-    /// fix. Keyed on the raw reference token (anchors stripped). Tighten or
-    /// delete as each owner lands their fix.
-    private static let knownBrokenReferences: Set<String> = [
-        // The general "Security Model" DocC article was deleted in the
-        // ManifoldCore → ManifoldRuntime rename with no 1:1 replacement;
-        // THREAT_MODEL.md still links it. Needs a doc-owner decision on the
-        // replacement target — out of scope for this hygiene PR.
-        "../Sources/ManifoldCore/ManifoldCore.docc/Articles/SecurityModel.md",
-
-        // The following live under .github/workflows/, which a sibling PR
-        // owns — this PR must not touch workflow files. They are stale
-        // `paths:` filter entries left by file moves and should be corrected
-        // there (ManifoldKitError → ManifoldModelCatalog,
-        // APIProvider → ManifoldHardware, ManifoldBackends → the umbrella's
-        // real source dir).
-        "Sources/ManifoldInference/ManifoldKitError.swift",
-        "Sources/ManifoldInference/Models/APIProvider.swift",
-        "Sources/ManifoldBackends/**",
-        "Sources/ManifoldServerBackends/**",
-    ]
 
     func test_everySourcesPathReferencedFromDocsAndWorkflowsExists() throws {
         let repoRoot = try Self.locateRepoRoot()
@@ -82,8 +52,7 @@ final class DocSourcePathReferenceAuditTest: XCTestCase {
                 Doc / workflow references point at `Sources/…` paths that do not
                 exist on disk. This is almost always an untracked file move (see
                 issue #1695). Fix the link / `paths:` entry to the file's current
-                location, or — only for cross-PR ownership boundaries — add it to
-                `knownBrokenReferences` in this test with a reason.
+                location.
 
                 Offenders (referencing file → missing path [original reference]):
                 \(formatted)
@@ -170,7 +139,6 @@ final class DocSourcePathReferenceAuditTest: XCTestCase {
             for target in linkTargets(in: content) where target.contains("Sources/") {
                 let ref = String(target.split(separator: "#").first ?? "")
                 if ref.isEmpty { continue }
-                if knownBrokenReferences.contains(ref) { continue }
                 if let missing = missingPath(forReference: ref, base: base, repoRoot: repoRoot) {
                     violations.append("\(relativePath(fileURL, under: repoRoot)) → \(missing)  [\(target)]")
                 }
@@ -190,7 +158,6 @@ final class DocSourcePathReferenceAuditTest: XCTestCase {
         for fileURL in entries where fileURL.pathExtension == "yml" || fileURL.pathExtension == "yaml" {
             guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
             for token in sourcesTokens(in: content) {
-                if knownBrokenReferences.contains(token) { continue }
                 // Workflow `paths:` filters are repo-root-relative.
                 if let missing = missingPath(forReference: token, base: repoRoot, repoRoot: repoRoot) {
                     violations.append("\(relativePath(fileURL, under: repoRoot)) → \(missing)  [\(token)]")

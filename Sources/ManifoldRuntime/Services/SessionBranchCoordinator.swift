@@ -22,6 +22,19 @@ package struct SessionBranchCoordinator: Sendable {
         self.persistence = persistence
     }
 
+    /// Copies the historical record while replacing ownership and transient state.
+    /// Kept separate from persistence so delivery-state resets can be tested even
+    /// though the SwiftData adapter intentionally never stores that state.
+    package static func copyMessage(_ original: ChatMessage, id: UUID, sessionID: UUID) -> ChatMessage {
+        // Semantic kind controls wire/UI visibility. A value copy also prevents
+        // newly added durable fields from silently falling back to init defaults.
+        var copy = original
+        copy.id = id
+        copy.sessionID = sessionID
+        copy.status = nil // Delivery state belongs to the original live UI.
+        return copy
+    }
+
     /// The outcome of a successful branch: how many messages were copied and
     /// whether the copied slice's last message came from the user (the
     /// signal `runBranchFlow` uses to decide whether to launch generation).
@@ -125,13 +138,7 @@ private func branchCopyMutations(
         while end < source.count, source[end].timestamp == timestamp { end += 1 }
         let freshIDs = (start..<end).map { _ in UUID() }.sorted()
         for (original, id) in zip(source[start..<end], freshIDs) {
-            mutations.append(.insert(ChatMessage(
-                id: id,
-                role: original.role,
-                contentParts: original.contentParts,
-                timestamp: original.timestamp,
-                sessionID: sessionID
-            )))
+            mutations.append(.insert(SessionBranchCoordinator.copyMessage(original, id: id, sessionID: sessionID)))
         }
         start = end
     }

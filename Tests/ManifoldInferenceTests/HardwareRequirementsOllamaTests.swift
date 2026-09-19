@@ -161,4 +161,90 @@ final class HardwareRequirementsOllamaTests: XCTestCase {
         )
         XCTAssertEqual(result, "mistral:7b")
     }
+
+    // MARK: - Named and vision-capable discovery
+
+    func test_nameSubstringSelection_explicitOverrideWinsWithoutLegacyFragment() {
+        let models = [
+            model(name: "qwen2.5vl:3b", parameterSize: "3.0B"),
+            model(name: "gemma3:4b", parameterSize: "4.0B"),
+        ]
+
+        let result = HardwareRequirements.selectOllamaModel(
+            from: models,
+            nameContains: "vl",
+            environment: ["OLLAMA_TEST_MODEL": "gemma3:4b"]
+        )
+
+        XCTAssertEqual(result, "gemma3:4b")
+    }
+
+    func test_visionSelection_discoversCapableModelWithoutLegacyNameFragment() {
+        let names = ["llama3.1:8b", "gemma3:4b"]
+
+        let result = HardwareRequirements.selectOllamaVisionCapableModel(
+            from: names,
+            isVisionCapable: { $0 == "gemma3:4b" }
+        )
+
+        XCTAssertEqual(result, "gemma3:4b")
+    }
+
+    func test_visionSelection_explicitCapableOverrideWins() {
+        let names = ["qwen2.5vl:3b", "gemma3:4b"]
+
+        let result = HardwareRequirements.selectOllamaVisionCapableModel(
+            from: names,
+            environment: ["OLLAMA_TEST_MODEL": "gemma3:4b"],
+            isVisionCapable: { _ in true }
+        )
+
+        XCTAssertEqual(result, "gemma3:4b")
+    }
+
+    func test_visionSelection_explicitIncapableOverrideFailsClosed() {
+        let names = ["qwen2.5vl:3b", "llama3.1:8b"]
+
+        let result = HardwareRequirements.selectOllamaVisionCapableModel(
+            from: names,
+            environment: ["OLLAMA_TEST_MODEL": "llama3.1:8b"],
+            isVisionCapable: { $0 == "qwen2.5vl:3b" }
+        )
+
+        XCTAssertNil(result)
+    }
+
+    func test_visionSelection_explicitMissingOverrideFailsClosed() {
+        let result = HardwareRequirements.selectOllamaVisionCapableModel(
+            from: ["qwen2.5vl:3b"],
+            environment: ["OLLAMA_TEST_MODEL": "gemma3:4b"],
+            isVisionCapable: { _ in true }
+        )
+
+        XCTAssertNil(result)
+    }
+
+    func test_visionSelection_emptyListReturnsNilWithoutProbing() {
+        var probed = false
+
+        let result = HardwareRequirements.selectOllamaVisionCapableModel(
+            from: [],
+            isVisionCapable: { _ in
+                probed = true
+                return true
+            }
+        )
+
+        XCTAssertNil(result)
+        XCTAssertFalse(probed)
+    }
+
+    func test_visionSelection_noCapableModelsReturnsNil() {
+        let result = HardwareRequirements.selectOllamaVisionCapableModel(
+            from: ["llama3.1:8b", "phi4:latest"],
+            isVisionCapable: { _ in false }
+        )
+
+        XCTAssertNil(result)
+    }
 }

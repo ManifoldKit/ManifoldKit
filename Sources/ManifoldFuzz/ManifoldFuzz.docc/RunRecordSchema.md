@@ -43,6 +43,7 @@ in #490) call it before acting on a decoded record.
 | `error` | `String?` | Human-readable error message when `phase == "failed"`; otherwise `nil`. |
 | `stopReason` | `String?` | Coarse stop classification: `naturalStop`, `maxTokens`, `userStop`, `error`, `timeout`, or `unknown`. Detectors gate on this to avoid false-positive findings caused by token-cap truncation. |
 | `truncated` | `Bool` | `true` when `EventRecorder` dropped some of `raw`/`thinkingRaw`/`events` to stay under its buffering cap (a generation that never naturally stopped). Absent (legacy) records decode as `false`. Added without a `schemaVersion` bump — same additive `decodeIfPresent ?? <default>` precedent as `toolCalls`/`toolResults`/`toolDefinitions`, which also shipped without bumping `currentSchema` despite step 1 below. |
+| `sessionCapture` | `SessionCaptureSnapshot?` | Present for session-script findings. Stores the original script, ordered step records, stop qualification, and observed stop-boundary text so `--replay` can rerun cross-turn detectors. Absent for single-turn and legacy records, which continue through the existing one-turn replay path. This optional additive field follows the same compatibility precedent as `truncated`. |
 
 ## Evolving the schema
 

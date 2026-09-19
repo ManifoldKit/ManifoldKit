@@ -49,7 +49,10 @@ import os
 /// instead of ``MCPHostStdioTransport`` (#1842):
 ///
 /// ```swift
-/// let transport = try MCPHostHTTPTransport(port: 8765)
+/// let transport = try MCPHostHTTPTransport(
+///     port: 8765,
+///     authorizationToken: token
+/// )
 /// try await transport.start()
 /// try await host.run(transport: transport)
 /// ```

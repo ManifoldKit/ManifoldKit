@@ -17,7 +17,7 @@
   disclosure, card-style tool invocations, quiet session rows with pin glyphs,
   and a gradient user bubble with a larger corner radius.
 - Want the old look back? Apply **one modifier** at the chat root:
-  ```swift
+  ```swift,no-build:before-and-after fragment; surrounding app state is omitted
   ChatView(showModelManagement: $show)
       .classicManifoldTheme()
   ```

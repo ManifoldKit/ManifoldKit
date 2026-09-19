@@ -109,6 +109,19 @@ public struct EventRecorder: Sendable {
     /// - Parameter maxOutputTokens: the cap requested in `GenerationConfig`, used to
     ///   classify the stop reason as `maxTokens` when the final usage report meets/exceeds it.
     public func consume(_ stream: GenerationStream, maxOutputTokens: Int? = nil) async -> Capture {
+        await consume(stream, maxOutputTokens: maxOutputTokens, onVisibleToken: nil)
+    }
+
+    /// Package-internal observation seam used by ``SessionScriptRunner`` to
+    /// place a script's `.stop` step while the one canonical stream consumer is
+    /// still draining a live turn. The callback reports when a visible token is
+    /// observed by the recorder; it does not claim when the backend decoded or
+    /// emitted that token because the stream may already have buffered it.
+    func consume(
+        _ stream: GenerationStream,
+        maxOutputTokens: Int? = nil,
+        onVisibleToken: (@Sendable (String) -> Void)?
+    ) async -> Capture {
         let start = ContinuousClock.now
         var events: [RunRecord.EventSnapshot] = []
         var raw = ""
@@ -202,6 +215,9 @@ public struct EventRecorder: Sendable {
                     raw += text
                     growHead(&rawHead, appending: text, cap: Self.headPreserveCharacters)
                     events.append(.init(t: t, kind: "token", v: text))
+                    if !text.isEmpty {
+                        onVisibleToken?(text)
+                    }
                 case .thinkingToken(let text):
                     if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                     thinkingRaw += text

@@ -152,6 +152,11 @@ public protocol JSONSchemaValidating: Sendable {
 
     private var advertisedToolNameKeys: Set<String>?
 
+    /// Package-only output seam for the DEBUG local-backend ceiling warning.
+    /// Instance isolation lets tests capture one registry's warnings without
+    /// redirecting process-wide stdout or sharing mutable global state.
+    package var localBackendToolWarningReporter: (String) -> Void = { print($0) }
+
     // MARK: - Init
 
     /// Creates a registry pre-populated with the supplied tools.
@@ -227,6 +232,13 @@ public protocol JSONSchemaValidating: Sendable {
         return result
     }
 
+    /// All registered definitions without assuming that the snapshot is about
+    /// to be sent to a model. Package peers that filter the registry before
+    /// building a request use this snapshot, then warn against the final list.
+    package var registeredDefinitionsSnapshot: [ToolDefinition] {
+        sortedDefinitions()
+    }
+
     /// Registered tool definitions after applying ``advertisedToolNames``.
     ///
     /// Use this for model-facing `GenerationConfig.tools` when a host needs to
@@ -245,12 +257,20 @@ public protocol JSONSchemaValidating: Sendable {
     /// past the point where small local backends start to degrade. Shared by
     /// ``definitions`` and ``advertisedDefinitions`` so the threshold and
     /// message stay in one place.
-    private func warnIfTooManyTools(_ result: [ToolDefinition]) {
+    package func warnIfTooManyTools(_ result: [ToolDefinition]) {
         #if DEBUG
-        if result.count > 5 {
-            print("[ManifoldKit] ⚠️ \(result.count) tools in this request. Local backends (3B–8B) degrade beyond ~5 — see README Tool Calling section.")
+        if let warning = Self.localBackendToolCountWarning(for: result.count) {
+            localBackendToolWarningReporter(warning)
         }
         #endif
+    }
+
+    /// Returns the local-backend ceiling warning for a model-facing request.
+    /// Keeping the message pure lets package peers report it only after their
+    /// own advertisement filters have produced the actual request tool list.
+    private static func localBackendToolCountWarning(for toolCount: Int) -> String? {
+        guard toolCount > 5 else { return nil }
+        return "[ManifoldKit] ⚠️ \(toolCount) tools in this request. Local backends (3B–8B) degrade beyond ~5 — see README Tool Calling section."
     }
 
     private func sortedDefinitions() -> [ToolDefinition] {

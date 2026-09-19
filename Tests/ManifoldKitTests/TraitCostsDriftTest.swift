@@ -86,16 +86,7 @@ final class TraitCostsDriftTest: XCTestCase {
         let manifestTraits = try parsePackageManifestTraits(root: root)
         let jsonTraits = try parseJsonTraits(root: root)
 
-        // WWDC stub traits have no associated targets — they produce no
-        // measurable artifact and only exist as forward-declared compilation
-        // flags. Skip them here; FeatureMatrixTests already validates their
-        // Package.swift presence.
-        let noMeasurementNeeded: Set<String> = [
-            "SystemAIProviderExtension",
-            "CoreAI",
-        ]
-
-        let missing = manifestTraits.subtracting(noMeasurementNeeded).subtracting(jsonTraits)
+        let missing = manifestTraits.subtracting(jsonTraits)
         XCTAssertTrue(
             missing.isEmpty,
             "Package.swift declares trait(s) with no row in docs/trait-costs.json: \(missing.sorted()). " +

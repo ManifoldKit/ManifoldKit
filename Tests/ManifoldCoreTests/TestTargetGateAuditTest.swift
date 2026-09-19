@@ -78,8 +78,10 @@ import XCTest
 /// something invalid, which should never survive review, let alone reach CI.
 ///
 /// ``testTargetNames(packageManifest:)``, ``gatedTargetNames(scriptContent:)``,
-/// and ``ciFilterTargetNames(workflowContent:)`` are pure `static func`s so
-/// the in-file sabotage tests exercise the exact functions the audit runs.
+/// ``ciFilterTargetNames(workflowContent:)`` and
+/// ``platformFloorRunnerViolations(ciWorkflow:setupAction:)`` are pure
+/// `static func`s so the in-file sabotage tests exercise the exact functions
+/// the audit runs.
 final class TestTargetGateAuditTest: XCTestCase {
 
     /// Test targets that deliberately never execute in CI, each with a
@@ -147,6 +149,32 @@ final class TestTargetGateAuditTest: XCTestCase {
                 gated behind an env var, dev-only harness).
                 """)
         }
+    }
+
+    /// Jobs that inspect or execute the package at its minimum deployment
+    /// floor must stay on macOS 26 and use the shared pinned toolchain. A
+    /// macOS-15 host plus a macOS-26 SDK is compile evidence only: runtime
+    /// tests skip there, while swift-api-digester may availability-filter its
+    /// interface. CI must verify the precise mechanism on macOS 26/Xcode 26.3.
+    func test_platformFloorJobsUseMacOS26AndPinnedXcode() throws {
+        let repoRoot = try Self.locateRepoRoot()
+        let workflow = try String(
+            contentsOf: repoRoot.appendingPathComponent(".github/workflows/ci.yml"),
+            encoding: .utf8
+        )
+        let setupAction = try String(
+            contentsOf: repoRoot.appendingPathComponent(".github/actions/setup-swift-ci/action.yml"),
+            encoding: .utf8
+        )
+
+        let violations = Self.platformFloorRunnerViolations(
+            ciWorkflow: workflow,
+            setupAction: setupAction
+        )
+        XCTAssertTrue(
+            violations.isEmpty,
+            "Platform-floor runner/toolchain drifted:\n  - \(violations.joined(separator: "\n  - "))"
+        )
     }
 
     // MARK: - Sabotage (exercises the same detection functions the audit runs)
@@ -347,6 +375,67 @@ final class TestTargetGateAuditTest: XCTestCase {
         )
     }
 
+    /// Plants active drift beside misleading commented-out "good" lines. The
+    /// predicate must inspect active YAML lines, reject per-job Xcode
+    /// overrides, and fail when a required job disappears.
+    func test_sabotage_platformFloorRunnerViolationsDetectsHostAndToolchainDrift() {
+        func job(_ name: String) -> String {
+            """
+              \(name):
+                runs-on: macos-26  # qualification host
+                steps:
+                  \(name == "test" ? "uses" : "- uses"): ./.github/actions/setup-swift-ci # shared pin
+            """
+        }
+        let validWorkflow = Self.platformFloorJobNames.map(job).joined(separator: "\n")
+        let validAction = """
+            inputs:
+              xcode-version:
+                default: "26.3" # shared default
+            runs:
+              steps:
+                - uses: maxim-lobanov/setup-xcode@pinned
+                  with:
+                    xcode-version: ${{ inputs.xcode-version }} # pass through
+            """
+        XCTAssertTrue(Self.platformFloorRunnerViolations(
+            ciWorkflow: validWorkflow,
+            setupAction: validAction
+        ).isEmpty)
+
+        for override in [
+            #"with: { verify-toolchain: "true", xcode-version: "26.4" }"#,
+            #""xcode-version": "26.4""#,
+        ] {
+            let workflowWithOverride = validWorkflow.replacingOccurrences(
+                of: "  cache-prime:",
+                with: "  cache-prime:\n    \(override)"
+            )
+            XCTAssertTrue(Self.platformFloorRunnerViolations(
+                ciWorkflow: workflowWithOverride,
+                setupAction: validAction
+            ).contains { $0.contains("override") })
+        }
+
+        let badWorkflow = validWorkflow
+            .replacingOccurrences(of: job("server-tests"), with: "")
+            .replacingOccurrences(of: "runs-on: macos-26  # qualification host", with: "# runs-on: macos-26\n    runs-on: macos-15")
+            .replacingOccurrences(of: "uses: ./.github/actions/setup-swift-ci # shared pin", with: "# uses: ./.github/actions/setup-swift-ci\n      - run: swift test")
+        let badAction = validAction.replacingOccurrences(
+            of: "default: \"26.3\" # shared default",
+            with: "# default: \"26.3\"\n    default: \"26.4\""
+        )
+        let violations = Self.platformFloorRunnerViolations(
+            ciWorkflow: badWorkflow,
+            setupAction: badAction
+        )
+        XCTAssertTrue(violations.contains { $0.contains("`cache-prime`") && $0.contains("macos-26") })
+        XCTAssertTrue(violations.contains { $0.contains("`api-digester-check`") && $0.contains("macos-26") })
+        XCTAssertTrue(violations.contains { $0.contains("`cache-prime`") && $0.contains("setup-swift-ci") })
+        XCTAssertTrue(violations.contains { $0.contains("`server-tests`") && $0.contains("missing") })
+        XCTAssertTrue(violations.contains { $0.contains("Xcode 26.3") })
+    }
+
     // MARK: - Detection
 
     /// The full audit: every declared `.testTarget` name in `packageManifest`
@@ -489,6 +578,88 @@ final class TestTargetGateAuditTest: XCTestCase {
             }
         }
         return found
+    }
+
+    /// Pins jobs that inspect or execute the package at its deployment floor.
+    /// Other jobs may compile cross-target on macOS 15, so this checks an
+    /// explicit list instead of banning `macos-15` across the workflow.
+    static func platformFloorRunnerViolations(
+        ciWorkflow: String,
+        setupAction: String
+    ) -> [String] {
+        var violations: [String] = []
+
+        for jobName in Self.platformFloorJobNames {
+            guard let block = Self.workflowJobBlock(named: jobName, in: ciWorkflow) else {
+                violations.append("missing qualification job `\(jobName)`")
+                continue
+            }
+            let lines = Self.activeTrimmedLines(in: block)
+            if !Self.containsActiveLine(#"^runs-on:\s*macos-26(?:\s+#.*)?$"#, in: lines) {
+                violations.append("`\(jobName)` must run on `macos-26`")
+            }
+            if !Self.containsActiveLine(#"^(?:-\s+)?uses:\s*\./\.github/actions/setup-swift-ci(?:\s+#.*)?$"#, in: lines) {
+                violations.append("`\(jobName)` must use `setup-swift-ci`")
+            }
+            if Self.containsXcodeVersionOverride(in: lines) {
+                violations.append("`\(jobName)` must not override the shared Xcode pin")
+            }
+        }
+
+        let inputLines = Self.yamlBlock(named: "xcode-version", indentation: 2, in: setupAction)
+            .map { Self.activeTrimmedLines(in: $0) } ?? []
+        let setupLines = Self.activeTrimmedLines(in: setupAction)
+        if !Self.containsActiveLine(#"^default:\s*"26\.3"(?:\s+#.*)?$"#, in: inputLines) ||
+            !Self.containsActiveLine(#"^xcode-version:\s*\$\{\{ inputs\.xcode-version \}\}(?:\s+#.*)?$"#, in: setupLines) {
+            violations.append("setup-swift-ci must select the shared Xcode 26.3 pin")
+        }
+        return violations
+    }
+
+    private static let platformFloorJobNames = [
+        "cache-prime", "test", "server-tests", "macros-tests", "api-digester-check",
+    ]
+
+    private static func activeTrimmedLines(in text: String) -> [String] {
+        text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+    }
+
+    private static func containsActiveLine(_ pattern: String, in lines: [String]) -> Bool {
+        let regex = Self.requiredRegex(pattern)
+        return lines.contains { Self.matches(regex, $0) }
+    }
+
+    private static func containsXcodeVersionOverride(in lines: [String]) -> Bool {
+        let key = Self.requiredRegex(#"(?:^|[,{]\s*)["']?xcode-version["']?\s*:"#)
+        return lines.contains { line in
+            let content = line.replacingOccurrences(
+                of: #"\s+#.*$"#,
+                with: "",
+                options: .regularExpression
+            )
+            return Self.matches(key, content)
+        }
+    }
+
+    private static func workflowJobBlock(named jobName: String, in workflow: String) -> String? {
+        Self.yamlBlock(named: jobName, indentation: 2, in: workflow)
+    }
+
+    private static func yamlBlock(named name: String, indentation: Int, in text: String) -> String? {
+        let prefix = String(repeating: " ", count: indentation)
+        let lines = text.components(separatedBy: .newlines)
+        guard let start = lines.firstIndex(of: "\(prefix)\(name):") else { return nil }
+        var end = lines.count
+        for index in lines.index(after: start)..<lines.endIndex {
+            let line = lines[index]
+            if line.range(of: "^\(prefix)[A-Za-z0-9_-]+:$", options: .regularExpression) != nil {
+                end = index
+                break
+            }
+        }
+        return lines[start..<end].joined(separator: "\n")
     }
 
     // MARK: - Regex helpers

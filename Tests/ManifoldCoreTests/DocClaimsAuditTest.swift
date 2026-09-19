@@ -80,11 +80,6 @@ final class DocClaimsAuditTest: XCTestCase {
         "LlamaBackend",
     ]
 
-    /// Docs deliberately reachable from no other Markdown file. Empty at
-    /// introduction. A new entry needs a reason: "nothing links it yet" is a
-    /// bug in the index, not a case for the allowlist.
-    private static let allowedUnreferencedDocs: Set<String> = []
-
     // MARK: - The audit
 
     func test_docClaimsResolve() throws {
@@ -276,7 +271,9 @@ final class DocClaimsAuditTest: XCTestCase {
 
     // MARK: - 4. Index coverage
 
-    /// Every `docs/*.md` must be referenced by at least one other Markdown file.
+    /// Every `docs/*.md` must be navigably reachable from a reader entrypoint.
+    /// A pair of pages that link only to each other is not discoverable, so a
+    /// basename mention (the old rule) is deliberately insufficient.
     static func auditIndexCoverage(repoRoot: URL) throws -> [String] {
         let docsDir = repoRoot.appendingPathComponent("docs")
         // Throw rather than `return []`: an unreadable docs/ would otherwise
@@ -289,26 +286,35 @@ final class DocClaimsAuditTest: XCTestCase {
             .filter { $0.pathExtension == "md" }
             .filter { $0.lastPathComponent != "README.md" }   // the index itself
 
-        // Concatenate every OTHER markdown file once, then test each basename
-        // against it. A plain mention counts as a reference: the check is
-        // "can a reader find this doc at all", not "is it linked correctly"
-        // (auditRelativeLinks owns link correctness).
-        var corpusByFile: [String: String] = [:]
-        for fileURL in markdownFiles(repoRoot: repoRoot) {
-            corpusByFile[fileURL.standardizedFileURL.path] =
-                (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+        let corpus = markdownFiles(repoRoot: repoRoot)
+        let corpusPaths = Set(corpus.map { $0.standardizedFileURL.path })
+        let entrypoints = ["README.md", "AGENTS.md", "CONTRIBUTING.md", "docs/README.md"]
+            .map { repoRoot.appendingPathComponent($0).standardizedFileURL }
+            .filter { corpusPaths.contains($0.path) }
+        // A catalog landing page is a reader entrypoint within DocC even when
+        // no repository README links to it. Keep that graph independently
+        // navigable without treating every DocC article as a root.
+        let docCLandings = corpus.filter {
+            $0.deletingLastPathComponent().pathExtension == "docc"
+        }
+        var reachable = Set((entrypoints + docCLandings).map(\.path))
+        var queue = entrypoints + docCLandings
+        while let current = queue.popLast() {
+            guard let content = try? String(contentsOf: current, encoding: .utf8) else { continue }
+            for target in linkTargets(in: content) {
+                guard let path = localMarkdownPath(from: target) else { continue }
+                let resolved = URL(fileURLWithPath: path, relativeTo: current.deletingLastPathComponent())
+                    .standardizedFileURL
+                if corpusPaths.contains(resolved.path), reachable.insert(resolved.path).inserted {
+                    queue.append(resolved)
+                }
+            }
         }
 
         var violations: [String] = []
         for doc in candidates {
-            let name = doc.lastPathComponent
-            if allowedUnreferencedDocs.contains(name) { continue }
-            let selfPath = doc.standardizedFileURL.path
-            let referenced = corpusByFile.contains { path, content in
-                path != selfPath && content.contains(name)
-            }
-            if !referenced {
-                violations.append("docs/\(name)  is referenced by no other Markdown file (orphaned)")
+            if !reachable.contains(doc.standardizedFileURL.path) {
+                violations.append("docs/\(doc.lastPathComponent)  is not reachable by a navigable Markdown link from README/docs README/contributor entrypoints")
             }
         }
         return violations
@@ -344,6 +350,71 @@ final class DocClaimsAuditTest: XCTestCase {
             violations.contains { $0.contains("PlantedRealType") },
             "A symbol that exists in Sources/ must not be flagged; got \(violations)"
         )
+    }
+
+    /// The required Ubuntu mirror must exercise the same failure shape as the
+    /// Swift audit. This launches the real shell/Python checker against a
+    /// planted repository: a live declaration, comment/string residue, a
+    /// missing ``Symbol``, and a rooted positive link are all intentional.
+    func test_sabotage_prTimeMirrorDetectsMissingSymbolAndKeepsLiveTokens() throws {
+        let tmp = try Self.makeTempRoot("doc-claims-pr-mirror")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let source = tmp.appendingPathComponent("Sources/Planted/Live.swift")
+        try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try ###"""
+        // GhostOnlyInComment must not count.
+        let prose = "GhostOnlyInString must not count"
+        let escaped = "prefix \"GhostOnlyEscaped\" suffix"
+        let raw = ##"GhostOnlyInRawString"##
+        let multiline = """
+        GhostOnlyInMultilineString
+        """
+        /* nested /* GhostOnlyInNestedComment */ comment */
+        public struct LiveSymbol {}
+        """###.write(to: source, atomically: true, encoding: .utf8)
+        let docs = tmp.appendingPathComponent("docs")
+        try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+        try "# Docs\n[Live](LIVE.md)".write(to: docs.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try "Uses ``LiveSymbol``, ``GhostOnlyInComment``, ``GhostOnlyInString``, ``GhostOnlyEscaped``, ``GhostOnlyInRawString``, ``GhostOnlyInMultilineString``, and ``TotallyMissingSymbol``."
+            .write(to: docs.appendingPathComponent("LIVE.md"), atomically: true, encoding: .utf8)
+        try "# Cycle A\n[B](CYCLE-B.md)".write(to: docs.appendingPathComponent("CYCLE-A.md"), atomically: true, encoding: .utf8)
+        try "# Cycle B\n[A](CYCLE-A.md)".write(to: docs.appendingPathComponent("CYCLE-B.md"), atomically: true, encoding: .utf8)
+        let thirdParty = tmp.appendingPathComponent("scripts/changelog-parser-check/node_modules/dependency/README.md")
+        try FileManager.default.createDirectory(at: thirdParty.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "Third-party ``GhostOnlyInNodeModules`` prose is not this repository's documentation contract."
+            .write(to: thirdParty, atomically: true, encoding: .utf8)
+
+        func runMirror() throws -> (Int32, String) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = [try Self.locateRepoRoot().appendingPathComponent("scripts/lint-doc-claims.sh").path]
+            var environment = ProcessInfo.processInfo.environment
+            environment["MANIFOLD_DOC_CLAIMS_ROOT"] = tmp.path
+            environment["MANIFOLD_DOC_CLAIMS_SKIP_FLOORS"] = "1"
+            process.environment = environment
+            let pipe = Pipe(); process.standardOutput = pipe; process.standardError = pipe
+            try process.run()
+            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            process.waitUntilExit()
+            return (process.terminationStatus, output)
+        }
+
+        let broken = try runMirror()
+        XCTAssertNotEqual(broken.0, 0, "Sabotage: PR-time mirror accepted a missing symbol: \(broken.1)")
+        XCTAssertTrue(broken.1.contains("TotallyMissingSymbol"), "Missing symbol must be named: \(broken.1)")
+        XCTAssertTrue(broken.1.contains("GhostOnlyInComment"), "Comment residue must not vouch for a symbol: \(broken.1)")
+        XCTAssertTrue(broken.1.contains("GhostOnlyInString"), "String residue must not vouch for a symbol: \(broken.1)")
+        XCTAssertTrue(broken.1.contains("GhostOnlyEscaped"), "Escaped ordinary string residue must not vouch for a symbol: \(broken.1)")
+        XCTAssertTrue(broken.1.contains("GhostOnlyInRawString"), "Raw-string residue must not vouch for a symbol: \(broken.1)")
+        XCTAssertTrue(broken.1.contains("GhostOnlyInMultilineString"), "Multiline-string residue must not vouch for a symbol: \(broken.1)")
+        XCTAssertFalse(broken.1.contains("LiveSymbol` not found"), "Real declaration must remain valid: \(broken.1)")
+        XCTAssertFalse(broken.1.contains("GhostOnlyInNodeModules"), "Third-party node_modules docs must be excluded: \(broken.1)")
+        XCTAssertTrue(broken.1.contains("CYCLE-A.md") && broken.1.contains("CYCLE-B.md"), "Unrooted mutual-link cycle must be rejected by the PR mirror: \(broken.1)")
+
+        try "Uses ``LiveSymbol``.".write(to: docs.appendingPathComponent("LIVE.md"), atomically: true, encoding: .utf8)
+        try "# Docs\n[Live](LIVE.md)\n[Cycle](CYCLE-A.md)".write(to: docs.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        let healthy = try runMirror()
+        XCTAssertEqual(healthy.0, 0, "Healthy positive control must pass: \(healthy.1)")
     }
 
     /// A repo root with no readable `Sources/` must make
@@ -603,6 +674,8 @@ final class DocClaimsAuditTest: XCTestCase {
             .write(to: docsDir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
         try "# Linked".write(to: docsDir.appendingPathComponent("PLANTED-LINKED.md"), atomically: true, encoding: .utf8)
         try "# Orphan".write(to: docsDir.appendingPathComponent("PLANTED-ORPHAN.md"), atomically: true, encoding: .utf8)
+        try "# A\n[B](PLANTED-B.md)".write(to: docsDir.appendingPathComponent("PLANTED-A.md"), atomically: true, encoding: .utf8)
+        try "# B\n[A](PLANTED-A.md)".write(to: docsDir.appendingPathComponent("PLANTED-B.md"), atomically: true, encoding: .utf8)
 
         let violations = try Self.auditIndexCoverage(repoRoot: tmp)
         XCTAssertTrue(
@@ -612,6 +685,10 @@ final class DocClaimsAuditTest: XCTestCase {
         XCTAssertFalse(
             violations.contains { $0.contains("PLANTED-LINKED.md") },
             "A referenced doc must not be flagged; got \(violations)"
+        )
+        XCTAssertTrue(
+            violations.contains { $0.contains("PLANTED-A.md") } && violations.contains { $0.contains("PLANTED-B.md") },
+            "A mutually-linked pair with no entrypoint path is still undiscoverable; got \(violations)"
         )
     }
 
@@ -633,12 +710,17 @@ final class DocClaimsAuditTest: XCTestCase {
             files.append(contentsOf: rootEntries.filter { $0.pathExtension == "md" })
         }
 
-        for subdirectory in ["docs", "Sources"] {
+        // Tests/, scripts/, and Example/ contain maintained reader-facing
+        // README/docs. Fixture, generated, and historical-run trees are
+        // deliberately excluded so test data never becomes a doc contract.
+        for subdirectory in ["docs", "Sources", "Tests", "scripts", "Example"] {
             let dir = repoRoot.appendingPathComponent(subdirectory)
             guard let enumerator = fm.enumerator(
                 at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
             ) else { continue }
             for case let url as URL in enumerator where url.pathExtension == "md" {
+                let path = url.path
+                if ["/Fixtures/", "/fixtures/", "/Generated/", "/generated/", "/DerivedData/", "/node_modules/", "/dx-walkthrough/", "/runs/"].contains(where: path.contains) { continue }
                 files.append(url)
             }
         }

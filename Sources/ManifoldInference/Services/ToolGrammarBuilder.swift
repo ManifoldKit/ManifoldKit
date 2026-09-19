@@ -238,6 +238,27 @@ public struct ToolGrammarBuilder: Sendable {
         return lines.joined(separator: "\n")
     }
 
+    /// Package-only dialect-aware entry point used by the queue. A declared
+    /// non-JSON argument encoding makes the JSON envelope grammar contradictory
+    /// to the model's prompt template, so the safe behavior is unconstrained
+    /// sampling. A missing dialect keeps the historical JSON behavior because
+    /// not every grammar-capable backend advertises metadata yet.
+    package func buildGrammar(
+        for tools: [ToolDefinition],
+        mode: Mode,
+        dialect: ToolCallDialect?
+    ) -> String? {
+        if let dialect {
+            switch dialect.argEncoding {
+            case .json:
+                break
+            case .keyValue, .custom:
+                return nil
+            }
+        }
+        return buildGrammar(for: tools, mode: mode)
+    }
+
     /// Builds a GBNF grammar string whose `root` constrains output to a single
     /// JSON value matching `schema` (no tool-call envelope), or `nil` when the
     /// schema carries no structural information to constrain (a bare scalar /

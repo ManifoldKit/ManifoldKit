@@ -92,6 +92,7 @@ final class RunRecordRoundTripTests: XCTestCase {
         let decoded = try JSONDecoder().decode(RunRecord.self, from: stripped)
 
         XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertNil(decoded.sessionCapture, "records written before session evidence must remain decodable")
         // And the rest of the record must round-trip intact — the missing
         // schemaVersion is the *only* tolerated difference.
         var expected = record

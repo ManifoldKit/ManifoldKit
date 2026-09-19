@@ -82,6 +82,31 @@ For local (on-device) backends, additionally declare a
 ``LocalBackendContractRunner`` scenario, with fixtures under
 `Tests/Fixtures/backends/<name>/…` in your repo.
 
+## Stop and immediate reuse
+
+Call `BackendContractChecks.assertStopGenerationContract(backend:prompt:config:timeout:)`
+from a main-actor asynchronous test with an already-loaded backend. The fixture
+must produce content and remain in flight until the check stops it. Its
+uncancelled remaining workload must outlast the termination deadline, so
+natural completion cannot substitute for a successful stop. A silent
+or naturally completed turn throws a failed-precondition diagnostic; it does
+not count as cancellation evidence.
+
+The check asserts synchronous readiness, starts the successor before awaiting
+the predecessor's termination, and verifies the successor remains active after
+the predecessor ends. Both stream drains have a deadline. It neither reloads
+the model nor resets the conversation between turns. Companion test targets
+can import this public helper without widening the production backend API.
+
+Core adopts it for OpenAI Chat Completions, OpenAI Responses, Claude and Ollama
+using delayed URLProtocol streams through their real transport paths. The
+Foundation adoption requires `RUN_SLOW_TESTS=1` and available Apple Intelligence.
+Deterministic violating fixtures prove the check rejects a stale generating
+flag, rejected resend, unterminated stream and an already-finished workload.
+Passing transport fixtures does not qualify a remote service or local model;
+record live-model results separately. This backend check also does not replace
+the session-script stop/residue investigation tracked in issue #2361.
+
 ## The contract suite is safe under `swift test --parallel`
 
 The capability-claims registry lives on ``BackendContractChecks/ClaimRegistry``,

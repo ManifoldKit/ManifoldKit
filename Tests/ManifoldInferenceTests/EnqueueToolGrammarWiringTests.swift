@@ -12,10 +12,14 @@ final class EnqueueToolGrammarWiringTests: XCTestCase {
         ToolDefinition(name: name, description: "d", parameters: .object([:]))
     }
 
-    private func makeBackend(grammar: Bool) -> MockInferenceBackend {
+    private func makeBackend(
+        grammar: Bool,
+        toolDialect: ToolCallDialect? = nil
+    ) -> MockInferenceBackend {
         let backend = MockInferenceBackend(capabilities: BackendCapabilities(
             supportsToolCalling: true,
-            supportsGrammarConstrainedSampling: grammar
+            supportsGrammarConstrainedSampling: grammar,
+            toolDialect: toolDialect
         ))
         backend.isModelLoaded = true
         backend.tokensToYield = ["x"]
@@ -101,6 +105,36 @@ final class EnqueueToolGrammarWiringTests: XCTestCase {
         for try await _ in stream.events {}
 
         XCTAssertNil(backend.lastConfig?.grammar, "no grammar capability → no derived grammar")
+    }
+
+    func test_nonJSONToolDialect_reachesQueueAndDeclinesDerivedGrammar() async throws {
+        // Sabotage evidence: calling the legacy dialect-free builder overload in
+        // GenerationQueue gives this backend a non-nil grammar and fails below.
+        // This is the capability shape manifold-llama reports for Qwen3.5/3.6:
+        // nested XML arguments inside <tool_call> delimiters. The queue is the
+        // production consumer that must carry the dialect into grammar choice;
+        // a builder-only test would leave the metadata inert.
+        let xmlDialect = ToolCallDialect(
+            family: .custom,
+            openDelimiter: "<tool_call>",
+            closeDelimiter: "</tool_call>",
+            argEncoding: .custom,
+            extractability: .clean
+        )
+        let backend = makeBackend(grammar: true, toolDialect: xmlDialect)
+        XCTAssertTrue(backend.capabilities.supportsGrammarConstrainedSampling)
+        let service = InferenceService(backend: backend, name: "Mock")
+
+        let (_, stream) = try service.enqueue(
+            messages: [Message.user("hi")],
+            config: GenerationConfig(tools: [tool("get_weather")], toolChoice: .required)
+        )
+        for try await _ in stream.events {}
+
+        XCTAssertNil(
+            backend.lastConfig?.grammar,
+            "a non-JSON model dialect must not receive the JSON envelope grammar"
+        )
     }
 
     func test_explicitCallerGrammar_isPreserved() async throws {

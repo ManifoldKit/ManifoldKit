@@ -201,7 +201,8 @@ await sessionVM.configureAndLoad(bootstrap: bootstrap)
 if let restored = await sessionVM.selectInitialSession() {
     sessionVM.activeSession = restored
     await chatVM.switchToSession(restored)
-} else if let fresh = try? await sessionVM.createSession() {
+} else {
+    let fresh = try await sessionVM.createSession()
     sessionVM.activeSession = fresh
     await chatVM.switchToSession(fresh)
 }
@@ -362,7 +363,7 @@ Tagged release:
 // always compile since v0.48; no traits needed.
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.77.0" // x-release-please-version
+    from: "0.78.0" // x-release-please-version
 )
 ```
 
@@ -466,7 +467,8 @@ struct MyChatApp: App {
             if let restored = await sessionVM.selectInitialSession() {
                 sessionVM.activeSession = restored
                 await chatVM.switchToSession(restored)
-            } else if let fresh = try? await sessionVM.createSession() {
+            } else {
+                let fresh = try await sessionVM.createSession()
                 sessionVM.activeSession = fresh
                 await chatVM.switchToSession(fresh)
             }

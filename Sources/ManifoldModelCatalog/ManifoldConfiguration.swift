@@ -17,23 +17,89 @@ import os
 /// )
 /// ```
 public struct ManifoldConfiguration: Sendable {
+    private struct SharedStorage: Sendable {
+        var configuration: ManifoldConfiguration
+        var generation: UInt64
+    }
+
+    /// Ownership receipt for one atomic installation of ``shared``.
+    ///
+    /// Package-only bootstrap code uses the generation to detect any later
+    /// assignment, including replacing the configuration with an equal value.
+    package struct SharedInstallation: Sendable {
+        fileprivate let previousConfiguration: ManifoldConfiguration
+        fileprivate let generation: UInt64
+    }
+
     // OSAllocatedUnfairLock wraps value and lock together, making it
     // structurally impossible to access the value without holding the lock.
     private static let storage = OSAllocatedUnfairLock(
-        initialState: ManifoldConfiguration()
+        initialState: SharedStorage(
+            configuration: ManifoldConfiguration(),
+            generation: 0
+        )
     )
 
     public static var shared: ManifoldConfiguration {
-        get { storage.withLock { $0 } }
+        get { storage.withLock { $0.configuration } }
         set {
-            storage.withLock { $0 = newValue }
-            // Keep the ManifoldSecrets leaf module's Keychain service name
-            // in sync whenever the configuration changes. ManifoldSecrets is
-            // zero-dependency so it cannot import ManifoldConfiguration
-            // directly; this setter is the reliable wiring point.
-            KeychainService.serviceNameProvider = {
-                ManifoldConfiguration.shared.keychainServiceName
+            storage.withLock {
+                $0.configuration = newValue
+                $0.generation &+= 1
             }
+            synchronizeKeychainServiceNameProvider()
+        }
+    }
+
+    /// Atomically captures the current configuration, installs `configuration`,
+    /// and returns the generation owned by that installation.
+    package static func installShared(
+        _ configuration: ManifoldConfiguration
+    ) -> SharedInstallation {
+        let installation = storage.withLock { state in
+            let previousConfiguration = state.configuration
+            state.configuration = configuration
+            state.generation &+= 1
+            return SharedInstallation(
+                previousConfiguration: previousConfiguration,
+                generation: state.generation
+            )
+        }
+        synchronizeKeychainServiceNameProvider()
+        return installation
+    }
+
+    /// Returns whether no assignment has replaced `installation`.
+    package static func sharedIsOwned(by installation: SharedInstallation) -> Bool {
+        storage.withLock { $0.generation == installation.generation }
+    }
+
+    /// Restores the captured value only while `installation` still owns
+    /// ``shared``. A newer direct writer always wins.
+    @discardableResult
+    package static func restoreShared(
+        ifOwnedBy installation: SharedInstallation
+    ) -> Bool {
+        let restored = storage.withLock { state in
+            guard state.generation == installation.generation else {
+                return false
+            }
+            state.configuration = installation.previousConfiguration
+            state.generation &+= 1
+            return true
+        }
+        if restored {
+            synchronizeKeychainServiceNameProvider()
+        }
+        return restored
+    }
+
+    private static func synchronizeKeychainServiceNameProvider() {
+        // ManifoldSecrets is a dependency leaf, so it cannot import this type.
+        // The provider remains live: it resolves the process-wide configuration
+        // each time a Keychain operation begins rather than capturing a value.
+        KeychainService.serviceNameProvider = {
+            ManifoldConfiguration.shared.keychainServiceName
         }
     }
 

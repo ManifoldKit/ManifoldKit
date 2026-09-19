@@ -56,6 +56,12 @@ yourself is always correct and never wrong, which is why the steps say "read".
 
 Pointers only — this section never restates DIGEST content.
 
+The Estate paths above are mandatory for maintainer and operator environments
+configured to use them; this guide does not waive those obligations. Public
+contributors without that private environment follow the complete repository
+instructions, including the known-issues and verification rules, without
+needing private Estate access.
+
 # Part 0 — Principles
 
 These are the things that must stay true as everything else changes. Parts 1
@@ -125,11 +131,11 @@ not a rule.**
 ManifoldKit is a Swift package. Install via SwiftPM:
 
 ```swift
-.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.77.0") // x-release-please-version
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.78.0") // x-release-please-version
 ```
 
 > **Pre-1.0.** Minor versions can introduce breaking changes. For production,
-> pin to a specific tag (`exact: "0.64.0"`) and read [CHANGELOG.md](CHANGELOG.md)
+> pin with `exact:` to a tag you have validated and read [CHANGELOG.md](CHANGELOG.md)
 > before bumping. The `0.x` line stabilises pieces incrementally; `1.0.0` will
 > be the freeze point.
 
@@ -178,7 +184,7 @@ conversation runtime, and the model container in the right order. Because it
 is `async`, wire it from a `.task { }` on the launch view — **not** from
 `App.init()`, which is synchronous and would deadlock:
 
-```swift,no-build:defines the app entry point; `ContentView` is defined in the next block, so this one cannot compile in isolation
+```swift,no-build:defines the app entry point; ContentView is defined in the next block, so this one cannot compile in isolation
 import SwiftUI
 import SwiftData
 import ManifoldKit
@@ -254,7 +260,8 @@ struct MyChatApp: App {
             if let restored = await sessions.selectInitialSession() {
                 sessions.activeSession = restored
                 await vm.switchToSession(restored)
-            } else if let fresh = try? await sessions.createSession() {
+            } else {
+                let fresh = try await sessions.createSession()
                 sessions.activeSession = fresh
                 await vm.switchToSession(fresh)
             }
@@ -315,9 +322,10 @@ struct ContentView: View {
 `Example/Examples/MinimalExample/` is the runnable version of this — keep it
 open while you wire the real app.
 
-> For a single-session surface without a sidebar, `ManifoldKit.quickStart()`
-> collapses the `start()` method above into one call. See
-> [`docs/QUICKSTART.md`](docs/QUICKSTART.md) for that path.
+> `ManifoldKit.quickStart()` provides the standard bootstrap for both single-
+> and multi-session apps, including a session manager. See
+> [`docs/QUICKSTART.md`](docs/QUICKSTART.md) for its backend registration,
+> selection and loading behaviour; use manual bootstrap when you need custom wiring.
 >
 > For the complete end-to-end recipe (local SwiftPM path, Ollama seeding,
 > `ManifoldUIModelManagement` optionality), see
@@ -472,7 +480,7 @@ on every consumer:
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.77.0", // x-release-please-version
+    from: "0.78.0", // x-release-please-version
     traits: [.trait(name: "Macros")]
 )
 ```
@@ -551,7 +559,7 @@ Cloud backends are always compiled in since v0.48 (the `CloudSaaS` /
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.77.0" // x-release-please-version
+    from: "0.78.0" // x-release-please-version
 )
 ```
 
@@ -751,7 +759,7 @@ published product (not just the Experimental ones), see
 
 **Dependency rules:** Never import any backend family target (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) from UI; never import `ManifoldUIModelManagement` from `ManifoldUI` (CI lint enforces this). `ManifoldUIModelManagement` depends on `ManifoldUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter. All backend-family edges are unconditional; the companion-package families (`ManifoldMLX`, `ManifoldLlama`) depend on this package's `ManifoldInference` from their own repos.
 
-**Trait roster:** there are **no default traits** — plain `swift build` is the full core build. Surviving opt-in traits: `Server`, `Macros`; WWDC stubs `SystemAIProviderExtension`, `CoreAI`. Everything else was retired in the v0.48 train — see docs/MIGRATION-0.48.md; a `traits: ["MLX"]` / `["Llama"]` array now hard-errors at resolve time.
+**Trait roster:** there are **no default traits** — plain `swift build` is the full core build. Surviving opt-in traits: `Server`, `Macros`. Everything else was retired in the v0.48 train — see docs/MIGRATION-0.48.md; a `traits: ["MLX"]` / `["Llama"]` array now hard-errors at resolve time.
 
 ## Running tests
 
@@ -771,7 +779,7 @@ Use `scripts/test.sh` — it runs configured suites and prints an honest summary
 
 For trait conventions, suite layout, classification (Unit / Integration / E2E), and the per-backend conformance walkthrough, see [`Tests/README.md`](Tests/README.md). It is the canonical entry point for "how do I add a backend / test / suite?".
 
-Four cross-cutting QA practices live outside the unit/integration/E2E pyramid — DX walkthroughs, audit tests, the audit sabotage suite, and cold-start conformance gates. See [`docs/QA-PRACTICES.md`](docs/QA-PRACTICES.md) for what each one catches, how to run it, and how to extend it.
+Cross-cutting QA practices complement the unit/integration/E2E pyramid: DX walkthroughs, audit tests, the audit sabotage suite, cold-start conformance gates, real-model integration sweeps, and demo coverage. See [`docs/QA-PRACTICES.md`](docs/QA-PRACTICES.md) for what each one catches, how to run it, and how to extend it.
 
 - Use `XCTestCase` for new tests; match `@Suite`/`@Test` in files that already use Swift Testing.
 - A test that hits SwiftData is an integration test — name and place it accordingly.
@@ -837,18 +845,19 @@ ManifoldKit targets **n-1**: the current Apple OS release and the one immediatel
 
 | Platform | Current (n) | Minimum (n-1) |
 |----------|-------------|---------------|
-| macOS    | 26          | 15            |
-| iOS      | 26          | 18            |
+| macOS    | 27          | 26            |
+| iOS      | 27          | 26            |
 
 When Apple ships a new major OS each September, bump both minimums and remove `#available` guards added for the previous floor. Do not use `Atomic`, `OSAllocatedUnfairLock`, or other APIs that post-date the minimum without checking their availability.
 
-**`swift-tools-version` ceiling = installed Xcode toolchain.** Core CI currently selects Xcode 26.3 / Swift 6.3; bumping the tools version above the toolchain CI actually selects breaks `resolve-check` and `fuzz`.
+**`swift-tools-version` ceiling = installed Xcode toolchain.** Core CI currently selects Xcode 26.3 / Swift 6.3; the floor change uses string platform versions so it does not require a tools-version bump.
 
 ## Hardware constraints (simulator / CI)
 
 The MLX and llama.cpp hardware constraints (global `llama_backend_init`, Metal-in-simulator gating, metallib guards) moved with the backends to the manifold-mlx / manifold-llama repos' docs. What remains relevant to core:
 
-- `FoundationBackend` requires iOS 26 / macOS 26. Gate accordingly.
+- `FoundationBackend` requires the iOS 26 / macOS 26 package floor. APIs first
+  introduced after that floor remain availability-gated.
 - Context window capped at 512 tokens in the simulator to avoid OOM.
 
 See [docs/HARDWARE-TOOLCHAIN.md](docs/HARDWARE-TOOLCHAIN.md) for the full cross-repo consolidation (process-global `llama_backend_init`, the #982 dual-llama hazard, Swift Testing/XCTest process separation, toolchain ceiling, CI runner shape).
@@ -925,15 +934,30 @@ Shell scripts are held to the same standard: `ScriptFailOpenAuditTest` (in `Mani
 
 ## Documentation gates
 
-Docs are held to the same tripwire standard as code (Principle 4). Three layers,
-each with a different failure mode:
+Docs are held to the same tripwire standard as code (Principle 4).
+Complementary gates catch different failure modes:
 
 | Layer | Authoritative audit | Catches | Blocks a merge? |
 |---|---|---|---|
 | **Form** | `DocsAudienceStatusAuditTest` | missing `**Audience:**` / `**Status:**` header | **yes** — required `test`, mirrored on docs-only PRs by `scripts/lint-docs-headers.sh` under required `lint` |
-| **Claims** | `DocClaimsAuditTest` | a `` ``Symbol`` `` that no longer exists, a broken relative `.md` link, a dead `#anchor`, a `docs/*.md` nothing references | **yes** — same shape, mirrored by `scripts/lint-doc-claims.sh` |
+| **Claims** | `DocClaimsAuditTest` | an unresolved double-backtick identifier, a broken relative `.md` link or `#anchor`, a top-level doc unreachable from maintained entry points | **yes** — including symbol checks on docs-only PRs, mirrored by `scripts/lint-doc-claims.sh` |
+| **Plan lifecycle** | `AgentsMdPlansStatusAuditTest` | missing status or a completed, superseded or rejected plan left in `docs/plans/` | **yes** — lifecycle checks mirrored by `scripts/lint-plan-status.sh`; history-based age checks remain in the Swift audit |
 | **Snippets — policy** | `scripts/extract-snippets.sh` | a bare `no-build`, a doc where every block is skipped, a skip-budget change | **yes** — `snippet-policy-lint` under required `lint` |
 | **Snippets — compile** | `scripts/extract-snippets-test.sh` | a fenced `swift` block that does not compile as published | **no — advisory** (see below) |
+
+The claims corpus includes maintained Markdown under `Tests/`, `scripts/` and
+`Example/`, as well as root docs, `docs/` and `Sources/`; fixture, generated and
+historical-run trees are excluded explicitly. Reachability follows actual links
+from the README, documentation index, contributor guide, this file and DocC
+catalog landing pages, rather than accepting any filename mention. The symbol
+check is conservative token existence, not proof of public visibility or runtime
+behaviour. Its script-parity fixtures exercise real and invented identifiers.
+
+Keep detailed behavioural guidance in its canonical recipe and link to it from
+summaries. Existing behaviour tests (for example `QuickStartBackendsTests`) are
+the evidence for defaults and failure conditions; a compiling snippet alone does
+not establish those promises. The extractor reports kept/skipped fences and
+whole-file exclusions separately; only the compile gate proves compilation.
 
 **Why each doc-driven audit needs a `lint` mirror.** `ci.yml`'s macOS `test` job
 is paths-filtered and excludes `docs/**`, and `scripts/affected-suites.sh` keeps

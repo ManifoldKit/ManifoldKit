@@ -226,6 +226,7 @@ public enum MCPHostTransportError: Error, LocalizedError, Sendable {
     case missingContentLength
     case invalidContentLength(String)
     case invalidPort(UInt16)
+    case invalidAuthorizationToken
     case listenFailed(String)
 
     public var errorDescription: String? {
@@ -244,6 +245,8 @@ public enum MCPHostTransportError: Error, LocalizedError, Sendable {
             return "Incoming frame has an invalid Content-Length value: '\(raw)'"
         case .invalidPort(let port):
             return "Invalid TCP port for HTTP transport: \(port)"
+        case .invalidAuthorizationToken:
+            return "HTTP transport authorization token must be non-empty and contain no whitespace or control characters"
         case .listenFailed(let detail):
             return "HTTP transport failed to start listening: \(detail)"
         }

@@ -20,10 +20,10 @@ Gate any code that touches the bridge accordingly; it compiles unconditionally
 but only *works* on the current OS.
 
 ManifoldKit's general platform floor is **n-1**: the current Apple OS release
-and the one immediately before it (currently macOS 26 / 15, iOS 26 / 18 — see
+and the one immediately before it (currently macOS 27 / 26, iOS 27 / 26 — see
 `CLAUDE.md` → Platform policy). `Package.swift`'s `platforms:` declares
-`.iOS(.v18)` / `.macOS(.v15)` as the package-wide minimum; `FoundationBackend`
-is the one target that needs a higher floor than the package minimum.
+`.iOS("26.0")` / `.macOS("26.0")` as the package-wide minimum. APIs introduced
+after 26 retain their own availability guards.
 
 ## Local-backend hardware gating (companion packages)
 
@@ -88,12 +88,18 @@ Don't assume core and a companion package need the same tools-version ceiling
 
 ## CI runner shape
 
-- **macOS runners, 10× billing.** Core's CI runs on `macos-15` (Apple Silicon)
-  specifically to reduce spend relative to Intel runners
-  (`.github/workflows/ci.yml:305` and others). Every CI run — core or
-  companion — is macOS-only and billed at GitHub's 10× multiplier for macOS
-  minutes; a failed push wastes real money, not just time. Run the local test
-  gate before every push rather than treating CI as the iteration loop.
+- **macOS qualification runners.** Core's required runtime-qualification job,
+  cache prime and trait satellites run on the GA Apple Silicon `macos-26`
+  image with Xcode 26.3 selected explicitly. This
+  exercises the oldest supported runtime: macOS 26 / iOS 26. The API-digester
+  retains an independent `macos-15` compile lane as a toolchain-compatibility
+  check, not as supported-runtime qualification. GitHub's authoritative
+  [`macos-26` inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md)
+  lists Xcode 26.3 and the installed iOS 26 simulators. Core also has Ubuntu
+  lint jobs. Standard runner minutes are free for this public repository; a
+  failed macOS run costs latency because GitHub caps the organisation's
+  concurrent macOS jobs. Run the local test gate before every push rather than
+  treating CI as the iteration loop.
 - **CI runners ship Bash 3.2 as `/bin/bash`, not a newer bash.** macOS ships
   Bash 3.2 by default on GitHub-hosted runners, so `declare -A` (associative
   arrays) and `mapfile` (needs bash 4+) are unavailable in any script CI

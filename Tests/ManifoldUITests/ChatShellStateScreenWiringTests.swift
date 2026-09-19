@@ -1,9 +1,14 @@
 @preconcurrency import XCTest
 import SwiftUI
+import Observation
 import ViewInspector
 import ManifoldRuntime
 import ManifoldInference
 @testable import ManifoldUI
+
+#if canImport(AppKit)
+import AppKit
+#endif
 
 /// Proves the Unit 2 §6A state screens are actually reachable from real
 /// `ChatView`/`ChatHistoryView`/`ChatComposerSection` state — not just
@@ -159,6 +164,84 @@ final class ChatShellStateScreenWiringTests: XCTestCase {
         )
     }
 
+    // MARK: - Device Info host content
+
+    func test_deviceInfoPopover_withoutHostContent_keepsFrameworkDetails() throws {
+        let view = ChatDeviceInfoPopover(viewModel: ChatViewModel())
+
+        _ = try view.inspect().find(text: "Device Info")
+        _ = try view.inspect().find(text: "Device")
+    }
+
+    func test_deviceInfoPopover_appendsHostSuppliedContent() throws {
+        let view = ChatDeviceInfoPopover(
+            viewModel: ChatViewModel(),
+            hostContentBuilder: {
+                AnyView(
+                    Text("Sample Chat 1.2.3 (45)")
+                        .accessibilityIdentifier("host-app-build-identity")
+                )
+            }
+        )
+
+        _ = try view.inspect().find(viewWithAccessibilityIdentifier: "host-app-build-identity")
+    }
+
+    #if canImport(AppKit)
+    func test_chatViewDeviceInfoContent_receivesCapturedEndpointStore_andEvaluatesLiveAfterAPIConfigurationCopy() async throws {
+        let endpointStore = DeviceInfoEndpointStore()
+        let observation = DeviceInfoHostContentObservation()
+        let contentMounted = expectation(description: "Device Info host content mounted")
+        observation.onMount = { contentMounted.fulfill() }
+        let view = DeviceInfoChatViewHost(
+            chatViewModel: ChatViewModel(),
+            endpointStore: endpointStore,
+            observation: observation
+        )
+        let mounted = DeviceInfoMountedHostedContent(view)
+        defer { mounted.close() }
+
+        await fulfillment(of: [contentMounted], timeout: 2)
+
+        XCTAssertTrue(
+            (observation.endpointStore as AnyObject?) === (endpointStore as AnyObject),
+            "Host content in the real Device Info popover must receive ChatView's captured endpoint store"
+        )
+        XCTAssertEqual(
+            observation.identity,
+            "live build",
+            "The host builder must evaluate when the popover opens, not when its modifier is applied"
+        )
+    }
+
+    func test_chatDeviceInfoContent_overridesOuterEndpointStoreWithForwardedStore() async throws {
+        let forwardedStore = DeviceInfoEndpointStore()
+        let outerStore = DeviceInfoEndpointStore()
+        let observation = DeviceInfoHostContentObservation()
+        let contentMounted = expectation(description: "Forwarded Device Info content mounted")
+        observation.onMount = { contentMounted.fulfill() }
+        let content = chatDeviceInfoContent(
+            {
+                AnyView(DeviceInfoEndpointStoreProbe(
+                    observation: observation,
+                    identity: "forwarded"
+                ))
+            },
+            endpointStore: forwardedStore
+        )
+        .environment(\.endpointStore, outerStore)
+        let mounted = DeviceInfoMountedHostedContent(content)
+        defer { mounted.close() }
+
+        await fulfillment(of: [contentMounted], timeout: 2)
+
+        XCTAssertTrue(
+            (observation.endpointStore as AnyObject?) === (forwardedStore as AnyObject),
+            "Device Info content must override an inherited store with the store captured by ChatView"
+        )
+    }
+    #endif
+
     // MARK: - Pin glyph moved into the metadata row
 
     func test_messageBubble_pinGlyph_rendersInMetadataRow_whenPinned() throws {
@@ -179,3 +262,106 @@ final class ChatShellStateScreenWiringTests: XCTestCase {
         )
     }
 }
+
+#if canImport(AppKit)
+@MainActor
+private final class DeviceInfoMountedHostedContent<Content: View> {
+    private var controller: NSHostingController<Content>?
+    private var window: NSWindow?
+
+    init(_ content: Content) {
+        let controller = NSHostingController(rootView: content)
+        let window = NSWindow(contentViewController: controller)
+        self.controller = controller
+        self.window = window
+        window.setContentSize(NSSize(width: 800, height: 600))
+        window.makeKeyAndOrderFront(nil)
+        controller.view.layoutSubtreeIfNeeded()
+    }
+
+    func close() {
+        window?.contentViewController = nil
+        window?.close()
+        window = nil
+        controller = nil
+    }
+}
+
+@MainActor
+private final class DeviceInfoHostContentObservation {
+    var endpointStore: (any EndpointStore)?
+    var identity: String?
+    var onMount: (() -> Void)?
+    private var hasMounted = false
+
+    func record(endpointStore: (any EndpointStore)?, identity: String) {
+        self.endpointStore = endpointStore
+        self.identity = identity
+        guard !hasMounted else { return }
+        hasMounted = true
+        onMount?()
+    }
+}
+
+@MainActor
+private final class DeviceInfoEndpointStore: EndpointStore {
+    func fetchEndpoints() async throws -> [APIEndpointRecord] { [] }
+
+    func insertEndpoint(_ record: APIEndpointRecord) async throws {}
+
+    func updateEndpoint(_ record: APIEndpointRecord) async throws {}
+
+    func deleteEndpoint(_ id: UUID) async throws {}
+}
+
+@MainActor
+@Observable
+private final class DeviceInfoBuildIdentity {
+    var value = "stale build"
+}
+
+private struct DeviceInfoEndpointStoreProbe: View {
+    @Environment(\.endpointStore) private var endpointStore
+    let observation: DeviceInfoHostContentObservation
+    let identity: String
+
+    var body: some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .onAppear {
+                observation.record(endpointStore: endpointStore, identity: identity)
+            }
+    }
+}
+
+private struct DeviceInfoChatViewHost: View {
+    let chatViewModel: ChatViewModel
+    let endpointStore: any EndpointStore
+    let observation: DeviceInfoHostContentObservation
+    @State private var isDeviceInfoPresented = false
+    @State private var buildIdentity = DeviceInfoBuildIdentity()
+
+    var body: some View {
+        ChatView(showModelManagement: .constant(false))
+            .chatDeviceInfoContent {
+                VStack {
+                    Text(buildIdentity.value)
+                        .accessibilityIdentifier("host-app-build-identity")
+                    DeviceInfoEndpointStoreProbe(
+                        observation: observation,
+                        identity: buildIdentity.value
+                    )
+                }
+            }
+            // The device-info builder must survive this type-changing copy.
+            .chatAPIConfiguration { Text("API configuration") }
+            .presentingDeviceInfoForTesting($isDeviceInfoPresented)
+            .environment(chatViewModel)
+            .environment(\.endpointStore, endpointStore)
+            .onAppear {
+                buildIdentity.value = "live build"
+                isDeviceInfoPresented = true
+            }
+    }
+}
+#endif

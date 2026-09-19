@@ -45,16 +45,8 @@ Branch points:
   inference layer with your own SwiftUI surface (no `ChatView`). The canonical,
   single-source BYO-UI walkthrough.
 
-> [!IMPORTANT]
-> **The backend cliff — a *runtime* throw, not a compile error.** If nothing
-> registers an inference backend (pre-iOS 26 / macOS 26, no cloud endpoint
-> configured, no companion packages), `ManifoldKit.quickStart()` throws
-> `ManifoldKitError.noBackendsRegistered` when you call it — it compiles fine,
-> then fails at launch. For local inference add a companion package
-> ([manifold-llama](https://github.com/ManifoldKit/manifold-llama) for GGUF,
-> [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) for MLX) and pass its
-> registrar to `quickStart(backends:)`. See
-> [QUICKSTART.md → Customizing backends](QUICKSTART.md#customizing-backends).
+> For backend registration, local companion packages, and the no-backend startup
+> path, use the canonical [Quickstart](QUICKSTART.md#customizing-backends).
 
 ## Add a capability
 
@@ -82,10 +74,11 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 | Doc | Covers |
 |-----|--------|
 | [**MIGRATION-INDEX.md**](MIGRATION-INDEX.md) | **Every migration note, newest first, with the release that shipped it.** Start here when a version bump breaks your build — the individual notes below are the highlights, not the full set. |
-| [MIGRATION-0.48.md](MIGRATION-0.48.md) | v0.48 packaging-release migration — retired traits, the manifold-mlx / manifold-llama companion packages, indexed by the literal error strings. **Shim sections are historical** — `ManifoldBackends` / `DefaultBackends` are gone; see [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md). |
+| [MIGRATION-0.48.md](MIGRATION-0.48.md) | v0.48 packaging-release migration — retired traits and the manifold-mlx / manifold-llama companion packages, indexed by the literal error strings. **Shim sections are historical** — `ManifoldBackends` / `DefaultBackends` are gone; see [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md). |
+| [MIGRATION-platform-floor-26.md](MIGRATION-platform-floor-26.md) | The iOS/macOS 26 deployment-floor increase and retirement of the two no-op WWDC trait stubs. |
 | [**MIGRATION-shims-retired.md**](MIGRATION-shims-retired.md) | **Current** import/registrar model after P7 removed `ManifoldBackends` / `DefaultBackends` / `ManifoldCloud`. Read this before trusting any 0.48 "still compiles" shim note. |
 | [MIGRATION-api-demotions-0.71.md](MIGRATION-api-demotions-0.71.md) | Public→package demotions in the 0.71 train. |
-| [FeatureMatrix.md](FeatureMatrix.md) | Remaining **SwiftPM traits only** (`Macros`, `Server`, WWDC stubs) — not the full product capability map. Most capabilities compile unconditionally or live in companion packages; see products in [AGENTS.md](../AGENTS.md) and [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md). |
+| [FeatureMatrix.md](FeatureMatrix.md) | Remaining **SwiftPM traits only** (`Macros`, `Server`) — not the full product capability map. Most capabilities compile unconditionally or live in companion packages; see products in [AGENTS.md](../AGENTS.md) and [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md). |
 | [TRAIT-COSTS.md](TRAIT-COSTS.md) | Per-trait binary impact for the remaining opt-in traits (`Server`, `Macros`). Heavy ML checkouts are companion-optional since v0.48. |
 | [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md) | Building or consuming a companion backend package (manifold-mlx / manifold-llama). |
 | [ANATOMY-OF-ONE-TURN.md](ANATOMY-OF-ONE-TURN.md) | File:line walk of one message turn — send → runtime → engine → backend → UI. |
@@ -120,8 +113,14 @@ and forward-looking design notes. Most are also linked from
 | Doc | Covers |
 |-----|--------|
 | [SCOPE_DECISION.md](SCOPE_DECISION.md) | Scope rationale for what's in vs. out. |
-| [QA-PRACTICES.md](QA-PRACTICES.md) | The four cross-cutting QA practices (DX walkthroughs, audit tests, the sabotage suite, cold-start gates). |
+| [QA-PRACTICES.md](QA-PRACTICES.md) | Cross-cutting QA practices: DX walkthroughs, audits, sabotage, cold-start gates, local integration/perf sweeps, and demo coverage. |
+| [API-DESIGN.md](API-DESIGN.md) | Public API ownership, access-level, and compatibility policy. |
+| [DEMO-COVERAGE.md](DEMO-COVERAGE.md) | Capability-to-demo coverage contract and gate. |
+| [HARDWARE-TOOLCHAIN.md](HARDWARE-TOOLCHAIN.md) | Supported Apple hardware/toolchain and companion constraints. |
+| [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) | Product maturity and readiness signals. |
+| [RELEASE-1.0.md](RELEASE-1.0.md) | 1.0 release and compatibility policy. |
+| [TESTING-CI-PRINCIPLES.md](TESTING-CI-PRINCIPLES.md) | CI/test design principles and gate rationale. |
 | [QA-EVALUATION-PROCESS.md](QA-EVALUATION-PROCESS.md) | How a release candidate is evaluated before it ships — the hand-run checks that sit outside `swift test`. |
-| [UI-REFRESH-2026.md](UI-REFRESH-2026.md) / [UI-REFRESH-2026-PLAN.md](UI-REFRESH-2026-PLAN.md) | The 2026 UI refresh: the design rationale and the unit-by-unit delivery plan (issue #2307). Consumer-facing change inventory is in [MIGRATION-ui-refresh.md](MIGRATION-ui-refresh.md). |
-| [wwdc-2026-trait-stubs.md](wwdc-2026-trait-stubs.md) | The pre-wired stub traits for whatever Apple ships next. |
+| [UI-REFRESH-2026.md](UI-REFRESH-2026.md) / [MIGRATION-ui-refresh.md](MIGRATION-ui-refresh.md) | The shipped 2026 UI refresh: design rationale and consumer-facing change inventory (issue #2307). |
+| [wwdc-2026-trait-stubs.md](wwdc-2026-trait-stubs.md) | The investigation behind retiring the two no-op WWDC trait stubs. |
 | [plans/](plans) | In-flight release plans. |

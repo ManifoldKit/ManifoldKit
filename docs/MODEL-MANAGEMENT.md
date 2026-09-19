@@ -168,13 +168,14 @@ backend.keepAlive = "5m"   // free server VRAM sooner on a shared machine
 
 ---
 
-## 4. The Manifoldfile bundle (coming in #1932)
+## 4. Chat-template integrity
 
-> **Not yet shipped.** The `Manifoldfile` — a declarative bundle format for
-> packaging a GGUF model, a system prompt, default `GenerationConfig`, and tool
-> definitions into a single distributable artifact — is tracked in
-> [#1932](https://github.com/ManifoldKit/ManifoldKit/issues/1932). This section
-> will be filled in when it lands.
+Model discovery computes a SHA-256 digest for a model's embedded chat template.
+On load, ManifoldKit records the first observed digest in a per-model sidecar
+(`foo.gguf.template.json`) and compares later loads against it. A mismatch is
+logged as a warning and rendering continues with the model's current template;
+this is drift detection, not a weight-integrity check or a model bundle format.
+The behaviour is tracked by [#1932](https://github.com/ManifoldKit/ManifoldKit/issues/1932).
 
 ---
 

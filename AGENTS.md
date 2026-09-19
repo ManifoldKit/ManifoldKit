@@ -8,14 +8,15 @@ Claude-specific adapter and must not duplicate cross-tool rules.
 
 ## Session bootstrap
 
-1. Read `~/Repos/roryford/estate/policies/DIGEST.md`.
+1. Read the relevant sections of `AGENTS.reference.md` for the surface you
+   are changing. In a maintainer environment configured with the Estate,
+   also read `~/Repos/roryford/estate/policies/DIGEST.md`.
 2. Read the non-empty known-issues buffer: `.agents/known-issues.md` when
    present, otherwise the legacy `.claude/known-issues.md`. Append new
    symptom → cause → fix entries to the file that already exists. Never create
-   the other file; if both exist, report the fork and consult
-   `~/Repos/roryford/estate/policies/knowledge-capture.md`.
-3. Read the relevant sections of `AGENTS.reference.md`, then follow the build,
-   test, coding, and PR rules below.
+   the other file; if both exist, report the fork rather than choosing one;
+   maintainers consult `~/Repos/roryford/estate/policies/knowledge-capture.md`.
+3. Follow the build, test, coding, and PR rules below.
 
 These steps are required in every harness. Claude may inject some of this
 context, but other harnesses do not.
@@ -92,15 +93,17 @@ swift build
 scripts/test.sh --profile local
 ```
 
-`scripts/test.sh --profile local` is the full pre-push gate. Give parallel
-runs a unique `MANIFOLD_TEST_OUTPUT_FILE` because the default temp log is
-machine-global. Never infer success from piped or tailed output; preserve the
-script's exit status. Run the estate fail-open lint over the branch diff too.
+`scripts/test.sh --profile local` is the full pre-push gate. Its default
+diagnostics live under this worktree's `test-diagnostics/`, and the full profile
+assigns child invocations distinct labelled paths. Never infer success from
+piped or tailed output; preserve the script's exit status. In a configured
+Estate maintainer environment, also run the estate fail-open lint over the
+branch diff.
 
 Tests:
 
-- Use XCTest for stable behavior and Swift Testing for parameterized or
-  data-driven suites, following `Tests/README.md`.
+- Use XCTest for new suites; retain Swift Testing only in files that already
+  use it, following `Tests/README.md`.
 - Use in-memory stores for persistence tests.
 - Exercise degraded paths and prove new guards can fail.
 - A suite that reads or executes a file must be selected when that file changes.
@@ -123,10 +126,11 @@ production-readiness status, and migration indexes consistent. The complete
 documentation gates and batching rules live in
 `AGENTS.reference.md#documentation-gates`.
 
-Use Conventional Commits. Before pushing, run the full local gate and
-`bash ~/Repos/roryford/estate/scripts/lint-fail-open.sh --diff origin/main`.
-For a PR, follow the estate `playbooks/ship.md` review and verification loop.
-Do not merge or enable auto-merge from the authoring session.
+Use Conventional Commits. Before pushing, run the full local gate and inspect
+the branch diff for silent shell failures. Maintainers in a configured Estate
+environment also run its fail-open lint. For a PR, use the draft-PR review and
+verification loop in the reference. The PR owner, after review and required
+checks pass, authorizes merge or auto-merge.
 
 Releases follow `AGENTS.reference.md#release-workflow`. Its pre-bump demo
 build, API/migration checks, companion ordering, release-please behavior, and
@@ -145,7 +149,6 @@ Read these sections of `AGENTS.reference.md` when applicable:
 - releases: Commit style, Release workflow, PR workflow;
 - UI/server/fuzz/companion work: the matching target and hardware sections.
 
-Former-tail sentinel: contributor and release work must use the draft-PR review
-loop, the full local gate, and the complete release workflow in
-`AGENTS.reference.md`; no release may skip companion and post-release
-verification.
+Contributor and release work must use the draft-PR review loop, the full local
+gate, and the complete release workflow in `AGENTS.reference.md`; no release
+may skip companion and post-release verification.

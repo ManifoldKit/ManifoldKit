@@ -5,7 +5,7 @@ import Foundation
 import ManifoldTestSupport
 
 /// Integration coverage for the inert-code-audit finding 1 fix
-/// (`docs/plans/inert-code-audit-2026-07.md`, finding 1): `TranscriptHealer`
+/// (`https://github.com/ManifoldKit/ManifoldKit/blob/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e/docs/plans/inert-code-audit-2026-07.md`, finding 1): `TranscriptHealer`
 /// must run on the real turn loop (`ConversationTurnExecutor
 /// .fetchAndPrepareTurnHistory`), not just the UI's cosmetic reload path
 /// (`SessionController.loadMessages`).

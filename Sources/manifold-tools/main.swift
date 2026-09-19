@@ -197,8 +197,11 @@ struct CLI {
             --scenario all
 
         The transcript is one JSONL line per event (prompt / tool_call / tool_result /
-        token_delta / final / assertion) so downstream tooling can diff runs without
-        parsing free-form stdout.
+        token_delta / final / assertion), plus distinct parse, truncation, throttle,
+        iteration-limit, and token-budget diagnostic rows. Parse/truncation bodies
+        are bounded to a 4,096-byte prefix. Downstream tooling can therefore diff
+        runs without parsing free-form stdout or mistaking malformed calls for clean
+        no-call outcomes.
         """
         print(text)
     }

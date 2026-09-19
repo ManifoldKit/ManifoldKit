@@ -28,6 +28,7 @@ struct MyApp: App {
     @State private var bootstrap: ManifoldBootstrap?
     @State private var chatVM: ChatViewModel?
     @State private var sessionVM: SessionManagerViewModel?
+    @State private var startupError: Error?
 
     var body: some Scene {
         WindowGroup {
@@ -36,14 +37,20 @@ struct MyApp: App {
                     .environment(chatVM)
                     .environment(sessionVM)
                     .modelContainer(bootstrap.modelContainer)
+            } else if let startupError {
+                ContentUnavailableView("Failed to start", systemImage: "exclamationmark.triangle",
+                    description: Text(startupError.localizedDescription))
             } else {
-                ProgressView("Starting…").task { await start() }
+                ProgressView("Starting…").task {
+                    do { try await start() }
+                    catch { startupError = error }
+                }
             }
         }
     }
 
     @MainActor
-    private func start() async {
+    private func start() async throws {
         // `ManifoldBootstrap.build(...)` is async — drive it from `.task { }`
         // on the launch view, not `App.init()`. It returns a (progress, task)
         // tuple; consume the progress stream (or surface milestones to a
@@ -55,7 +62,7 @@ struct MyApp: App {
             )
         )
         for await _ in progress { }
-        guard let bootstrap = try? await task.value else { return }
+        let bootstrap = try await task.value
         OllamaBackends.register(with: bootstrap.inferenceService)
         CloudSaaSBackends.register(with: bootstrap.inferenceService)
         FoundationBackends.register(with: bootstrap.inferenceService)
@@ -71,13 +78,15 @@ struct MyApp: App {
         let sessionVM = SessionManagerViewModel()
         await sessionVM.configureAndLoad(bootstrap: bootstrap)
 
-        let initial = await sessionVM.selectInitialSession()
-            ?? (try? await sessionVM.createSession())
-        if let initial {
-            sessionVM.activeSession = initial
-            await chatVM.switchToSession(initial)
-            chatVM.dispatchSelectedLoad()
+        let initial: ChatSession
+        if let restored = await sessionVM.selectInitialSession() {
+            initial = restored
+        } else {
+            initial = try await sessionVM.createSession()
         }
+        sessionVM.activeSession = initial
+        await chatVM.switchToSession(initial)
+        chatVM.dispatchSelectedLoad()
 
         self.bootstrap = bootstrap
         self.chatVM = chatVM

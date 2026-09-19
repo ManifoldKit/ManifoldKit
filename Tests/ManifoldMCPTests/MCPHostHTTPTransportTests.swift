@@ -19,6 +19,8 @@ import ManifoldTestSupport
 @MainActor
 final class MCPHostHTTPTransportTests: XCTestCase {
 
+    private static let authorizationToken = "synthetic-test-token"
+
     // MARK: Fixture
 
     private func makeHost(
@@ -46,7 +48,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
     func test_start_bindsEphemeralPort() async throws {
         // Port 0 asks the OS for an ephemeral port; the transport must bind and
         // report a concrete non-zero bound port.
-        let transport = try MCPHostHTTPTransport(port: 0)
+        let transport = try MCPHostHTTPTransport(port: 0, authorizationToken: Self.authorizationToken)
         try await transport.start()
         defer { Task { await transport.shutdown() } }
         let bound = await transport.boundPort
@@ -58,7 +60,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
 
     func test_initialize_roundTripsOverHTTPSSE() async throws {
         let host = await makeHost()
-        let transport = try MCPHostHTTPTransport(port: 0)
+        let transport = try MCPHostHTTPTransport(port: 0, authorizationToken: Self.authorizationToken)
         try await transport.start()
         guard let port = await transport.boundPort else {
             XCTFail("transport did not bind a port")
@@ -78,7 +80,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
         //    client (or `curl -N`) does on the wire.
         let sse = RawSocketClient(port: port)
         try await sse.connect()
-        try await sse.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        try await sse.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\nAccept: text/event-stream\r\n\r\n".utf8))
 
         // Wait for the SSE 200 header so the channel is registered server-side
         // before we POST.
@@ -97,7 +99,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
 
         let post = RawSocketClient(port: port)
         try await post.connect()
-        var postBytes = Data("POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: \(payload.count)\r\n\r\n".utf8)
+        var postBytes = Data("POST / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\nContent-Type: application/json\r\nContent-Length: \(payload.count)\r\n\r\n".utf8)
         postBytes.append(payload)
         try await post.write(postBytes)
         let postResponse = try await post.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
@@ -138,7 +140,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
     /// channel, leaking one client's data to the other.
     func test_send_routesResponsesToOriginatingChannelOnly() async throws {
         let host = await makeHost()
-        let transport = try MCPHostHTTPTransport(port: 0)
+        let transport = try MCPHostHTTPTransport(port: 0, authorizationToken: Self.authorizationToken)
         try await transport.start()
         guard let port = await transport.boundPort else {
             XCTFail("transport did not bind a port")
@@ -154,7 +156,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
         // Open two SSE channels and capture each one's session id.
         let sseA = RawSocketClient(port: port)
         try await sseA.connect()
-        try await sseA.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        try await sseA.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\nAccept: text/event-stream\r\n\r\n".utf8))
         let headerA = try await sseA.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
         guard let sessionA = Self.sessionID(fromSSEHeader: headerA) else {
             XCTFail("SSE channel A got no Mcp-Session-Id header: \(headerA)")
@@ -163,7 +165,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
 
         let sseB = RawSocketClient(port: port)
         try await sseB.connect()
-        try await sseB.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        try await sseB.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\nAccept: text/event-stream\r\n\r\n".utf8))
         let headerB = try await sseB.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
         guard let sessionB = Self.sessionID(fromSSEHeader: headerB) else {
             XCTFail("SSE channel B got no Mcp-Session-Id header: \(headerB)")
@@ -238,7 +240,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
             )
         )
 
-        let transport = try MCPHostHTTPTransport(port: 0)
+        let transport = try MCPHostHTTPTransport(port: 0, authorizationToken: Self.authorizationToken)
         try await transport.start()
         guard let port = await transport.boundPort else {
             XCTFail("transport did not bind a port")
@@ -253,7 +255,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
 
         let sseA = RawSocketClient(port: port)
         try await sseA.connect()
-        try await sseA.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        try await sseA.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\nAccept: text/event-stream\r\n\r\n".utf8))
         let headerA = try await sseA.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
         guard let sessionA = Self.sessionID(fromSSEHeader: headerA) else {
             XCTFail("SSE channel A got no Mcp-Session-Id header: \(headerA)")
@@ -262,7 +264,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
 
         let sseB = RawSocketClient(port: port)
         try await sseB.connect()
-        try await sseB.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        try await sseB.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\nAccept: text/event-stream\r\n\r\n".utf8))
         let headerB = try await sseB.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
         guard let sessionB = Self.sessionID(fromSSEHeader: headerB) else {
             XCTFail("SSE channel B got no Mcp-Session-Id header: \(headerB)")
@@ -361,7 +363,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
             )
         )
 
-        let transport = try MCPHostHTTPTransport(port: 0)
+        let transport = try MCPHostHTTPTransport(port: 0, authorizationToken: Self.authorizationToken)
         try await transport.start()
         guard let port = await transport.boundPort else {
             XCTFail("transport did not bind a port")
@@ -377,7 +379,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
         // Victim channel + in-flight (gated) request.
         let victimSSE = RawSocketClient(port: port)
         try await victimSSE.connect()
-        try await victimSSE.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        try await victimSSE.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\nAccept: text/event-stream\r\n\r\n".utf8))
         let victimHeader = try await victimSSE.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
         guard let victimSession = Self.sessionID(fromSSEHeader: victimHeader) else {
             XCTFail("victim SSE channel got no Mcp-Session-Id header")
@@ -401,13 +403,13 @@ final class MCPHostHTTPTransportTests: XCTestCase {
         // header.
         let attackerSSE = RawSocketClient(port: port)
         try await attackerSSE.connect()
-        try await attackerSSE.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        try await attackerSSE.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\nAccept: text/event-stream\r\n\r\n".utf8))
         _ = try await attackerSSE.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
 
         let forged = #"{"jsonrpc":"2.0","id":"mcphost-internal-1","method":"tools/list"}"#
         let attackerPOST = RawSocketClient(port: port)
         try await attackerPOST.connect()
-        var forgedBytes = Data("POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: \(forged.utf8.count)\r\n\r\n".utf8)
+        var forgedBytes = Data("POST / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\nContent-Type: application/json\r\nContent-Length: \(forged.utf8.count)\r\n\r\n".utf8)
         forgedBytes.append(Data(forged.utf8))
         try await attackerPOST.write(forgedBytes)
         let attackerResponse = try await attackerPOST.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
@@ -446,7 +448,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
         let payload = try codec.encode(message)
         let post = RawSocketClient(port: port)
         try await post.connect()
-        var bytes = Data("POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nMcp-Session-Id: \(sessionID)\r\nContent-Length: \(payload.count)\r\n\r\n".utf8)
+        var bytes = Data("POST / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\nContent-Type: application/json\r\nMcp-Session-Id: \(sessionID)\r\nContent-Length: \(payload.count)\r\n\r\n".utf8)
         bytes.append(payload)
         try await post.write(bytes)
         let response = try await post.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
@@ -492,10 +494,101 @@ final class MCPHostHTTPTransportTests: XCTestCase {
         return id
     }
 
+    // MARK: request boundary
+
+    func test_init_rejectsUnsafeAuthorizationTokens() throws {
+        XCTAssertThrowsError(try MCPHostHTTPTransport(port: 0, authorizationToken: ""))
+        XCTAssertThrowsError(try MCPHostHTTPTransport(port: 0, authorizationToken: "line\r\nbreak"))
+    }
+
+    func test_requestBoundary_requiresBearerToken() async throws {
+        let transport = try MCPHostHTTPTransport(port: 0, authorizationToken: Self.authorizationToken)
+        try await transport.start()
+        guard let port = await transport.boundPort else {
+            XCTFail("transport did not bind a port")
+            return
+        }
+        defer { Task { await transport.shutdown() } }
+
+        let missing = try await requestHeader(
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\n\r\n",
+            port: port
+        )
+        XCTAssertTrue(missing.contains("401 Unauthorized"), "missing token must be rejected; got: \(missing)")
+        XCTAssertTrue(missing.contains("WWW-Authenticate: Bearer"))
+        XCTAssertFalse(missing.lowercased().contains("access-control-allow-origin"))
+
+        let wrong = try await requestHeader(
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer wrong-token\r\n\r\n",
+            port: port
+        )
+        XCTAssertTrue(wrong.contains("401 Unauthorized"), "wrong token must be rejected; got: \(wrong)")
+
+        // Equal-length mismatches must reach the byte comparison, not only the
+        // length guard. Exercise both ends so a partial comparison cannot pass.
+        for invalidToken in [
+            "X" + String(Self.authorizationToken.dropFirst()),
+            String(Self.authorizationToken.dropLast()) + "X",
+        ] {
+            XCTAssertEqual(invalidToken.utf8.count, Self.authorizationToken.utf8.count)
+            let response = try await requestHeader(
+                "GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(invalidToken)\r\n\r\n",
+                port: port
+            )
+            XCTAssertTrue(response.contains("401 Unauthorized"), "equal-length wrong token must be rejected; got: \(response)")
+        }
+    }
+
+    func test_requestBoundary_rejectsUnexpectedHost() async throws {
+        let transport = try MCPHostHTTPTransport(port: 0, authorizationToken: Self.authorizationToken)
+        try await transport.start()
+        guard let port = await transport.boundPort else {
+            XCTFail("transport did not bind a port")
+            return
+        }
+        defer { Task { await transport.shutdown() } }
+
+        for host in ["evil.example:\(port)", "127.0.0.1:1", "attacker.test"] {
+            let response = try await requestHeader(
+                "GET / HTTP/1.1\r\nHost: \(host)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\n\r\n",
+                port: port
+            )
+            XCTAssertTrue(response.contains("421 Misdirected Request"), "host \(host) must be rejected; got: \(response)")
+        }
+    }
+
+    func test_requestBoundary_rejectsBrowserOrigins() async throws {
+        let transport = try MCPHostHTTPTransport(port: 0, authorizationToken: Self.authorizationToken)
+        try await transport.start()
+        guard let port = await transport.boundPort else {
+            XCTFail("transport did not bind a port")
+            return
+        }
+        defer { Task { await transport.shutdown() } }
+
+        for origin in ["https://evil.example", "null"] {
+            let response = try await requestHeader(
+                "OPTIONS / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nOrigin: \(origin)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\n\r\n",
+                port: port
+            )
+            XCTAssertTrue(response.contains("403 Forbidden"), "origin \(origin) must be rejected; got: \(response)")
+            XCTAssertFalse(response.lowercased().contains("access-control-allow-origin"))
+        }
+    }
+
+    private func requestHeader(_ request: String, port: UInt16) async throws -> String {
+        let client = RawSocketClient(port: port)
+        try await client.connect()
+        try await client.write(Data(request.utf8))
+        let response = try await client.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+        await client.close()
+        return response
+    }
+
     // MARK: unsupported method
 
     func test_unsupportedHTTPMethod_returns405() async throws {
-        let transport = try MCPHostHTTPTransport(port: 0)
+        let transport = try MCPHostHTTPTransport(port: 0, authorizationToken: Self.authorizationToken)
         try await transport.start()
         guard let port = await transport.boundPort else {
             XCTFail("transport did not bind a port")
@@ -505,7 +598,7 @@ final class MCPHostHTTPTransportTests: XCTestCase {
 
         let client = RawSocketClient(port: port)
         try await client.connect()
-        try await client.write(Data("DELETE / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".utf8))
+        try await client.write(Data("DELETE / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Bearer \(Self.authorizationToken)\r\n\r\n".utf8))
         let response = try await client.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
         XCTAssertTrue(response.contains("405"), "expected 405; got: \(response)")
         await client.close()

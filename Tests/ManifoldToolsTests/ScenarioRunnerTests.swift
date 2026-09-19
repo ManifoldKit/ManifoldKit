@@ -2,6 +2,41 @@ import XCTest
 import ManifoldInference
 @testable import ManifoldTools
 
+private final class DiagnosticBackend: InferenceBackend, Sendable {
+    let events: [GenerationEvent]
+    var isModelLoaded: Bool { true }
+    var isGenerating: Bool { false }
+    let capabilities = BackendCapabilities(
+        supportsToolCalling: true,
+        supportsGrammarConstrainedSampling: false
+    )
+
+    init(events: [GenerationEvent]) {
+        self.events = events
+    }
+
+    func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
+
+    func generate(
+        prompt: String,
+        systemPrompt: String?,
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
+    ) throws -> GenerationStream {
+        let events = events
+        return GenerationStream(AsyncThrowingStream { continuation in
+            for event in events {
+                continuation.yield(event)
+            }
+            continuation.finish()
+        })
+    }
+
+    func stopGeneration() {}
+
+    func unloadModel() {}
+}
+
 @MainActor
 final class ScenarioRunnerTests: XCTestCase {
 
@@ -11,12 +46,13 @@ final class ScenarioRunnerTests: XCTestCase {
     /// the tool loop, renders the prompt template, and injects tool
     /// definitions — exactly what production does (#1983).
     private func makeRunner(
-        backend: ScriptedBackend,
+        backend: any InferenceBackend,
         registry: ToolRegistry,
-        maxIterations: Int = 6
+        maxIterations: Int = 6,
+        logger: TranscriptLogger? = nil
     ) -> ScenarioRunner {
         let service = InferenceService(backend: backend, name: "scripted", toolRegistry: registry)
-        return ScenarioRunner(service: service, maxIterations: maxIterations)
+        return ScenarioRunner(service: service, logger: logger, maxIterations: maxIterations)
     }
 
     // MARK: - Assertion evaluator
@@ -33,6 +69,14 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertFalse(outcome.passed, "evaluator should fail when literal is absent")
     }
 
+    func test_literalAssertions_remainCaseSensitive() {
+        let contains = Scenario.Assertion(kind: "containsLiteral", value: "streaming tools", values: nil, message: nil)
+        let equals = Scenario.Assertion(kind: "equalsLiteral", value: "streaming tools", values: nil, message: nil)
+
+        XCTAssertFalse(AssertionEvaluator.evaluate(contains, finalAnswer: "Streaming tools").passed)
+        XCTAssertFalse(AssertionEvaluator.evaluate(equals, finalAnswer: "Streaming tools").passed)
+    }
+
     func test_containsAllAssertion_requiresEveryValue() {
         let assertion = Scenario.Assertion(
             kind: "containsAll",
@@ -42,6 +86,46 @@ final class ScenarioRunnerTests: XCTestCase {
         )
         XCTAssertTrue(AssertionEvaluator.evaluate(assertion, finalAnswer: "a.txt b.txt").passed)
         XCTAssertFalse(AssertionEvaluator.evaluate(assertion, finalAnswer: "a.txt only").passed)
+    }
+
+    func test_containsAllAssertion_ignoresCapitalizationButStillRequiresEveryValue() {
+        // Sabotage-evidence:
+        //   M1: restore case-sensitive `contains` matching → the sentence-case assertion fails.
+        //   M2: remove "Batch tools" from the passing answer → the every-value assertion fails.
+        //   M3: N/A — this pure evaluator has no capability gate and always runs.
+        let assertion = Scenario.Assertion(
+            kind: "containsAll",
+            value: nil,
+            values: ["streaming tools", "batch tools"],
+            message: nil
+        )
+
+        XCTAssertTrue(
+            AssertionEvaluator.evaluate(
+                assertion,
+                finalAnswer: "Backend A uses Streaming tools and Backend B uses Batch tools."
+            ).passed
+        )
+        XCTAssertFalse(
+            AssertionEvaluator.evaluate(assertion, finalAnswer: "Backend A uses Streaming tools.").passed,
+            "case-insensitive matching must not turn a genuinely missing value into a pass"
+        )
+    }
+
+    func test_containsAnyAssertion_ignoresCapitalizationButStillRequiresOneValue() {
+        // Sabotage-evidence:
+        //   M1: restore case-sensitive `contains` matching → the sentence-case assertion fails.
+        //   M2: replace "Batch tools" with an unrelated phrase → the positive assertion fails.
+        //   M3: N/A — this pure evaluator has no capability gate and always runs.
+        let assertion = Scenario.Assertion(
+            kind: "containsAny",
+            value: nil,
+            values: ["streaming tools", "batch tools"],
+            message: nil
+        )
+
+        XCTAssertTrue(AssertionEvaluator.evaluate(assertion, finalAnswer: "The model used Batch tools.").passed)
+        XCTAssertFalse(AssertionEvaluator.evaluate(assertion, finalAnswer: "The model used neither mode.").passed)
     }
 
     func test_toolInvokedAssertion_passesWhenToolDispatched() {
@@ -327,7 +411,7 @@ final class ScenarioRunnerTests: XCTestCase {
                 (name: "read_file", arguments: #"{"path":"readmes/backend-a.md"}"#),
                 (name: "read_file", arguments: #"{"path":"readmes/backend-b.md"}"#)
             ]),
-            .tokens(["DEMO-README-NONCE appears in both; Backend A uses streaming tools and Backend B uses batch tools."])
+            .tokens(["DEMO-README-NONCE appears in both; Backend A uses Streaming tools and Backend B uses Batch tools."])
         ])
 
         let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
@@ -651,6 +735,64 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertFalse(outcome.finalAnswer.contains("```"), "structured JSON scenario should not need markdown fences")
     }
 
+    func test_runner_warnsForForwardedToolsNotUnfilteredRegistry() async throws {
+        // Sabotage-evidence:
+        //   M1: read `registry.definitions` before filtering → the captured six-tool warning makes this fail.
+        //   M2: forward all six definitions → both the config and quiet-warning assertions fail.
+        //   M3: release builds compile out this DEBUG warning; the branch below pins that behavior.
+        let registry = ToolRegistry(tools: [NowTool.makeExecutor()] + DecoyTools.executors(5))
+        let backend = ScriptedBackend(turns: [.tokens(["done"])])
+        let scenario = Scenario(
+            id: "filtered-warning",
+            description: "",
+            systemPrompt: "sys",
+            userPrompt: "answer",
+            requiredTools: ["now"],
+            assertions: [Scenario.Assertion(kind: "containsLiteral", value: "done", values: nil, message: nil)],
+            backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
+        )
+        let runner = makeRunner(backend: backend, registry: registry)
+        var warnings: [String] = []
+        registry.localBackendToolWarningReporter = { warnings.append($0) }
+
+        _ = try await runner.run(scenario)
+
+        XCTAssertEqual(backend.receivedConfigs.first?.tools.map(\.name), ["now"])
+        XCTAssertTrue(warnings.isEmpty, "a one-tool request must stay quiet even when the registry contains six tools")
+    }
+
+    func test_runner_passAllRegisteredTools_warnsForActualOverLimitRequest() async throws {
+        // Sabotage-evidence:
+        //   M1: remove the post-filter warning call → the DEBUG warning-count assertion fails.
+        //   M2: forward only five definitions → the config count and warning text assertions fail.
+        //   M3: release builds compile out this DEBUG warning; the branch below pins that behavior.
+        let registry = ToolRegistry(tools: [NowTool.makeExecutor()] + DecoyTools.executors(5))
+        let backend = ScriptedBackend(turns: [.tokens(["done"])])
+        let scenario = Scenario(
+            id: "unfiltered-warning",
+            description: "",
+            systemPrompt: "sys",
+            userPrompt: "answer",
+            requiredTools: ["now"],
+            assertions: [Scenario.Assertion(kind: "containsLiteral", value: "done", values: nil, message: nil)],
+            backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
+        )
+        let service = InferenceService(backend: backend, name: "scripted", toolRegistry: registry)
+        let runner = ScenarioRunner(service: service, passAllRegisteredTools: true)
+        var warnings: [String] = []
+        registry.localBackendToolWarningReporter = { warnings.append($0) }
+
+        _ = try await runner.run(scenario)
+
+        XCTAssertEqual(backend.receivedConfigs.first?.tools.count, 6)
+        #if DEBUG
+        XCTAssertEqual(warnings.count, 1)
+        XCTAssertTrue(warnings.first?.contains("6 tools in this request") == true)
+        #else
+        XCTAssertTrue(warnings.isEmpty, "release builds do not emit the DEBUG-only tool-count warning")
+        #endif
+    }
+
     func test_runner_honoursMaxIterationsOnLoopingTool() async throws {
         // Script keeps emitting tool calls; runner should bail after maxIterations
         // and run assertions against whatever text was captured (empty string here
@@ -733,6 +875,144 @@ final class ScenarioRunnerTests: XCTestCase {
     }
 
     // MARK: - TranscriptLogger
+
+    func test_runner_recordsToolCallParseFailureInsteadOfCleanNoDispatch() async throws {
+        // Sabotage evidence: putting `.toolCallParseFailed` back in the ignored
+        // catch-all removes the diagnostic row and fails XCTUnwrap below.
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("tmp", isDirectory: true)
+            .appendingPathComponent("ManifoldToolsTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("parse-failure-\(UUID().uuidString).jsonl")
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let rawBody = #"<function=now><parameter=zone>UTC</parameter></function>"#
+        let backend = DiagnosticBackend(events: [
+            .toolCallParseFailed(rawBody: rawBody),
+        ])
+        let scenario = diagnosticScenario(id: "parse-failure")
+        let logger = try TranscriptLogger(url: path)
+
+        let outcome = try await makeRunner(
+            backend: backend,
+            registry: ToolRegistry(tools: [NowTool.makeExecutor()]),
+            logger: logger
+        ).run(scenario)
+
+        XCTAssertFalse(outcome.passed, "the required tool was not dispatched")
+        let rows = try transcriptRows(at: path)
+        let diagnostic = try XCTUnwrap(rows.first { $0["kind"] as? String == "tool_call_parse_failed" })
+        XCTAssertEqual(diagnostic["scenario"] as? String, scenario.id)
+        XCTAssertEqual(diagnostic["turn"] as? Int, 1)
+        XCTAssertEqual(diagnostic["rawBodyPrefix"] as? String, rawBody)
+        XCTAssertEqual(diagnostic["rawBodyUTF8ByteCount"] as? Int, rawBody.utf8.count)
+        XCTAssertEqual(diagnostic["rawBodyTruncated"] as? Bool, false)
+        XCTAssertFalse(rows.contains { $0["kind"] as? String == "tool_call" })
+    }
+
+    func test_runner_recordsAndBoundsTruncatedToolCallBody() async throws {
+        // Sabotage evidence: logging the whole raw body makes the 4,096-byte
+        // assertion fail; ignoring the event makes the row unwrap fail.
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("tmp", isDirectory: true)
+            .appendingPathComponent("ManifoldToolsTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("truncated-call-\(UUID().uuidString).jsonl")
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        // One extended grapheme cluster larger than the entire byte budget.
+        // Character-based truncation would return an empty prefix here; scalar
+        // boundaries retain useful, valid Unicode evidence.
+        let rawBody = "a" + String(repeating: "\u{0301}", count: 3_000) + "tail"
+        let logger = try TranscriptLogger(url: path)
+        _ = try await makeRunner(
+            backend: DiagnosticBackend(events: [.toolCallTruncated(rawBody: rawBody)]),
+            registry: ToolRegistry(tools: [NowTool.makeExecutor()]),
+            logger: logger
+        ).run(diagnosticScenario(id: "truncated-call"))
+
+        let rows = try transcriptRows(at: path)
+        let diagnostic = try XCTUnwrap(rows.first { $0["kind"] as? String == "tool_call_truncated" })
+        let prefix = try XCTUnwrap(diagnostic["rawBodyPrefix"] as? String)
+        XCTAssertFalse(prefix.isEmpty, "a huge first grapheme must still retain a scalar prefix")
+        XCTAssertLessThanOrEqual(prefix.utf8.count, 4_096, "diagnostic payloads must stay bounded")
+        XCTAssertEqual(
+            Array(prefix.unicodeScalars),
+            Array(rawBody.unicodeScalars.prefix(prefix.unicodeScalars.count))
+        )
+        XCTAssertEqual(diagnostic["rawBodyUTF8ByteCount"] as? Int, rawBody.utf8.count)
+        XCTAssertEqual(diagnostic["rawBodyTruncated"] as? Bool, true)
+    }
+
+    func test_runner_recordsOtherDiscardedDiagnostics() async throws {
+        // Sabotage evidence: restoring any of these cases to the ignored
+        // catch-all removes its distinct row and fails the matching assertion.
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("tmp", isDirectory: true)
+            .appendingPathComponent("ManifoldToolsTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("other-diagnostics-\(UUID().uuidString).jsonl")
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let logger = try TranscriptLogger(url: path)
+        _ = try await makeRunner(
+            backend: DiagnosticBackend(events: [
+                .throttleDiagnostic(reason: "thermal pressure"),
+                .toolIterationLimitExceeded(iterations: 6),
+                .runTokenBudgetExceeded(tokensUsed: 2_048, limit: 2_000),
+            ]),
+            registry: ToolRegistry(tools: [NowTool.makeExecutor()]),
+            logger: logger
+        ).run(diagnosticScenario(id: "other-diagnostics"))
+
+        let rows = try transcriptRows(at: path)
+        XCTAssertEqual(rows.first { $0["kind"] as? String == "throttle_diagnostic" }?["reason"] as? String, "thermal pressure")
+        XCTAssertEqual(rows.first { $0["kind"] as? String == "tool_iteration_limit_exceeded" }?["iterations"] as? Int, 6)
+        let budget = try XCTUnwrap(rows.first { $0["kind"] as? String == "run_token_budget_exceeded" })
+        XCTAssertEqual(budget["tokensUsed"] as? Int, 2_048)
+        XCTAssertEqual(budget["limit"] as? Int, 2_000)
+    }
+
+    private func diagnosticScenario(id: String) -> Scenario {
+        Scenario(
+            id: id,
+            description: "diagnostic transcript coverage",
+            systemPrompt: "sys",
+            userPrompt: "call now",
+            requiredTools: ["now"],
+            assertions: [
+                Scenario.Assertion(kind: "toolInvoked", value: "now", values: nil, message: nil),
+            ],
+            backend: Scenario.BackendSpec(
+                kind: "mock",
+                model: "diagnostic",
+                fallbackModel: nil,
+                temperature: 0,
+                seed: nil,
+                topK: nil
+            )
+        )
+    }
+
+    private func transcriptRows(at url: URL) throws -> [[String: Any]] {
+        try Data(contentsOf: url)
+            .split(separator: 0x0A)
+            .map { line in
+                try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(line)) as? [String: Any])
+            }
+    }
 
     func test_transcriptLogger_writesOneJsonlRowPerEvent() async throws {
         let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)

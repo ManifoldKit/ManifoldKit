@@ -16,6 +16,7 @@ are indexed by the literal compiler diagnostic you'll hit.
 
 | Release | Migration note | What changed |
 |---------|----------------|--------------|
+| next | [`MIGRATION-platform-floor-26.md`](MIGRATION-platform-floor-26.md) | Package/example deployment targets move to iOS 26 / macOS 26; remove the retired `SystemAIProviderExtension` and `CoreAI` traits. |
 | v0.77.0 | [`MIGRATION-history-pagination.md`](MIGRATION-history-pagination.md) | `fetchMessages(for:)` is complete again; custom stores can implement stable `(timestamp, UUID)` keyset paging. |
 | v0.77.0 | [`MIGRATION-image-generation-steps-optional.md`](MIGRATION-image-generation-steps-optional.md) | `ImageGenerationConfig.steps` / `ImageGenerationConfigSnapshot.steps` are now `Int?`; `nil` (the new default) means the backend resolves the loaded model's own preset step count (#2453 M2). |
 | v0.76.0 | [`MIGRATION-chatexporter-removed.md`](MIGRATION-chatexporter-removed.md) | `ChatExporter` / `ChatExporterError` removed (zero adopters, M1 #2453); use `ExportButton` or `ConversationExporter` directly. |

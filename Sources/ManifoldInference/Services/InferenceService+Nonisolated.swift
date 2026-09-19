@@ -1,5 +1,21 @@
 import Foundation
 
+/// One coherent read of the active model inputs used to size compression.
+///
+/// Package-only because this is runtime coordination state, not a new consumer
+/// configuration surface. Capturing the context window and tokenizer together
+/// prevents a concurrent model switch from pairing model A's capacity with
+/// model B's tokenizer.
+package struct ActiveModelCompressionBudget: Sendable {
+    package let contextSize: Int
+    package let tokenizer: (any TokenizerProvider)?
+
+    package init(contextSize: Int, tokenizer: (any TokenizerProvider)?) {
+        self.contextSize = contextSize
+        self.tokenizer = tokenizer
+    }
+}
+
 // MARK: - Nonisolated wrappers for off-main runtime composition
 //
 // `InferenceService` is `@MainActor`-isolated for SwiftUI view binding.
@@ -18,6 +34,23 @@ import Foundation
 // synchronous main-actor surface.
 
 extension InferenceService {
+
+    // MARK: Compression Budget
+
+    /// Atomically snapshots the active backend's context size and tokenizer.
+    ///
+    /// The main-actor hop is deliberately a single operation. Calling
+    /// ``capabilitiesAsync()`` and ``tokenizerAsync()`` separately would allow
+    /// a model switch between reads and produce a mixed-model budget.
+    package nonisolated func activeModelCompressionBudgetAsync() async -> ActiveModelCompressionBudget? {
+        await MainActor.run {
+            guard let capabilities = self.capabilities else { return nil }
+            return ActiveModelCompressionBudget(
+                contextSize: capabilities.contextWindowSize,
+                tokenizer: self.tokenizer
+            )
+        }
+    }
 
     // MARK: Capabilities
 

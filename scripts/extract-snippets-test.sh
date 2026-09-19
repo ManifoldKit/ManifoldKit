@@ -39,7 +39,7 @@
 #
 # The shared package:
 #   - tools-version 6.2 (matches cold-start-conformance.sh)
-#   - platforms macOS .v15 / iOS .v18 (ManifoldKit's floor)
+#   - platforms macOS/iOS 26.0 (ManifoldKit's floor)
 #   - depends on the local ManifoldKit checkout via .package(name: ..., path: ...)
 #   - each target links the ManifoldKit umbrella product (covers ManifoldUI /
 #     Inference re-exports)
@@ -161,6 +161,8 @@ for snippet in "${snippets[@]}"; do
                 // #2434), so the migration snippet must compile against the
                 // product directly.
                 .product(name: \"ManifoldAgentInstructions\", package: \"ManifoldKit\"),
+                // HTTP host migration examples import this opt-in product.
+                .product(name: \"ManifoldMCPHost\", package: \"ManifoldKit\"),
             ],
             path: \"Sources/$target\"
         ),
@@ -177,7 +179,7 @@ import PackageDescription
 
 let package = Package(
     name: "ManifoldKitSnippets",
-    platforms: [.macOS(.v15), .iOS(.v18)],
+    platforms: [.macOS("26.0"), .iOS("26.0")],
     dependencies: [
         .package(name: "ManifoldKit", path: "$REPO_ROOT"),
     ],

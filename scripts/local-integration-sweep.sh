@@ -1515,7 +1515,12 @@ fi
 # GRADES the family is the only one never built against the core it grades.
 # Principle 9 requires known consumers to be built against a change before it
 # ships; this lane supplies that signal locally until the canary exists.
-if have_lane evalmain && [ -d "$EVAL_DIR/.git" ]; then
+# Ask Git instead of inspecting `.git`: it is a directory in an ordinary
+# checkout and a gitdir-pointer file in a linked worktree. The old `-d` check
+# skipped the latter; a bare `-e` replacement would accept an arbitrary broken
+# pointer and postpone the truth until clone. Keep invalid/non-Git paths on the
+# loud SKIP-NO-WORK path below.
+if have_lane evalmain && git -C "$EVAL_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   EVALMAIN_DIR="$OUT/evalmain"; mkdir -p "$EVALMAIN_DIR"
   EVALMAIN_CLONE="$EVALMAIN_DIR/manifold-eval"
   # Work on an ISOLATED CLONE, never the operator's checkout. `swift package
