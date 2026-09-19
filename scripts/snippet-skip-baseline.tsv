@@ -1,6 +1,7 @@
 # Per-doc snippet-skip budget — see the ratchet section of extract-snippets.sh.
 # path	bare-no-build	total-skipped
-AGENTS.md	0	13
+AGENTS.md	0	0
+AGENTS.reference.md	0	13
 README.md	4	9
 Sources/ManifoldAgentInstructions/ManifoldAgentInstructions.docc/ManifoldAgentInstructions.md	0	1
 Sources/ManifoldAppEval/ManifoldAppEval.docc/ManifoldAppEval.md	0	0

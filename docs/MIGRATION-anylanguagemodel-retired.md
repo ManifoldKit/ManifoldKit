@@ -144,7 +144,7 @@ Other providers follow the identical shape — swap `baseURL` and `modelName`.
 | Gemini direct | *(not reachable — see above)* | — |
 
 This is the same 5-step flow documented in
-[AGENTS.md → Cloud backend setup](../AGENTS.md#cloud-backend-setup) for every
+[AGENTS.reference.md → Cloud backend setup](../AGENTS.reference.md#cloud-backend-setup) for every
 other cloud endpoint, plus one step none of AGENTS.md's built-in providers
 need: pinning.
 

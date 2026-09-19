@@ -147,7 +147,7 @@ Building a new backend companion package? See [docs/COMPANION-BACKENDS.md](docs/
 
 **Backend portability.** MLX, llama.cpp/GGUF, Apple Foundation Models, and cloud (OpenAI Chat + Responses, Anthropic, Ollama, LAN, and any OpenAI-compatible endpoint — xAI, Groq, Mistral, OpenRouter via `APIProvider.custom`, including Gemini models through OpenRouter) all sit behind one `InferenceBackend` protocol. Streaming, tool calling, thinking/reasoning tokens, RAG, and structured output behave identically across every backend, so swapping engines is a config change, not a rewrite. See [How ManifoldKit compares to AnyLanguageModel](#how-manifoldkit-compares-to-anylanguagemodel).
 
-**n-1 OS reach — everything above the model layer.** At WWDC 2026 Apple opened the Foundation Models framework to any LLM provider via the `LanguageModel` protocol. The opened provider layer is iOS 27+, while ManifoldKit supports the iOS 26 / macOS 26 generation and wraps Foundation Models as one backend behind `InferenceBackend`. ManifoldKit's value is everything above the model layer: the turn loop, persistence, MCP client+server, tool approval, and RAG. The companion-package split means one codebase yields either an App-Store-lean build with no heavy ML dependencies at all (core only — just don't add the companion packages) or the full local + cloud + RAG + voice stack. [The Xcode 27 investigation](docs/wwdc-2026-trait-stubs.md) records the unadopted `LanguageModelExecutor` seam. See [AGENTS.md → Platform policy](AGENTS.md#platform-policy).
+**n-1 OS reach — everything above the model layer.** At WWDC 2026 Apple opened the Foundation Models framework to any LLM provider via the `LanguageModel` protocol. The opened provider layer is iOS 27+, while ManifoldKit supports the iOS 26 / macOS 26 generation and wraps Foundation Models as one backend behind `InferenceBackend`. ManifoldKit's value is everything above the model layer: the turn loop, persistence, MCP client+server, tool approval, and RAG. The companion-package split means one codebase yields either an App-Store-lean build with no heavy ML dependencies at all (core only — just don't add the companion packages) or the full local + cloud + RAG + voice stack. [The Xcode 27 investigation](docs/wwdc-2026-trait-stubs.md) records the unadopted `LanguageModelExecutor` seam. See [AGENTS.reference.md → Platform policy](AGENTS.reference.md#platform-policy).
 
 **Reliability and security as product.** TLS pinning, SSRF and DNS-rebind guards, a throwing Keychain, a documented [threat model](docs/THREAT_MODEL.md), a fuzz harness, 6,500+ tests, capability-routed structured output, human-in-the-loop tool approval (`ToolApprovalGate`), and cost/metrics observability ship in the box. These are the things that go wrong between the demo and App Store review — see [docs/RELIABILITY.md](docs/RELIABILITY.md) for the implementation-backed guarantees.
 
@@ -266,7 +266,7 @@ Specialised modules (`ManifoldUIModelManagement`, `ManifoldMCP`, `ManifoldVoice`
 - **Swift 6.1+** (`swift-tools-version: 6.1` in this package's `Package.swift`)
 - iOS 26+ / macOS 26+
 
-ManifoldKit follows an **n-1 platform policy**: the current Apple OS release and the one immediately before it. When Apple ships a new major OS each September, both minimums bump by one. See [AGENTS.md → Platform policy](AGENTS.md#platform-policy) for the rationale.
+ManifoldKit follows an **n-1 platform policy**: the current Apple OS release and the one immediately before it. When Apple ships a new major OS each September, both minimums bump by one. See [AGENTS.reference.md → Platform policy](AGENTS.reference.md#platform-policy) for the rationale.
 
 ### Compatibility matrix
 
@@ -317,7 +317,7 @@ ManifoldVoice              ManifoldUIModelManagement
                 (MCP descriptors, client, tool bridge)
 ```
 
-The backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) and `ManifoldMCP` depend on `ManifoldInference` **directly**, not via `ManifoldRuntime` — that keeps them free of SwiftData so host apps can wire backends or MCP into a non-SwiftData runtime. The full target list lives in [AGENTS.md → Targets](AGENTS.md#targets).
+The backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) and `ManifoldMCP` depend on `ManifoldInference` **directly**, not via `ManifoldRuntime` — that keeps them free of SwiftData so host apps can wire backends or MCP into a non-SwiftData runtime. The full target list lives in [AGENTS.reference.md → Targets](AGENTS.reference.md#targets).
 
 ### Turn-loop orchestration
 

@@ -146,6 +146,7 @@ fi
 CHANGED=()
 while IFS= read -r __line; do
   [[ -n "$__line" ]] && CHANGED+=("$__line")
+# fail-open-ok: grep exits 1 for valid all-blank or empty stdin; the loop then emits NONE.
 done < <(grep -v '^[[:space:]]*$' || true)
 unset __line
 if [[ ${#CHANGED[@]} -eq 0 ]]; then
@@ -291,6 +292,11 @@ for p in "${CHANGED[@]}"; do
     scripts/check-readme.sh)
       changed_targets_add "ManifoldInferenceTests"
       log "changed: $p → target ManifoldInferenceTests (AgentsMdAuditTest runs it)"
+      continue
+      ;;
+    AGENTS.md|AGENTS.reference.md|release-please-config.json)
+      changed_targets_add "ManifoldInferenceTests"
+      log "changed: $p → target ManifoldInferenceTests (AgentsMdAuditTest reads it)"
       continue
       ;;
     scripts/lint-plan-status.sh)

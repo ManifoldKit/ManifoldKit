@@ -30,29 +30,87 @@ final class AgentsMdAuditTest: XCTestCase {
     /// the pattern in `SilentCatchAuditTest` so this test works under both
     /// `swift test` and `xcodebuild test` without bundling the resource into
     /// the test target.
-    private static func locateAgentsMd() throws -> URL {
+    private static func locateInstructionDocs() throws -> [URL] {
         let here = URL(fileURLWithPath: #filePath)
         // Tests/ManifoldInferenceTests/AgentsMdAuditTest.swift → repo root is 3 up.
         let repoRoot = here
             .deletingLastPathComponent()  // Tests/ManifoldInferenceTests/
             .deletingLastPathComponent()  // Tests/
             .deletingLastPathComponent()  // <repo>
-        let path = repoRoot.appendingPathComponent("AGENTS.md")
-        guard FileManager.default.fileExists(atPath: path.path) else {
-            throw XCTSkip("AGENTS.md not found at \(path.path)")
+        let paths = ["AGENTS.md", "AGENTS.reference.md"].map(repoRoot.appendingPathComponent)
+        for path in paths where !FileManager.default.fileExists(atPath: path.path) {
+            throw CocoaError(.fileNoSuchFile, userInfo: [
+                NSFilePathErrorKey: path.path,
+                NSLocalizedDescriptionKey: "Required instruction document not found at \(path.path)",
+            ])
         }
-        return path
+        return paths
     }
 
     private static func loadAgentsMd() throws -> String {
-        let url = try locateAgentsMd()
-        return try String(contentsOf: url, encoding: .utf8)
+        try locateInstructionDocs()
+            .map { try String(contentsOf: $0, encoding: .utf8) }
+            .joined(separator: "\n")
     }
 
     // MARK: - File presence
 
     func testAgentsMdExists() throws {
         _ = try Self.loadAgentsMd()
+    }
+
+    /// The compact root guide is the entry point; it must lead readers to the
+    /// detailed reference rather than leaving the moved guidance unreachable.
+    static func rootPointsToDetailedReference(_ body: String) -> Bool {
+        body.contains("[AGENTS.reference.md](AGENTS.reference.md)")
+    }
+
+    func testRootGuideLinksDetailedReference() throws {
+        let root = try String(contentsOf: Self.locateInstructionDocs()[0], encoding: .utf8)
+        XCTAssertTrue(
+            Self.rootPointsToDetailedReference(root),
+            "AGENTS.md must link the detailed AGENTS.reference.md guide from the repository entry point."
+        )
+    }
+
+    static func markedInstructionVersions(in body: String) throws -> Set<String> {
+        let versionPattern = try NSRegularExpression(pattern: #"from:\s*\"([^\"]+)\".*x-release-please-version"#)
+        let range = NSRange(body.startIndex..., in: body)
+        return Set(versionPattern.matches(in: body, range: range).compactMap { match in
+            Range(match.range(at: 1), in: body).map { String(body[$0]) }
+        })
+    }
+
+    static func releasePleaseTracksReferenceMarkers(
+        configuredPaths: Set<String>,
+        reference: String,
+        readme: String
+    ) throws -> Bool {
+        let referenceMarkers = try markedInstructionVersions(in: reference)
+        let readmeMarkers = try markedInstructionVersions(in: readme)
+        return !referenceMarkers.isEmpty
+            && configuredPaths.contains("AGENTS.reference.md")
+            && referenceMarkers == readmeMarkers
+    }
+
+    func testReleasePleaseTracksInstructionVersionMarkers() throws {
+        let paths = try Self.locateInstructionDocs()
+        let repoRoot = paths[0].deletingLastPathComponent()
+        let configData = try Data(contentsOf: repoRoot.appendingPathComponent("release-please-config.json"))
+        let config = try XCTUnwrap(JSONSerialization.jsonObject(with: configData) as? [String: Any])
+        let extraFiles = try XCTUnwrap(config["extra-files"] as? [[String: String]])
+        let configuredPaths = Set(extraFiles.compactMap { $0["path"] })
+
+        let reference = try String(contentsOf: paths[1], encoding: .utf8)
+        let readme = try String(contentsOf: repoRoot.appendingPathComponent("README.md"), encoding: .utf8)
+        XCTAssertTrue(
+            try Self.releasePleaseTracksReferenceMarkers(
+                configuredPaths: configuredPaths,
+                reference: reference,
+                readme: readme
+            ),
+            "AGENTS.reference.md must retain version markers matching README, and release-please must update it."
+        )
     }
 
     // MARK: - Type-kind drift (#2210)
@@ -244,6 +302,43 @@ final class AgentsMdAuditTest: XCTestCase {
 
         let negated = "the old `vm.send(` was removed"
         XCTAssertEqual(try Self.deletedSendMethodViolations(in: negated).count, 0)
+    }
+
+    func test_sabotage_rootReferenceLinkDetectionRejectsMissingLink() {
+        XCTAssertFalse(
+            Self.rootPointsToDetailedReference("Read the repository instructions before contributing."),
+            "Sabotage: a root guide without the detailed-reference link must be rejected"
+        )
+        XCTAssertTrue(
+            Self.rootPointsToDetailedReference("Read [AGENTS.reference.md](AGENTS.reference.md).")
+        )
+    }
+
+    func test_sabotage_releaseMarkerDetectionRejectsBrokenRegistrationAndMarkers() throws {
+        let reference = #".package(url: "https://example.test/ManifoldKit.git", from: "0.78.0") // x-release-please-version"#
+        let matchingReadme = reference
+        let registered = Set(["AGENTS.reference.md"])
+
+        XCTAssertTrue(try Self.releasePleaseTracksReferenceMarkers(
+            configuredPaths: registered,
+            reference: reference,
+            readme: matchingReadme
+        ))
+        XCTAssertFalse(try Self.releasePleaseTracksReferenceMarkers(
+            configuredPaths: [],
+            reference: reference,
+            readme: matchingReadme
+        ), "Sabotage: missing release-please registration must be rejected")
+        XCTAssertFalse(try Self.releasePleaseTracksReferenceMarkers(
+            configuredPaths: registered,
+            reference: reference,
+            readme: #".package(url: "https://example.test/ManifoldKit.git", from: "0.79.0") // x-release-please-version"#
+        ), "Sabotage: mismatched README and reference markers must be rejected")
+        XCTAssertFalse(try Self.releasePleaseTracksReferenceMarkers(
+            configuredPaths: registered,
+            reference: "No release marker.",
+            readme: matchingReadme
+        ), "Sabotage: an unmarked reference must be rejected")
     }
 
     /// `claimsTypeIsEnum(_:in:)`: a direct "is a ... enum" claim must be
