@@ -12,6 +12,35 @@
 - Reject overlapping bootstrap construction and direct configuration replacement with recoverable
   `ManifoldBootstrapError` cases, while preserving a newer writer during failed rollback.
 
+## [0.79.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.78.0...v0.79.0) (2026-09-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** authenticate the HTTP host boundary ([#2521](https://github.com/ManifoldKit/ManifoldKit/issues/2521))
+
+### Features
+
+* raise platform floor to 26 ([#2536](https://github.com/ManifoldKit/ManifoldKit/issues/2536)) ([210be82](https://github.com/ManifoldKit/ManifoldKit/commit/210be82f332445dad23e6379f4f6205bfbdf02f0))
+
+
+### Bug Fixes
+
+* **bootstrap:** reject interleaved configuration installation ([#2529](https://github.com/ManifoldKit/ManifoldKit/issues/2529)) ([0d09bb5](https://github.com/ManifoldKit/ManifoldKit/commit/0d09bb52f1b166e3708b6a2415e201694aa54a24))
+* **fuzz:** exercise stop during generation ([#2534](https://github.com/ManifoldKit/ManifoldKit/issues/2534)) ([94da7fe](https://github.com/ManifoldKit/ManifoldKit/commit/94da7fe52f7ecc97037c50c507ffebd4155b737c)), closes [#2361](https://github.com/ManifoldKit/ManifoldKit/issues/2361)
+* **fuzz:** forward session seeds to backends ([#2537](https://github.com/ManifoldKit/ManifoldKit/issues/2537)) ([46f7820](https://github.com/ManifoldKit/ManifoldKit/commit/46f782069c72fa67cee908e4d66246c5d3bf7d7f))
+* **mcp:** authenticate the HTTP host boundary ([#2521](https://github.com/ManifoldKit/ManifoldKit/issues/2521)) ([7c591d1](https://github.com/ManifoldKit/ManifoldKit/commit/7c591d10f837f456dae0b6c6e93c1ee8672a9d7e))
+* restore Foundation history and Xcode 27 test compatibility ([#2526](https://github.com/ManifoldKit/ManifoldKit/issues/2526)) ([49818b2](https://github.com/ManifoldKit/ManifoldKit/commit/49818b29c789fa04a5a256dd63d9b2687141785a))
+* **runtime:** keep compression budgets current across model switches ([#2533](https://github.com/ManifoldKit/ManifoldKit/issues/2533)) ([34b31e1](https://github.com/ManifoldKit/ManifoldKit/commit/34b31e1cc259756a1c41764c1e0a2b6d09b79883))
+* **runtime:** preserve durable metadata when branching ([#2527](https://github.com/ManifoldKit/ManifoldKit/issues/2527)) ([0b78cfc](https://github.com/ManifoldKit/ManifoldKit/commit/0b78cfcb1538a145e18a1b6726736250a7092cfd))
+* **tools:** surface tool-call diagnostics ([#2531](https://github.com/ManifoldKit/ManifoldKit/issues/2531)) ([db546cf](https://github.com/ManifoldKit/ManifoldKit/commit/db546cfbbe4e7fec9ca8a113bbab1a9f7d6d9ebe))
+
+
+### Tests
+
+* **backends:** repair live qualification fixtures ([#2535](https://github.com/ManifoldKit/ManifoldKit/issues/2535)) ([43edd5b](https://github.com/ManifoldKit/ManifoldKit/commit/43edd5bb62d479ea1fdab15422746d2edc7f04bb))
+* enforce immediate backend reuse after cancellation ([#2532](https://github.com/ManifoldKit/ManifoldKit/issues/2532)) ([41cd325](https://github.com/ManifoldKit/ManifoldKit/commit/41cd325ed9ad5f6b24cba37f3b839b3871684ea9))
+
 ## [0.78.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.77.0...v0.78.0) (2026-09-10)
 
 ManifoldKit 0.78 lets host apps add their own support details to the existing
