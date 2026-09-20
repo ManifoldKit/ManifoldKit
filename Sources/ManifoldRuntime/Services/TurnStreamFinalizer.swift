@@ -680,10 +680,12 @@ package struct TurnStreamFinalizer: Sendable {
                             // caller to construct a handoff without the
                             // model-emitted call. There is then no valid call
                             // ID to synthesize or persist, so report the
-                            // resulting empty-turn fallback instead of
-                            // silently reproducing #2378.
+                            // loss of the handoff call/result instead of
+                            // silently reproducing #2378. If the stream
+                            // already produced text or thinking, that other
+                            // content still persists.
                             Log.inference.warning(
-                                "ConversationTurnExecutor: handoff has no source call; the handoff turn will be dropped as empty. Construct AgentHandoff with sourceCall to preserve it."
+                                "ConversationTurnExecutor: handoff has no source call; its transfer call and result cannot be persisted. Construct AgentHandoff with sourceCall to preserve them."
                             )
                         }
                     } else {
