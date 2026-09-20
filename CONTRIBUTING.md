@@ -51,7 +51,7 @@ blessed configurations and what each one guarantees.
 For repo-developer build workflow, see [AGENTS.md](AGENTS.md).
 Swift 6 concurrency pitfalls that can compile while racing or deadlocking are
 covered in
-[AGENTS.reference.md § Swift 6 concurrency gotchas](AGENTS.reference.md#swift-6-concurrency-gotchas);
+[AGENTS.md § Swift 6 concurrency gotchas](AGENTS.md#swift-6-concurrency-gotchas);
 review that section before adding actor-isolated state, async helper closures,
 mutable `Sendable` wrappers, streams, detached tasks, or async cleanup.
 

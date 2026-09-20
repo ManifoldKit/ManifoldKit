@@ -8,7 +8,7 @@ Derived by reading each script's header comment plus `git grep -l '<script>' .gi
 
 - **CI-only** — invoked exclusively by a GitHub Actions workflow; not part of the local pre-push gate.
 - **Local pre-push** — part of (or invoked by) `scripts/test.sh --profile local`, the mandatory gate
-  before every push (see the repo `CLAUDE.md` "Pre-push checklist").
+  before every push (see [AGENTS.md](../AGENTS.md#pre-push-checklist)).
 - **Manual / operational** — run by hand, ad hoc, when a maintainer needs it. Never wired into CI.
 
 Less frequently used helpers are included here too; keep a new executable listed
