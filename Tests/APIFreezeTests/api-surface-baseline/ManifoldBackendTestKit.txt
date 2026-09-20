@@ -8,6 +8,7 @@ BackendContractChecks.ClaimRegistry.init() Constructor
 BackendContractChecks.assertAllInvariants(makingBackend:file:line:) Func
 BackendContractChecks.assertCapabilityMetaContract(_:backendName:capabilities:file:line:) Func
 BackendContractChecks.assertGrammarFailClosedContract(_:backendName:makingBackend:forbiddenRequestURL:file:line:) Func
+BackendContractChecks.assertStopGenerationContract(backend:prompt:config:timeout:) Func
 BackendContractChecks.capturedClaims(_:) Func
 BackendContractChecks.claimWithoutBehaviouralAssertion(_:backendName:flag:) Func
 BackendContractChecks.failClosedContractFlags Var
