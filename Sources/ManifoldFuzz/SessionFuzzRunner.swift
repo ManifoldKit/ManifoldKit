@@ -126,6 +126,22 @@ public actor SessionFuzzRunner {
             // Run one script, gather capture.
             let capture = await runScript(script, handle: handle)
 
+            // Overnight campaigns can opt in to retaining every capture, including
+            // clean runs that never reach FindingsSink. A requested archive is part
+            // of the campaign's evidence, so fail the run loudly if it cannot be
+            // persisted instead of reporting an incomplete clean result.
+            if let directory = ProcessInfo.processInfo.environment["MK_OVERNIGHT_CAPTURE_DIR"] {
+                do {
+                    try writeOvernightCapture(capture, iteration: iter, directory: directory)
+                } catch {
+                    await reporter.error(
+                        "Overnight capture write failed for iteration \(iter) in \(directory): \(error)"
+                    )
+                    await factory.teardown()
+                    return FuzzReport(totalRuns: 0, findings: [], dedupedCount: 0, perDetectorFlagRate: [:], realCompletions: 0)
+                }
+            }
+
             // Per-step single-turn detectors.
             var iterationFindings: [Finding] = []
             for step in capture.steps {
@@ -213,6 +229,26 @@ public actor SessionFuzzRunner {
             seed: config.seed
         )
         return await runner.execute(script)
+    }
+
+    /// Writes an opt-in diagnostic archive for an overnight session campaign.
+    /// The hook deliberately lives outside ``FindingsSink``: clean captures are
+    /// evidence for an overnight run too, while the findings sink only retains
+    /// detector hits for replay.
+    private func writeOvernightCapture(
+        _ capture: SessionCapture,
+        iteration: Int,
+        directory: String
+    ) throws {
+        let root = URL(fileURLWithPath: directory, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(SessionCaptureSnapshot(capture))
+        try data.write(
+            to: root.appendingPathComponent("capture-\(iteration).json"),
+            options: .atomic
+        )
     }
 
     /// When a script produced no turn records (only edits/deletes, never
