@@ -53,17 +53,15 @@ public struct AgentHandoff: Sendable, Equatable {
     /// short-circuits normal tool dispatch — otherwise a turn whose only
     /// product is a handoff has no content parts, gets classified `.empty`,
     /// and is silently dropped, losing the agent switch's only visible
-    /// trace (#2378). `nil` only when a caller constructs an `AgentHandoff`
-    /// through the 2-argument initializer (kept for source compatibility);
-    /// ``HandoffDetector/classify(_:in:)`` — the sole production producer —
-    /// always supplies it. A `nil` `sourceCall` means the executor has
-    /// nothing to persist for this turn, so it falls back to the pre-#2378
-    /// behaviour (agent swap only, no content part appended).
+    /// trace (#2378). ``HandoffDetector/classify(_:in:)`` — the production
+    /// producer — supplies this call. A caller can pass `nil` when it has no
+    /// original call to preserve; then the executor cannot persist the
+    /// transfer call or its synthesized result. Other text or thinking
+    /// already emitted for the turn still persists.
     public let sourceCall: ToolCall?
 
-    /// Full initializer. Prefer this when a `ToolCall` is available (it
-    /// always is on the production path) — a `nil` `sourceCall` means the
-    /// handoff's turn cannot be kept from being dropped as empty.
+    /// Full initializer. Prefer a non-nil `sourceCall` when a `ToolCall` is
+    /// available so the transfer call and synthesized result can persist.
     public init(targetAgentID: UUID, payload: String? = nil, sourceCall: ToolCall?) {
         self.targetAgentID = targetAgentID
         self.payload = payload

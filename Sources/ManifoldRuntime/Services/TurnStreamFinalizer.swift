@@ -657,13 +657,10 @@ package struct TurnStreamFinalizer: Sendable {
                         // renders the handoff the same way it renders any
                         // other tool call, not just after a reload.
                         //
-                        // `sourceCall` is nil only for an `AgentHandoff` built
-                        // through the 2-argument source-compat initializer
-                        // (see `Agent.swift`) — `HandoffDetector.classify`,
-                        // the sole production producer, always supplies it.
-                        // Without it there is nothing to persist, so this
-                        // turn falls back to the pre-#2378 behaviour (agent
-                        // swap only).
+                        // `HandoffDetector.classify` supplies `sourceCall`
+                        // on the production path. A caller without the
+                        // original call can pass `nil`, in which case this
+                        // turn cannot preserve the transfer call or result.
                         if let sourceCall = handoff.sourceCall {
                             assistantMessage.contentParts.append(.toolCall(sourceCall))
                             events.emit(.toolCallRequested(sourceCall))
@@ -675,6 +672,18 @@ package struct TurnStreamFinalizer: Sendable {
                             )
                             assistantMessage.contentParts.append(.toolResult(result))
                             events.emit(.toolCallCompleted(result.callId, result))
+                        } else {
+                            // The source-compatible initializer permits a
+                            // caller to construct a handoff without the
+                            // model-emitted call. There is then no valid call
+                            // ID to synthesize or persist, so report the
+                            // loss of the handoff call/result instead of
+                            // silently reproducing #2378. If the stream
+                            // already produced text or thinking, that other
+                            // content still persists.
+                            Log.inference.warning(
+                                "ConversationTurnExecutor: handoff has no source call; its transfer call and result cannot be persisted. Construct AgentHandoff with sourceCall to preserve them."
+                            )
                         }
                     } else {
                         Log.inference.warning(
