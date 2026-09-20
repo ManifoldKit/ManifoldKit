@@ -49,7 +49,7 @@ dependencies: [
     ),
     .package(
         url: "https://github.com/ManifoldKit/manifold-mlx.git",
-        from: "0.2.13"
+        from: "0.6.3"
     ),
 ],
 targets: [

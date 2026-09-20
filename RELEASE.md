@@ -309,3 +309,11 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    - **PATCH bump:** llama/mlx float automatically on their `.upToNextMinor`
      core pin — no companion release needed. Only manifold-eval's exact core
      pin needs a manual bump.
+
+   After the companion tags are published, update the active README and
+   QUICKSTART companion install pins to versions that accept this core minor.
+   Run `python3 scripts/check-companion-doc-pins.py --resolve` before closing
+   the release train. The required PR lint checks tagged manifest compatibility;
+   the nightly doc gate resolves the full published SwiftPM graph and opens a
+   tracking issue if the docs remain stale. This check runs after companion
+   publication because their tags do not exist when the core release PR merges.
