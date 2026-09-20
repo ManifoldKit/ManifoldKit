@@ -18,6 +18,10 @@ public actor SessionFuzzRunner {
     private let factory: any FuzzBackendFactory
     private let sink: FindingsSink
     private let scripts: [SessionScript]
+    /// Local overnight instrumentation selected by `fuzz-chat`'s documented
+    /// `MK_OVERNIGHT_CAPTURE_DIR` environment variable. Kept internal because
+    /// it is a CLI diagnostic archive, not a library-level capture contract.
+    private let overnightCaptureDirectory: String?
     /// `@MainActor` required: `InferenceService.init` is main-actor-isolated, so any
     /// closure that constructs one must hop to main.
     private let serviceFactory: @MainActor @Sendable (any InferenceBackend, String) -> InferenceService
@@ -29,11 +33,30 @@ public actor SessionFuzzRunner {
         // @MainActor required: closure instantiates a @MainActor-isolated InferenceService.
         serviceFactory: (@MainActor @Sendable (any InferenceBackend, String) -> InferenceService)? = nil
     ) {
+        self.init(
+            config: config,
+            factory: factory,
+            scripts: scripts,
+            serviceFactory: serviceFactory,
+            overnightCaptureDirectory: ProcessInfo.processInfo.environment["MK_OVERNIGHT_CAPTURE_DIR"]
+        )
+    }
+
+    /// Test-only injection avoids mutating the process-global environment while
+    /// exercising the CLI-owned overnight archive behavior.
+    init(
+        config: FuzzConfig,
+        factory: any FuzzBackendFactory,
+        scripts: [SessionScript]? = nil,
+        serviceFactory: (@MainActor @Sendable (any InferenceBackend, String) -> InferenceService)? = nil,
+        overnightCaptureDirectory: String?
+    ) {
         self.config = config
         self.factory = factory
         self.sink = FindingsSink(outputDir: config.outputDir)
         self.scripts = scripts ?? SessionScript.loadAll()
         self.serviceFactory = serviceFactory ?? SessionFuzzRunner.defaultServiceFactory
+        self.overnightCaptureDirectory = overnightCaptureDirectory
     }
 
     /// Default service factory. Uses `InferenceService(backend:name:)` from
@@ -130,7 +153,7 @@ public actor SessionFuzzRunner {
             // clean runs that never reach FindingsSink. A requested archive is part
             // of the campaign's evidence, so fail the run loudly if it cannot be
             // persisted instead of reporting an incomplete clean result.
-            if let directory = ProcessInfo.processInfo.environment["MK_OVERNIGHT_CAPTURE_DIR"] {
+            if let directory = overnightCaptureDirectory {
                 do {
                     try writeOvernightCapture(capture, iteration: iter, directory: directory)
                 } catch {
@@ -246,8 +269,8 @@ public actor SessionFuzzRunner {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(SessionCaptureSnapshot(capture))
         try data.write(
-            to: root.appendingPathComponent("capture-\(iteration).json"),
-            options: .atomic
+            to: root.appendingPathComponent("capture-\(iteration)-\(capture.sessionID.uuidString).json"),
+            options: .withoutOverwriting
         )
     }
 

@@ -43,23 +43,13 @@ final class SessionFuzzRunnerOvernightCaptureTests: XCTestCase {
         )
     }
 
-    /// The environment is process-global, so these tests use one dedicated key
-    /// and restore its prior state before returning to parallel test execution.
-    private func withCaptureDirectory<T>(
-        _ directory: URL,
-        operation: () async throws -> T
-    ) async rethrows -> T {
-        let key = "MK_OVERNIGHT_CAPTURE_DIR"
-        let original = ProcessInfo.processInfo.environment[key]
-        setenv(key, directory.path, 1)
-        defer {
-            if let original {
-                setenv(key, original, 1)
-            } else {
-                unsetenv(key)
-            }
-        }
-        return try await operation()
+    private func runner(outputDir: URL, captureDir: URL) -> SessionFuzzRunner {
+        SessionFuzzRunner(
+            config: config(outputDir: outputDir),
+            factory: MockFactory(),
+            scripts: [script()],
+            overnightCaptureDirectory: captureDir.path
+        )
     }
 
     func test_requestedArchiveWritesCleanSessionCapture() async throws {
@@ -70,16 +60,17 @@ final class SessionFuzzRunnerOvernightCaptureTests: XCTestCase {
             try? FileManager.default.removeItem(at: captureDir)
         }
 
-        let report = try await withCaptureDirectory(captureDir) {
-            await SessionFuzzRunner(config: config(outputDir: outputDir), factory: MockFactory(), scripts: [script()])
-                .run(reporter: TerminalReporter(quiet: true))
-        }
+        let report = await runner(outputDir: outputDir, captureDir: captureDir)
+            .run(reporter: TerminalReporter(quiet: true))
 
         XCTAssertEqual(report.totalRuns, 1)
         XCTAssertEqual(report.realCompletions, 1)
         XCTAssertFalse(report.isInert)
 
-        let captureURL = captureDir.appendingPathComponent("capture-1.json")
+        let captureURL = try XCTUnwrap(
+            try FileManager.default.contentsOfDirectory(at: captureDir, includingPropertiesForKeys: nil)
+                .first(where: { $0.lastPathComponent.hasPrefix("capture-1-") })
+        )
         let data = try Data(contentsOf: captureURL)
         let snapshot = try JSONDecoder().decode(SessionCaptureSnapshot.self, from: data)
         XCTAssertEqual(snapshot.script.id, "overnight-capture")
@@ -96,13 +87,35 @@ final class SessionFuzzRunnerOvernightCaptureTests: XCTestCase {
         }
         try Data("not a directory".utf8).write(to: occupiedPath)
 
-        let report = try await withCaptureDirectory(occupiedPath) {
-            await SessionFuzzRunner(config: config(outputDir: outputDir), factory: MockFactory(), scripts: [script()])
-                .run(reporter: TerminalReporter(quiet: true))
-        }
+        let report = await runner(outputDir: outputDir, captureDir: occupiedPath)
+            .run(reporter: TerminalReporter(quiet: true))
 
         XCTAssertEqual(report.totalRuns, 0, "a requested archive that cannot be written must fail rather than report a clean campaign")
         XCTAssertTrue(report.findings.isEmpty)
         XCTAssertEqual(report.realCompletions, 0)
+    }
+
+    func test_concurrentRunnersArchiveDistinctCapturesWithoutOverwriting() async throws {
+        let outputA = temporaryURL("output-a")
+        let outputB = temporaryURL("output-b")
+        let captureDir = temporaryURL("shared-archive")
+        defer {
+            try? FileManager.default.removeItem(at: outputA)
+            try? FileManager.default.removeItem(at: outputB)
+            try? FileManager.default.removeItem(at: captureDir)
+        }
+
+        let runnerA = runner(outputDir: outputA, captureDir: captureDir)
+        let runnerB = runner(outputDir: outputB, captureDir: captureDir)
+        async let reportA = runnerA.run(reporter: TerminalReporter(quiet: true))
+        async let reportB = runnerB.run(reporter: TerminalReporter(quiet: true))
+        let (first, second) = await (reportA, reportB)
+
+        XCTAssertEqual(first.totalRuns, 1)
+        XCTAssertEqual(second.totalRuns, 1)
+        let captures = try FileManager.default.contentsOfDirectory(at: captureDir, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("capture-1-") }
+        XCTAssertEqual(captures.count, 2, "each concurrent runner must retain its own iteration-one evidence")
+        XCTAssertEqual(Set(captures.map(\.lastPathComponent)).count, 2)
     }
 }
