@@ -942,3 +942,4 @@ private final class WeakOllamaBackendBox: @unchecked Sendable {
     weak var value: OllamaBackend?
     init(_ value: OllamaBackend) { self.value = value }
 }
+

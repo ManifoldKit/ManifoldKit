@@ -495,3 +495,4 @@ private final class WeakBackendBox: @unchecked Sendable {
     weak var value: OpenAIBackend?
     init(_ value: OpenAIBackend) { self.value = value }
 }
+

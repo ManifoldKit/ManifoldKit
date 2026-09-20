@@ -501,3 +501,4 @@ private final class WeakClaudeBackendBox: @unchecked Sendable {
     weak var value: ClaudeBackend?
     init(_ value: ClaudeBackend) { self.value = value }
 }
+
