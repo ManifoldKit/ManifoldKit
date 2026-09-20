@@ -675,6 +675,16 @@ package struct TurnStreamFinalizer: Sendable {
                             )
                             assistantMessage.contentParts.append(.toolResult(result))
                             events.emit(.toolCallCompleted(result.callId, result))
+                        } else {
+                            // The source-compatible initializer permits a
+                            // caller to construct a handoff without the
+                            // model-emitted call. There is then no valid call
+                            // ID to synthesize or persist, so report the
+                            // resulting empty-turn fallback instead of
+                            // silently reproducing #2378.
+                            Log.inference.warning(
+                                "ConversationTurnExecutor: handoff has no source call; the handoff turn will be dropped as empty. Construct AgentHandoff with sourceCall to preserve it."
+                            )
                         }
                     } else {
                         Log.inference.warning(
