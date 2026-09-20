@@ -18,6 +18,10 @@ public actor SessionFuzzRunner {
     private let factory: any FuzzBackendFactory
     private let sink: FindingsSink
     private let scripts: [SessionScript]
+    /// Local overnight instrumentation selected by `fuzz-chat`'s documented
+    /// `MK_OVERNIGHT_CAPTURE_DIR` environment variable. Kept internal because
+    /// it is a CLI diagnostic archive, not a library-level capture contract.
+    private let overnightCaptureDirectory: String?
     /// `@MainActor` required: `InferenceService.init` is main-actor-isolated, so any
     /// closure that constructs one must hop to main.
     private let serviceFactory: @MainActor @Sendable (any InferenceBackend, String) -> InferenceService
@@ -29,11 +33,30 @@ public actor SessionFuzzRunner {
         // @MainActor required: closure instantiates a @MainActor-isolated InferenceService.
         serviceFactory: (@MainActor @Sendable (any InferenceBackend, String) -> InferenceService)? = nil
     ) {
+        self.init(
+            config: config,
+            factory: factory,
+            scripts: scripts,
+            serviceFactory: serviceFactory,
+            overnightCaptureDirectory: ProcessInfo.processInfo.environment["MK_OVERNIGHT_CAPTURE_DIR"]
+        )
+    }
+
+    /// Test-only injection avoids mutating the process-global environment while
+    /// exercising the CLI-owned overnight archive behavior.
+    init(
+        config: FuzzConfig,
+        factory: any FuzzBackendFactory,
+        scripts: [SessionScript]? = nil,
+        serviceFactory: (@MainActor @Sendable (any InferenceBackend, String) -> InferenceService)? = nil,
+        overnightCaptureDirectory: String?
+    ) {
         self.config = config
         self.factory = factory
         self.sink = FindingsSink(outputDir: config.outputDir)
         self.scripts = scripts ?? SessionScript.loadAll()
         self.serviceFactory = serviceFactory ?? SessionFuzzRunner.defaultServiceFactory
+        self.overnightCaptureDirectory = overnightCaptureDirectory
     }
 
     /// Default service factory. Uses `InferenceService(backend:name:)` from
@@ -126,6 +149,22 @@ public actor SessionFuzzRunner {
             // Run one script, gather capture.
             let capture = await runScript(script, handle: handle)
 
+            // Overnight campaigns can opt in to retaining every capture, including
+            // clean runs that never reach FindingsSink. A requested archive is part
+            // of the campaign's evidence, so fail the run loudly if it cannot be
+            // persisted instead of reporting an incomplete clean result.
+            if let directory = overnightCaptureDirectory {
+                do {
+                    try writeOvernightCapture(capture, iteration: iter, directory: directory)
+                } catch {
+                    await reporter.error(
+                        "Overnight capture write failed for iteration \(iter) in \(directory): \(error)"
+                    )
+                    await factory.teardown()
+                    return FuzzReport(totalRuns: 0, findings: [], dedupedCount: 0, perDetectorFlagRate: [:], realCompletions: 0)
+                }
+            }
+
             // Per-step single-turn detectors.
             var iterationFindings: [Finding] = []
             for step in capture.steps {
@@ -213,6 +252,26 @@ public actor SessionFuzzRunner {
             seed: config.seed
         )
         return await runner.execute(script)
+    }
+
+    /// Writes an opt-in diagnostic archive for an overnight session campaign.
+    /// The hook deliberately lives outside ``FindingsSink``: clean captures are
+    /// evidence for an overnight run too, while the findings sink only retains
+    /// detector hits for replay.
+    private func writeOvernightCapture(
+        _ capture: SessionCapture,
+        iteration: Int,
+        directory: String
+    ) throws {
+        let root = URL(fileURLWithPath: directory, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(SessionCaptureSnapshot(capture))
+        try data.write(
+            to: root.appendingPathComponent("capture-\(iteration)-\(capture.sessionID.uuidString).json"),
+            options: .withoutOverwriting
+        )
     }
 
     /// When a script produced no turn records (only edits/deletes, never
