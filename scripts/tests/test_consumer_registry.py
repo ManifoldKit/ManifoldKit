@@ -6,8 +6,11 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
+
+sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("registry", ROOT / "scripts/consumer-registry.py")
