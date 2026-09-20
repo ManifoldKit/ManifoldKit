@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest import mock
+import unittest.mock as mock
 import urllib.error
 import urllib.request
 from contextlib import redirect_stderr, redirect_stdout
