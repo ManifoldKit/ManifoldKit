@@ -286,7 +286,9 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
     ///
     /// When `urlSession` is `nil` and the runtime kill-switch
     /// ``URLSessionProvider/networkDisabled`` is set, the underlying property
-    /// access traps. ``makeChecked(urlSession:)`` is the public, throwing
+    /// access returns a poisoned session (every request fails with
+    /// ``CloudBackendError/networkDisabled``), logging a warning — it does
+    /// not trap. ``makeChecked(urlSession:)`` is the public, throwing
     /// entry point that surfaces the kill-switch as a recoverable error.
     ///
     /// Stays `public`, and deliberately carries no deprecation attribute.
