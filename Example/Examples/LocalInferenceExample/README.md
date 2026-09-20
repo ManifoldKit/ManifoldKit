@@ -115,10 +115,10 @@ The companion packages are pinned by released version in
 packages:
   ManifoldMLX:
     url: https://github.com/ManifoldKit/manifold-mlx
-    minorVersion: 0.5.0
+    minorVersion: 0.6.2
   ManifoldLlama:
     url: https://github.com/ManifoldKit/manifold-llama
-    minorVersion: 0.4.3
+    minorVersion: 0.4.8
 ```
 
 To iterate against a local `manifold-mlx` or `manifold-llama` checkout
