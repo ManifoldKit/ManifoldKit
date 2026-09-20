@@ -649,8 +649,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/ManifoldKit/manifold-mlx";
 			requirement = {
-				branch = "fix/steps-nil-resolves-preset";
-				kind = branch;
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.6.2;
 			};
 		};
 		B1F9331173128ABA84FABC84 /* XCRemoteSwiftPackageReference "manifold-llama" */ = {
@@ -658,7 +658,7 @@
 			repositoryURL = "https://github.com/ManifoldKit/manifold-llama";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.4.3;
+				minimumVersion = 0.4.8;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
