@@ -601,7 +601,7 @@ jobs:
         if: always()
         run: |
           python3 scripts/check-companion-doc-pins.py --self-test
-          python3 scripts/check-companion-doc-pins.py
+          python3 scripts/check-companion-doc-pins.py --allow-unpublished-core
 
       # ── secret-scan (trufflehog) ──────────────────────────────────────────
       - name: secret-scan — scan changed commits for leaked secrets

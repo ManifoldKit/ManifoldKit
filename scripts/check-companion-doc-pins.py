@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Check active install docs against published companion manifests.
 
-A core release is tagged before its companion pin-bump releases. An unpublished
-version.txt is reported as a deferred check; the nightly --resolve run verifies
-the published graph after the companion tags exist.
+A core release is tagged before its companion pin-bump releases. The lint
+check may explicitly defer an unpublished core tag; the nightly --resolve run
+fails closed and verifies the published graph after companion tags exist.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -23,6 +24,7 @@ FAMILIES = ("llama", "mlx")
 PIN = re.compile(r'from:\s*"(\d+\.\d+\.\d+)"')
 URL = re.compile(r'https://github\.com/ManifoldKit/manifold-(llama|mlx)\.git')
 CORE_REQUIREMENT = re.compile(r'\.upToNextMinor\(from:\s*"(\d+\.\d+\.\d+)"\)')
+CORE_URL = re.compile(r'https://github\.com/ManifoldKit/ManifoldKit(?:\.git)?(?=")')
 
 
 class PinError(Exception):
@@ -89,6 +91,40 @@ def raw_text(url: str) -> str:
         raise PinError(f"cannot fetch {url}: {exc}") from exc
 
 
+def core_requirement(manifest: str) -> str:
+    """Read the requirement from the ManifoldKit package entry only."""
+    for entry in re.finditer(r"\.package\s*\(", manifest):
+        depth = 1
+        quoted = False
+        escaped = False
+        end = entry.end()
+        for end in range(entry.end(), len(manifest)):
+            character = manifest[end]
+            if escaped:
+                escaped = False
+            elif character == "\\" and quoted:
+                escaped = True
+            elif character == '"':
+                quoted = not quoted
+            elif not quoted:
+                if character == "(":
+                    depth += 1
+                elif character == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+        if depth:
+            raise PinError("unbalanced .package entry in companion manifest")
+        block = manifest[entry.start():end + 1]
+        if not CORE_URL.search(block):
+            continue
+        match = CORE_REQUIREMENT.search(block)
+        if match is None:
+            raise PinError("ManifoldKit dependency has no upToNextMinor requirement")
+        return match.group(1)
+    raise PinError("companion manifest has no ManifoldKit package dependency")
+
+
 def check_requirements(core: str, pins: dict[str, str], fetch=raw_text) -> None:
     core_url = f"https://raw.githubusercontent.com/ManifoldKit/ManifoldKit/v{core}/version.txt"
     tagged_version = fetch(core_url).strip()
@@ -97,10 +133,10 @@ def check_requirements(core: str, pins: dict[str, str], fetch=raw_text) -> None:
     for family, pin in pins.items():
         url = f"https://raw.githubusercontent.com/ManifoldKit/manifold-{family}/v{pin}/Package.swift"
         manifest = fetch(url)
-        match = CORE_REQUIREMENT.search(manifest)
-        if match is None:
-            raise PinError(f"manifold-{family} v{pin} has no readable core upToNextMinor requirement")
-        minimum = match.group(1)
+        try:
+            minimum = core_requirement(manifest)
+        except PinError as exc:
+            raise PinError(f"manifold-{family} v{pin}: {exc}") from exc
         actual = version(core)
         floor = version(minimum)
         if actual[:2] != floor[:2] or actual < floor:
@@ -129,7 +165,9 @@ def resolve_graph(core: str, pins: dict[str, str]) -> None:
         )
         (Path(directory) / "Sources" / "PinCheck").mkdir(parents=True)
         (Path(directory) / "Sources" / "PinCheck" / "PinCheck.swift").write_text("public struct PinCheck {}\n")
-        completed = subprocess.run(["swift", "package", "resolve", "--package-path", directory], check=False)
+        completed = subprocess.run(
+            ["swift", "package", "resolve", "--package-path", directory], check=False, timeout=540
+        )
         if completed.returncode:
             raise PinError(f"swift package resolve failed with exit {completed.returncode} for documented pins")
 
@@ -140,11 +178,26 @@ class GuardSabotageTests(unittest.TestCase):
             if url.endswith("/version.txt"):
                 return "0.79.0\n"
             if "manifold-llama" in url:
-                return '.package(url: "core", .upToNextMinor(from: "0.75.0"))'
-            return '.package(url: "core", .upToNextMinor(from: "0.79.0"))'
+                return '.package(url: "https://github.com/ManifoldKit/ManifoldKit", .upToNextMinor(from: "0.75.0"))'
+            return '.package(url: "https://github.com/ManifoldKit/ManifoldKit", .upToNextMinor(from: "0.79.0"))'
 
         with self.assertRaisesRegex(PinError, "requires core 0.75.0"):
             check_requirements("0.79.0", {"llama": "0.2.14", "mlx": "0.6.3"}, fetch)
+
+    def test_sabotage_unrelated_requirement_cannot_hide_stale_core(self) -> None:
+        manifest = (
+            '.package(url: "https://example.com/other", .upToNextMinor(from: "0.79.0")),\n'
+            '.package(url: "https://github.com/ManifoldKit/ManifoldKit", '
+            '.upToNextMinor(from: "0.75.0"))'
+        )
+        self.assertEqual(core_requirement(manifest), "0.75.0")
+        with self.assertRaisesRegex(PinError, "requires core 0.75.0"):
+            check_requirements("0.79.0", {"llama": "0.4.9"},
+                               lambda url: "0.79.0" if url.endswith("version.txt") else manifest)
+
+    def test_missing_core_dependency_is_reported(self) -> None:
+        with self.assertRaisesRegex(PinError, "no ManifoldKit package dependency"):
+            core_requirement('.package(url: "https://example.com/other", .upToNextMinor(from: "0.79.0"))')
 
     def test_missing_manifest_is_reported(self) -> None:
         def fetch(url: str) -> str:
@@ -155,6 +208,21 @@ class GuardSabotageTests(unittest.TestCase):
         with self.assertRaisesRegex(PinError, "HTTP 404"):
             check_requirements("0.79.0", {"llama": "0.4.9", "mlx": "0.6.3"}, fetch)
 
+    def test_sabotage_nightly_resolve_fails_on_unpublished_core(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "version.txt").write_text("0.80.0\n", encoding="utf-8")
+            pins = {family: [("README.md", 1, "0.4.9")] for family in FAMILIES}
+            with mock.patch.object(sys.modules[__name__], "ROOT", root), \
+                 mock.patch.object(sys.modules[__name__], "collect_pins", return_value=pins), \
+                 mock.patch.object(sys.modules[__name__], "check_requirements",
+                                   side_effect=UnpublishedCore("core tag is not published yet")), \
+                 mock.patch.object(sys.modules[__name__], "resolve_graph") as resolve:
+                self.assertEqual(main(["--resolve"]), 1)
+                self.assertEqual(main(["--allow-unpublished-core"]), 0)
+                self.assertEqual(main(["--resolve", "--allow-unpublished-core"]), 1)
+                resolve.assert_not_called()
+
     def test_unpublished_core_is_reported(self) -> None:
         def fetch(_url: str) -> str:
             raise UnpublishedCore("core tag is not published yet")
@@ -163,11 +231,13 @@ class GuardSabotageTests(unittest.TestCase):
             check_requirements("0.80.0", {"llama": "0.4.9", "mlx": "0.6.3"}, fetch)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resolve", action="store_true", help="also resolve the published SwiftPM graph")
     parser.add_argument("--self-test", action="store_true", help="run the guard's sabotage tests")
-    args = parser.parse_args()
+    parser.add_argument("--allow-unpublished-core", action="store_true",
+                        help="defer only the pre-publication release PR check")
+    args = parser.parse_args(argv)
     if args.self_test:
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(GuardSabotageTests)
         return 0 if unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful() else 1
@@ -179,6 +249,8 @@ def main() -> int:
         try:
             check_requirements(core, pins)
         except UnpublishedCore as exc:
+            if not args.allow_unpublished_core or args.resolve:
+                raise
             print(f"DEFERRED: {exc}; companion compatibility will run after core publication")
             return 0
         print(f"PASS: core {core}, llama {pins['llama']}, mlx {pins['mlx']} are tag-compatible")
@@ -186,6 +258,9 @@ def main() -> int:
             resolve_graph(core, pins)
             print("PASS: published core and companion pins resolve in one SwiftPM consumer")
         return 0
+    except subprocess.TimeoutExpired as exc:
+        print(f"::error::SwiftPM resolution timed out: {exc}", file=sys.stderr)
+        return 1
     except (PinError, OSError) as exc:
         print(f"::error::{exc}", file=sys.stderr)
         return 1
