@@ -21,7 +21,7 @@ This is **not** a multi-agent peer system. Agents are sequential and turn-scoped
 | Piece | Lives in | Role |
 |---|---|---|
 | ``ManifoldInference/AgentDefinition`` | `ManifoldInference` | Value type: `id`, `name`, `systemPrompt`, `description`, `allowedToolNames`. |
-| ``ManifoldInference/AgentHandoff`` | `ManifoldInference` | The detected transfer intent: `targetAgentID`, optional `payload`, and the triggering `sourceCall` (the `transfer_to_<name>` `ToolCall` itself — `nil` only via the source-compat 2-argument initializer). |
+| ``ManifoldInference/AgentHandoff`` | `ManifoldInference` | The detected transfer intent: `targetAgentID`, optional `payload`, and the triggering `sourceCall` (the `transfer_to_<name>` `ToolCall` itself; production detection supplies it, while callers without the original call may pass `nil`). |
 | ``ManifoldInference/HandoffDetectionResult`` | `ManifoldInference` | `regular(ToolCall)` vs `handoff(AgentHandoff)`. |
 | ``HandoffToolSource`` | `ManifoldRuntime` | ``SessionToolSource`` that synthesises one `transfer_to_<name>` tool per non-active agent. |
 | ``ManifoldInference/ChatSession/agents`` | `ManifoldInference` | The session's agent registry — a `[AgentDefinition]` snapshot of the SwiftData rows. |
