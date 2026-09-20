@@ -53,7 +53,9 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
     ///
     /// When `urlSession` is `nil` and the runtime kill-switch
     /// ``URLSessionProvider/networkDisabled`` is set, the underlying property
-    /// access traps. Use ``makeChecked(urlSession:)`` for a throwing variant
+    /// access returns a poisoned session (every request fails with
+    /// ``CloudBackendError/networkDisabled``), logging a warning — it does
+    /// not trap. Use ``makeChecked(urlSession:)`` for a throwing variant
     /// that surfaces the kill-switch as a recoverable error.
     public init(urlSession: URLSession? = nil) {
         // Adapter capabilities mirror what `OpenAIBackend.capabilities`
@@ -493,4 +495,3 @@ private final class WeakBackendBox: @unchecked Sendable {
     weak var value: OpenAIBackend?
     init(_ value: OpenAIBackend) { self.value = value }
 }
-
