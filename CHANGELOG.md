@@ -1,16 +1,51 @@
 # Changelog
 
-## Unreleased
+## [0.79.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.78.0...v0.79.0) (2026-09-20)
 
-### Features
+ManifoldKit 0.79 raises the deployment floor to iOS 26 and macOS 26, and requires authentication for the optional MCP HTTP host. It also makes bootstrap conflicts recoverable and strengthens conversation, tool, and fuzz diagnostics.
 
-- Raise the minimum deployment targets to iOS 26 and macOS 26. This is the
-  current n-1 floor; APIs introduced in 26.2 and 27 remain availability-gated.
+### Highlights
+
+#### Raise the deployment floor to iOS and macOS 26
+
+Apps linking ManifoldKit now need iOS 26 or macOS 26. The no-op `SystemAIProviderExtension` and `CoreAI` traits are removed; `Server` and `Macros` remain the opt-in traits. Update your app's deployment targets and remove those retired trait names; see the [platform migration guide](docs/MIGRATION-platform-floor-26.md) and [#2536](https://github.com/ManifoldKit/ManifoldKit/pull/2536).
+
+#### Authenticate the MCP HTTP host
+
+`MCPHostHTTPTransport` now requires a caller-supplied bearer token at construction and authenticates every request. It also checks loopback `Host` authority and rejects requests carrying an `Origin` header, so existing HTTP clients must supply the token and browser clients need a host-owned gateway. Generate a fresh token with a cryptographically secure source for each launch; see the [MCP HTTP migration guide](Sources/ManifoldMCPHost/ManifoldMCPHost.docc/Articles/MigratingMCPHTTPAuthentication.md) and [#2521](https://github.com/ManifoldKit/ManifoldKit/pull/2521).
+
+```swift
+import ManifoldMCPHost
+
+func makeHTTPHost(perLaunchToken: String) throws -> MCPHostHTTPTransport {
+    try MCPHostHTTPTransport(
+        port: 8765,
+        authorizationToken: perLaunchToken
+    )
+}
+```
+
+#### Archive overnight fuzz captures
+
+Set `MK_OVERNIGHT_CAPTURE_DIR` when running `fuzz-chat --session-scripts` to retain JSON captures for clean sessions as well as detector hits. Session UUIDs distinguish concurrent workers, and an archive write failure fails the campaign instead of reporting incomplete evidence as clean. See [#2541](https://github.com/ManifoldKit/ManifoldKit/pull/2541).
 
 ### Fixes
 
-- Reject overlapping bootstrap construction and direct configuration replacement with recoverable
-  `ManifoldBootstrapError` cases, while preserving a newer writer during failed rollback.
+- Report overlapping bootstrap construction and interleaved configuration replacement through recoverable `ManifoldBootstrapError` cases, preserving a newer configuration writer during rollback ([#2529](https://github.com/ManifoldKit/ManifoldKit/pull/2529)).
+- Refresh compression budgets after model switches and skip pre-turn compression for empty history ([#2533](https://github.com/ManifoldKit/ManifoldKit/pull/2533)).
+- Preserve durable message metadata when branching a session ([#2527](https://github.com/ManifoldKit/ManifoldKit/pull/2527)); warn when a handoff lacks the original source call needed to persist its transfer call and result ([#2540](https://github.com/ManifoldKit/ManifoldKit/pull/2540)).
+- Restore Foundation conversation history and update affected tests for Xcode 27 ([#2526](https://github.com/ManifoldKit/ManifoldKit/pull/2526)).
+- Surface tool-call diagnostics in scenario results and transcripts ([#2531](https://github.com/ManifoldKit/ManifoldKit/pull/2531)).
+- Exercise stop during generation and retain the resulting session replay evidence ([#2534](https://github.com/ManifoldKit/ManifoldKit/pull/2534)); forward session seeds to fuzz backends ([#2537](https://github.com/ManifoldKit/ManifoldKit/pull/2537)).
+
+### Documentation
+
+- Correct cloud-backend initializer comments about the network kill switch ([#2539](https://github.com/ManifoldKit/ManifoldKit/pull/2539)) and shorten the agent instruction chain while retaining its audit coverage ([#2510](https://github.com/ManifoldKit/ManifoldKit/pull/2510)).
+- Pin the local-inference example to released manifold-mlx 0.6.2 and manifold-llama 0.4.8, replacing the stale MLX branch requirement ([#2543](https://github.com/ManifoldKit/ManifoldKit/pull/2543)).
+
+### Tests
+
+- Verify immediate backend reuse after cancellation ([#2532](https://github.com/ManifoldKit/ManifoldKit/pull/2532)) and repair live backend qualification fixtures ([#2535](https://github.com/ManifoldKit/ManifoldKit/pull/2535)).
 
 ## [0.78.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.77.0...v0.78.0) (2026-09-10)
 
