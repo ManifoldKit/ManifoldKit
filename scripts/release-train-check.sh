@@ -73,6 +73,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+consumer_rows=$(python3 "$repo_root/scripts/consumer-registry.py" rows)
 drift_count=0
 
 note_drift() {
@@ -141,7 +142,9 @@ else
   readme_content="$(cat "$repo_root/README.md")"
 fi
 
+# fail-open-ok: a missing marker is reported below as README-pin drift.
 readme_pin_line="$(printf '%s\n' "$readme_content" | grep -m1 'x-release-please-version' || true)"
+# fail-open-ok: a missing version is reported below as README-pin drift.
 readme_pin_version="$(printf '%s\n' "$readme_pin_line" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 
 if [ -z "$readme_pin_version" ]; then
@@ -191,6 +194,7 @@ check_companion_pin() {
 
   # Companions differ on the trailing ".git" (manifold-eval has it, manifold-mlx/
   # manifold-llama don't) — match the url: prefix, not a specific suffix.
+  # fail-open-ok: a missing dependency is reported below as core-pin drift.
   pin_line="$(printf '%s\n' "$content" | grep -m1 'url: "https://github.com/ManifoldKit/ManifoldKit' || true)"
 
   if [ -z "$pin_line" ]; then
@@ -198,6 +202,7 @@ check_companion_pin() {
     return
   fi
 
+  # fail-open-ok: an unparseable version is reported below as core-pin drift.
   pin_version="$(printf '%s\n' "$pin_line" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
   if [ -z "$pin_version" ]; then
     note_drift "$repo" "core-pin" "found a ManifoldKit dependency line but could not extract a version: $pin_line"
@@ -219,9 +224,11 @@ check_companion_pin() {
   fi
 }
 
-check_companion_pin manifold-mlx no
-check_companion_pin manifold-llama no
-check_companion_pin manifold-eval yes
+while IFS=$'\t' read -r consumer pin bump_branch bump_match; do
+  require_exact=no
+  if [ "$pin" = "exact" ]; then require_exact=yes; fi
+  check_companion_pin "$consumer" "$require_exact"
+done <<< "$consumer_rows"
 
 # ---------------------------------------------------------------------------
 # Invariant 3: no stale open bump PR
@@ -287,19 +294,9 @@ print((now - created).days)
   fi
 }
 
-# manifold-mlx / manifold-llama have their own release-please (RELEASE.md:
-# "llama and mlx have release-please, so they get a tagged release the same
-# way core does"), so their stale-bump signal is the standard
-# release-please--branches--main PR.
-check_release_pr_age manifold-mlx "release-please--branches--main" exact "release-please"
-check_release_pr_age manifold-llama "release-please--branches--main" exact "release-please"
-# manifold-eval has NO release-please branch for core-pin bumps — its pin is
-# rewritten by its own core-bump.yml, which opens (and normally
-# auto-merges) a PR on an "auto/bump-manifoldkit-<tag>" branch. Checking the
-# release-please branch name here would always vacuously pass since eval
-# never opens one for this purpose (eval's separate release-please, added
-# for its own feat:/fix: work, is out of scope for the core-pin invariant).
-check_release_pr_age manifold-eval "auto/bump-manifoldkit-" prefix "core-bump"
+while IFS=$'\t' read -r consumer pin bump_branch bump_match; do
+  check_release_pr_age "$consumer" "$bump_branch" "$bump_match" "core-bump"
+done <<< "$consumer_rows"
 
 # ---------------------------------------------------------------------------
 echo ""

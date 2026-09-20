@@ -106,6 +106,11 @@ on:
       - "scripts/lint-plan-status.sh"
       - "scripts/extract-snippets.sh"
       - "scripts/snippet-skip-baseline.tsv"
+      - "scripts/consumer-registry.*"
+      - "scripts/tests/test_consumer_registry.py"
+      - "scripts/dispatch-core-release.sh"
+      - "scripts/companion-canary-check.sh"
+      - "scripts/release-train-check.sh"
   # Merge queue: `lint` is a required check, so it MUST report on the queue's
   # `merge_group` branch or the queue stalls. The content-check steps (actionlint,
   # pin-audit, known-issue, availability, readme) run; PR-only steps (commitlint,
@@ -872,6 +877,12 @@ jobs:
             exit 1
           fi
 
+      - name: consumer-registry — validate routing, docs and failure controls
+        if: always()
+        run: |
+          python3 scripts/consumer-registry.py check
+          python3 scripts/tests/test_consumer_registry.py
+
       # ── companion-canary-gate ─────────────────────────────────────────────
       # Also fires on merge_group even for a real release: the canary gate runs
       # only on pull_request by design (see the long comment below the dispatch
@@ -922,7 +933,7 @@ jobs:
       # passed here.
       #
       # `--dispatch` needs COMPANION_DISPATCH_TOKEN — a fine-grained PAT with
-      # contents read+write on manifold-mlx / manifold-llama, the same secret
+      # contents read+write on all registered consumers, the same secret
       # release-please.yml's `notify-companions` job uses (see its header
       # comment: "the default `secrets.GITHUB_TOKEN` is scoped to THIS
       # repository and cannot fire [cross-repo requests]" — that constraint
@@ -933,8 +944,8 @@ jobs:
         if: always() && github.event_name == 'pull_request' && steps.release_context.outputs.is_release == 'true'
         # Bounds the one step that can legitimately run for tens of minutes, so
         # a hang here is attributed to the dispatch wait rather than to `lint`
-        # as a whole. 45 = the script's own ~40-min worst-case poll ceiling
-        # (2 companions x 20 min) plus headroom for the freshness re-check.
+        # as a whole. The script shares one 20-minute poll window across
+        # all registered consumers; leave headroom for API/freshness checks.
         timeout-minutes: 45
         env:
           GH_TOKEN: ${{ secrets.COMPANION_DISPATCH_TOKEN }}
@@ -945,8 +956,8 @@ jobs:
             echo "::error::Without a fresh dispatch here this gate has no fresh evidence to grade, and a"
             echo "::error::downgrade to reading the last nightly would pass on a tree it never tested."
             echo "::error::Create/restore the fine-grained PAT documented in release-please.yml's"
-            echo "::error::notify-companions job — and note it needs Actions: read+write on manifold-mlx"
-            echo "::error::and manifold-llama for \`gh workflow run\`, which is a DIFFERENT scope from the"
+            echo "::error::notify-companions job — and note it needs Actions: read+write on every registered consumer"
+            echo "::error::for \`gh workflow run\`, which is a DIFFERENT scope from the"
             echo "::error::contents scope repository_dispatch uses."
             exit 1
           fi
@@ -970,7 +981,7 @@ jobs:
             echo "::error::script needs that read to resolve when the main tip actually merged; without it"
             echo "::error::it silently falls back to a +60min margin and can grade a stale canary as fresh."
             echo "::error::Grant the PAT contents:read on THIS repository as well as Actions:read+write"
-            echo "::error::(and contents:read+write) on manifold-mlx / manifold-llama."
+            echo "::error::(and contents:read+write) on every registered consumer."
             exit 1
           fi
 
