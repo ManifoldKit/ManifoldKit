@@ -9,6 +9,7 @@ fails closed and verifies the published graph after companion tags exist.
 from __future__ import annotations
 
 import argparse
+import io
 import re
 import subprocess
 import sys
@@ -17,6 +18,7 @@ import unittest
 from unittest import mock
 import urllib.error
 import urllib.request
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -218,9 +220,14 @@ class GuardSabotageTests(unittest.TestCase):
                  mock.patch.object(sys.modules[__name__], "check_requirements",
                                    side_effect=UnpublishedCore("core tag is not published yet")), \
                  mock.patch.object(sys.modules[__name__], "resolve_graph") as resolve:
-                self.assertEqual(main(["--resolve"]), 1)
-                self.assertEqual(main(["--allow-unpublished-core"]), 0)
-                self.assertEqual(main(["--resolve", "--allow-unpublished-core"]), 1)
+                errors = io.StringIO()
+                output = io.StringIO()
+                with redirect_stderr(errors), redirect_stdout(output):
+                    self.assertEqual(main(["--resolve"]), 1)
+                    self.assertEqual(main(["--allow-unpublished-core"]), 0)
+                    self.assertEqual(main(["--resolve", "--allow-unpublished-core"]), 1)
+                self.assertEqual(errors.getvalue().count("::error::core tag is not published yet"), 2)
+                self.assertIn("DEFERRED: core tag is not published yet", output.getvalue())
                 resolve.assert_not_called()
 
     def test_unpublished_core_is_reported(self) -> None:
