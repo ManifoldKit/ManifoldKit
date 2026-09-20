@@ -645,11 +645,11 @@ jobs:
   # here.
   doc-gates:
     runs-on: macos-26
-    # Step budgets sum to 30 min (20+10); checkout + Swift CI setup + the
+    # Step budgets sum to 40 min (20+10+10); checkout + Swift CI setup + the
     # issue-reporter step need headroom on top — a job-level timeout marks
     # steps `cancelled`, not `failure`, which would skip the `if: failure()`
     # reporter below (see cold-start).
-    timeout-minutes: 45
+    timeout-minutes: 55
     permissions:
       contents: read
       issues: write
@@ -672,6 +672,12 @@ jobs:
         timeout-minutes: 10
         run: bash scripts/cold-start-human.sh
 
+      - name: Resolve published companion install pins
+        id: companion-doc-pins
+        if: success() || failure()
+        timeout-minutes: 10
+        run: python3 scripts/check-companion-doc-pins.py --resolve
+
       - name: Open GitHub issue on failure
         # Creates a tracking issue so a nightly failure is visible without
         # relying on GitHub's email digest. De-duplication keys on the STABLE
@@ -684,6 +690,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DOC_SNIPPETS_FAILED: ${{ steps.doc-snippets.outcome == 'failure' }}
           COLD_START_HUMAN_FAILED: ${{ steps.cold-start-human.outcome == 'failure' }}
+          COMPANION_DOC_PINS_FAILED: ${{ steps.companion-doc-pins.outcome == 'failure' }}
         run: |
           set -euo pipefail
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -697,6 +704,7 @@ jobs:
           }
           add_if_failed "doc-snippets" "${DOC_SNIPPETS_FAILED}"
           add_if_failed "cold-start-human" "${COLD_START_HUMAN_FAILED}"
+          add_if_failed "companion-doc-pins" "${COMPANION_DOC_PINS_FAILED}"
           first_failed="${failed_list%%,*}"
 
           if [ -n "$first_failed" ]; then

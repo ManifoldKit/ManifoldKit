@@ -17,12 +17,12 @@ A macOS terminal program that:
 - **Target**: macOS 26, Swift 6, `swift run` from the terminal
 - **You may read**: ManifoldKit's `README.md`, anything under `docs/`, anything under `Sources/*/Documentation.docc/`, the package's `Package.swift`, and any public-facing markdown in the repo root.
 - **You may NOT read**: ManifoldKit's source files (`Sources/Manifold*/**/*.swift`) OR its test files (`Tests/**`). If you find yourself wanting to grep MK internals or peek at how tests construct types, **stop and log it in FRICTION.md** as a discoverability gap, then try to work around it from the public docs alone. This is the whole point of the exercise — we're testing whether the *public-facing* docs and API are sufficient. Tests are technically public but they're not where new developers should be reverse-engineering the API from.
-- **Backend choice is yours.** The user's machine has Ollama running at `localhost:11434` and several GGUF files on disk under `~/Documents/Models/`. You can also try MLX, Foundation, or any cloud backend. Pick whichever you can get working fastest from the public docs.
+- **Backend choice is yours.** Ollama may be installed but stopped. If you choose it, run `ollama list` first; if it cannot connect, start `ollama serve` in another terminal and retry. Confirm an installed model tag before building the CLI. Several GGUF files may be available under `~/Documents/Models/`. You can also try MLX, Foundation, or a cloud backend. Pick whichever you can get working fastest from the public docs. Record missing services, models, or sandbox access as environment friction rather than a ManifoldKit API failure.
 - **Budget**: ~30 minutes of focused work. If you're stuck on one problem for more than 3 substantive attempts, log it in FRICTION.md and pivot.
 
 ## Cold build time
 
-A fresh consumer of ManifoldKit cold-builds all transitive dependencies (huggingface, MLX, llama, etc.). The first `swift build` can take 5–10 minutes on Apple Silicon depending on which trait set you opt into. Subsequent builds are cached and fast.
+A fresh consumer of ManifoldKit resolves its core dependency graph; MLX and llama.cpp are separate companion packages and add their own dependencies only when selected. The first `swift build` can take 5–10 minutes on Apple Silicon depending on which trait set you opt into. Subsequent builds are cached and fast.
 
 Don't be alarmed by long initial build times. Log it as friction if it bothers you, but the dependency tree is what it is.
 
@@ -34,7 +34,7 @@ Your app lives at `./app/` relative to wherever this brief is. Create a SwiftPM 
 .package(name: "ManifoldKit", path: "<absolute path to the ManifoldKit repo containing this brief>")
 ```
 
-(Per CLAUDE.md, `.package(path:)` needs an explicit `name:` to work reliably.)
+(Per AGENTS.md, `.package(path:)` needs an explicit `name:` to work reliably.)
 
 ## Required behavior (acceptance criteria)
 
@@ -61,7 +61,7 @@ Start the file with this header, then append entries as you go. Log friction **a
 # Friction log — chat-cli archetype
 
 Agent: <your model name>
-Date: 2026-05-23
+Date: <today's date>
 ManifoldKit version: <from Package.swift or git tag>
 
 ---
@@ -71,7 +71,7 @@ ManifoldKit version: <from Package.swift or git tag>
 - **Expected**: <based on docs / API names, what you thought would happen>
 - **Actual**: <what happened — error, missing API, confusing behavior>
 - **Resolution**: <how you got past it, or "gave up and pivoted">
-- **Category**: DOC-MISSING | DOC-WRONG | API-DISCOVERABILITY | API-ERGONOMICS | API-GAP
+- **Category**: DOC-MISSING | DOC-WRONG | API-DISCOVERABILITY | API-ERGONOMICS | API-GAP | ENVIRONMENT
 - **Severity**: blocker | major | minor | papercut
 
 ## Entry 2

@@ -99,6 +99,7 @@ on:
       - "README.md"
       - "version.txt"
       - "scripts/check-readme.sh"
+      - "scripts/check-companion-doc-pins.py"
       - "scripts/audit-availability.sh"
       - "scripts/lint-docs-headers.sh"
       - "scripts/lint-doc-claims.sh"
@@ -592,6 +593,15 @@ jobs:
       - name: readme-lint — verify README install pin and API references
         if: always()
         run: scripts/check-readme.sh
+
+      # Version-pair drift was invisible to the core snippet compiler because
+      # companion manifests are separate packages. The release PR defers until
+      # its core tag exists; merge-group and later PRs check the published pair.
+      - name: companion-doc-pins — verify published install pairs
+        if: always()
+        run: |
+          python3 scripts/check-companion-doc-pins.py --self-test
+          python3 scripts/check-companion-doc-pins.py --allow-unpublished-core
 
       # ── secret-scan (trufflehog) ──────────────────────────────────────────
       - name: secret-scan — scan changed commits for leaked secrets

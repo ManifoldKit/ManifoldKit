@@ -51,12 +51,14 @@ dependencies: [
         url: "https://github.com/ManifoldKit/ManifoldKit.git",
         from: "0.79.0" // x-release-please-version
     ),
-    .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),  // GGUF
-    // .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"), // MLX
+    .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.4.9"),  // GGUF
+    // .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.6.3"), // MLX
 ],
 ```
 
 then add `.product(name: "ManifoldLlama", package: "manifold-llama")` (or `ManifoldMLX`) to your target and register the backend with `LlamaBackends.register(with: inference)` after the default registrars — §2 below shows the full shape. See [MIGRATION-0.48.md](MIGRATION-0.48.md) if you're coming from a trait-based 0.47 setup.
+
+For a local checkout of **both** packages, replace the two URL dependencies with `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")` and `.package(name: "manifold-llama", path: "/path/to/manifold-llama")`. Check that the companion checkout's `Package.swift` accepts the core checkout's minor version before building; an older companion branch can pin a different pre-1.0 minor.
 
 ### Granular vs umbrella imports for CLI targets
 
@@ -186,7 +188,7 @@ let package = Package(
             from: "0.79.0" // x-release-please-version
         ),
         // The GGUF backend lives in the manifold-llama companion package (v0.48).
-        .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),
+        .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.4.9"),
     ],
     targets: [
         .executableTarget(
@@ -411,7 +413,39 @@ For any HTTP-speaking provider — Ollama at `localhost:11434`, OpenAI, Anthropi
 
 > **No trait required.** Cloud backends (Ollama, OpenAI, Claude, LM Studio, custom endpoints) always compile since v0.48 — the former `Ollama`/`CloudSaaS` traits are retired. See [docs/FeatureMatrix.md](FeatureMatrix.md).
 
-> **Ollama-only evaluators:** The full `Package.swift` below links every compiled-in backend family so the same manifest works when you swap `.ollama` for `.openAI` or `.claude`. If you only need local Ollama, slim the target to `ManifoldInference` + `ManifoldOllama`, import only those two modules, and call `OllamaBackends.register(with:)` — see [`manifold-tools`](../Sources/manifold-tools/main.swift) for the in-repo shape.
+> **Ollama setup:** Run `ollama list` before `swift run`. If it cannot connect, start `ollama serve` in another terminal and retry. Pick a model tag shown by `ollama list`; a running service with no models still needs a model pulled or imported before this example can generate.
+
+> **Ollama-only evaluators:** The main example below links all compiled-in backend families so it can also serve OpenAI or Anthropic. For only local Ollama, use this complete two-product manifest instead. In the `main.swift` below, keep `import Foundation`, `import ManifoldInference`, and `import ManifoldOllama`, then register only `OllamaBackends`.
+
+**Ollama-only `Package.swift`:**
+
+```swift
+// swift-tools-version: 6.1
+import PackageDescription
+
+let package = Package(
+    name: "ChatCLIOllama",
+    platforms: [.macOS("26.0")],
+    products: [
+        .executable(name: "chat-cli-ollama", targets: ["ChatCLIOllama"]),
+    ],
+    dependencies: [
+        .package(
+            url: "https://github.com/ManifoldKit/ManifoldKit.git",
+            from: "0.79.0" // x-release-please-version
+        ),
+    ],
+    targets: [
+        .executableTarget(
+            name: "ChatCLIOllama",
+            dependencies: [
+                .product(name: "ManifoldInference", package: "ManifoldKit"),
+                .product(name: "ManifoldOllama", package: "ManifoldKit"),
+            ]
+        ),
+    ]
+)
+```
 
 **`Package.swift`:**
 
@@ -623,7 +657,7 @@ let package = Package(
             from: "0.79.0" // x-release-please-version
         ),
         // The MLX backend lives in the manifold-mlx companion package (v0.48).
-        .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"),
+        .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.6.3"),
     ],
     targets: [
         .executableTarget(
