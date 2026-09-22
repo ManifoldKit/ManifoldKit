@@ -147,9 +147,10 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    PR. A macOS 27 SDK compile on a macOS 26 host is compile evidence only; a
    macOS 27 runtime claim requires the same build on a macOS 27 host or VM.
 
-2. **Companion-canary gate — CI-enforced, hard-blocking, no override flag.**
+2. **Consumer-canary gates — CI-enforced, hard-blocking, no override flag.**
    `.github/workflows/lint.yml`'s `lint` job now runs
-   `scripts/companion-canary-check.sh` automatically once it detects a release
+   `scripts/companion-canary-check.sh` and `scripts/app-canary-check.py`
+   automatically once it detects a release
    in flight — which needs **both** that `version.txt` is valid SemVer and
    strictly newer than the latest published tag **and** that the change being
    validated modifies `version.txt` itself. The release PR satisfies the second
@@ -157,13 +158,20 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    unrelated PR firing the gates in the window after the release PR merges but
    before `release-please` cuts the tag.
 
-   **It runs on the `pull_request` event only** — in practice, when you push
-   the changelog rewrite in step 3 — using `--dispatch`, which triggers fresh
-   canary runs on both companions and waits for them. It needs the
-   `COMPANION_DISPATCH_TOKEN` repo secret. That PAT needs **Actions: read+write**
-   (and contents:read+write) on every entry in
-   `scripts/consumer-registry.json` **and
-   contents:read on this repository** — the script reads
+   **They run on the `pull_request` event only** — in practice, when you push
+   the changelog rewrite in step 3. The package adapter uses `--dispatch` to
+   trigger fresh package canaries. The application adapter resolves immutable
+   core-main and app-main commits, sends `manifoldkit-apps-canary`, and accepts
+   only the matching `manifold-apps-core-canary-<run id>` artifact from the
+   active default-branch workflow. A green run name is not evidence: its
+   metadata must report schema 1, `status: passed`, `exitCode: 0`, and both
+   exact commits.
+
+   Both adapters use the `COMPANION_DISPATCH_TOKEN` repo secret. For the Swift
+   packages, the PAT needs **Actions: read+write** and contents access. For
+   `manifold-apps`, repository dispatch needs **Contents: write** and grading
+   needs **Actions: read**. It also needs **contents:read on this repository** —
+   the package script reads
    `GET /repos/ManifoldKit/ManifoldKit/commits/{sha}/pulls` to resolve when
    `main`'s tip actually landed, and a companion-only PAT fails that preflight
    closed rather than silently falling back to a +60min freshness margin.
@@ -176,20 +184,28 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    the worked timeline).
 
    **Sequencing, so this doesn't surprise you:** the dispatch happens when you
-   push in step 3, not now, and it can take **up to 45 minutes** (it waits for
-   all registered consumer canaries). Budget for that before you expect to run step 4's
-   `--auto`. To front-run it, trigger the canaries by hand now and let them
-   build while you write the changelog:
+   push in step 3, not now. Package canaries have a 45-minute step ceiling; the
+   full hosted application gate has a 90-minute workflow ceiling and its
+   adapter waits up to 105 minutes. Budget for both before step 4's `--auto`.
+   To front-run the package canaries while writing the changelog:
 
    ```bash
    bash scripts/companion-canary-check.sh                # check last known result (fast, may read STALE)
    bash scripts/companion-canary-check.sh --dispatch      # trigger fresh runs and wait (slow, authoritative)
    ```
 
-   A red canary means core moved a seam a companion still depends on. Land the
-   companions' adaptation PRs in lockstep (§ "Companion pin-bump releases" in
-   AGENTS.md) before continuing — CI will refuse to let the release PR merge
-   otherwise.
+   A reviewed manual exact-pair application proof runs from the existing
+   `companion-compat.yml` workflow with `scope: app` and an immutable
+   `core_ref`. That path uses the repository's real secret context; a local
+   ambient PAT is not equivalent evidence. `scope: app` deliberately avoids
+   launching the unaffected package matrix.
+
+   A red package canary means core moved a package seam; land adaptations in
+   lockstep (§ "Companion pin-bump releases" in AGENTS.md). A red application
+   canary means the exact core/app pair failed its complete iOS or macOS build
+   and UI-test targets. Missing, stale, unauthorized, timed-out, malformed, or
+   wrong-pair app evidence is also red. CI refuses to let the release PR merge
+   in every case.
 
    **If it reds on STALE rather than FAIL**, the three causes, most to least
    likely: (a) nobody has force-pushed yet, so no dispatch has run — only bot

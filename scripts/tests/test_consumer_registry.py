@@ -104,7 +104,8 @@ class ConsumerRegistryTests(unittest.TestCase):
         self.assertEqual(self.run_script('dispatch-core-release.sh').returncode, 2)
 
     def test_new_consumer_reaches_all_release_paths(self):
-        self.rows.append({**self.rows[0], 'repo':'new-consumer'})
+        package = next(row for row in self.rows if row['kind'] == 'swift-package')
+        self.rows.append({**package, 'repo':'new-consumer'})
         self.path.write_text(json.dumps(self.rows))
         result = self.run_script('dispatch-core-release.sh')
         self.assertEqual(result.returncode, 0, result.stdout)
@@ -112,6 +113,8 @@ class ConsumerRegistryTests(unittest.TestCase):
         result = self.run_script('companion-canary-check.sh', '--dispatch')
         self.assertEqual(result.returncode, 0, result.stdout)
         for row in self.rows:
+            if row['kind'] != 'swift-package':
+                continue
             self.assertIn(row['repo'] + '  PASS', result.stdout)
         views = [c for c in self.calls() if c[:2] == ['run', 'view'] and 'conclusion,status,createdAt,url' in c]
         self.assertEqual(len(views), 4)
@@ -128,6 +131,8 @@ class ConsumerRegistryTests(unittest.TestCase):
         (self.root / 'version.txt').write_text('0.79.0')
         (self.root / 'readme.md').write_text('from: "0.79.0" // x-release-please-version')
         for row in self.rows:
+            if row['kind'] != 'swift-package':
+                continue
             pin = 'exact: "0.79.0"' if row['pin'] == 'exact' else '.upToNextMinor(from: "0.79.0")'
             (self.root / (row['repo'] + '-package.swift')).write_text('.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", ' + pin + ')')
             (self.root / (row['repo'] + '-open-prs.json')).write_text('[]')
@@ -158,7 +163,8 @@ class ConsumerRegistryTests(unittest.TestCase):
                 self.assertNotIn('  PASS', result.stdout)
 
     def test_release_dispatch_attempts_consumers_after_failure(self):
-        self.rows.append({**self.rows[0], 'repo':'after-eval'})
+        package = next(row for row in self.rows if row['kind'] == 'swift-package')
+        self.rows.append({**package, 'repo':'after-eval'})
         self.path.write_text(json.dumps(self.rows))
         result = self.run_script('dispatch-core-release.sh', scenario='dispatch-error')
         self.assertEqual(result.returncode, 1, result.stdout)
@@ -172,10 +178,58 @@ class ConsumerRegistryTests(unittest.TestCase):
         compat = (ROOT / '.github/workflows/companion-compat.yml').read_text()
         self.assertIn('python3 scripts/consumer-registry.py matrix', compat)
         self.assertIn('matrix: ${{ fromJSON(needs.consumers.outputs.matrix) }}', compat)
+        self.assertIn("if: inputs.scope != 'app'", compat)
+        self.assertIn("if: inputs.scope != 'packages'", compat)
+        self.assertIn('python3 scripts/app-canary-check.py --core-ref "$core_sha"', compat)
         lint = (ROOT / '.github/workflows/lint.yml').read_text()
         self.assertIn('python3 scripts/tests/test_consumer_registry.py', lint)
+        self.assertIn('python3 scripts/tests/test_app_canary.py', lint)
         self.assertIn('bash scripts/companion-canary-check.sh --dispatch', lint)
+        self.assertIn('python3 scripts/app-canary-check.py', lint)
         self.assertIn('merge_group:', lint)
+
+    def test_app_consumer_is_kind_routed_away_from_package_paths(self):
+        app = next(row for row in self.rows if row['kind'] == 'app-canary')
+        repos = subprocess.run(
+            ['python3', str(ROOT / 'scripts/consumer-registry.py'), 'repos'],
+            capture_output=True, text=True, check=True, timeout=10,
+        ).stdout.splitlines()
+        rows = subprocess.run(
+            ['python3', str(ROOT / 'scripts/consumer-registry.py'), 'rows'],
+            capture_output=True, text=True, check=True, timeout=10,
+        ).stdout
+        matrix = json.loads(subprocess.run(
+            ['python3', str(ROOT / 'scripts/consumer-registry.py'), 'matrix'],
+            capture_output=True, text=True, check=True, timeout=10,
+        ).stdout)
+        app_rows = subprocess.run(
+            ['python3', str(ROOT / 'scripts/consumer-registry.py'), 'app-rows'],
+            capture_output=True, text=True, check=True, timeout=10,
+        ).stdout
+        self.assertNotIn(app['repo'], repos)
+        self.assertNotIn(app['repo'], rows)
+        self.assertNotIn(app['repo'], matrix['companion'])
+        self.assertEqual(
+            app_rows.strip().split('\t'),
+            [app['repo'], app['workflow'], app['event_type'], app['artifact_prefix']],
+        )
+
+    def test_sabotage_cross_kind_fields_are_rejected(self):
+        package = next(row for row in self.rows if row['kind'] == 'swift-package')
+        app = next(row for row in self.rows if row['kind'] == 'app-canary')
+        malformed = [
+            {**package, 'workflow': app['workflow']},
+            {**app, 'pin': 'minor'},
+            {**app, 'event_type': 'Bad Event'},
+        ]
+        for row in malformed:
+            with self.subTest(row=row):
+                self.path.write_text(json.dumps([row]))
+                result = subprocess.run(
+                    ['python3', str(ROOT / 'scripts/consumer-registry.py'), '--registry', str(self.path), 'repos'],
+                    capture_output=True, text=True, timeout=10,
+                )
+                self.assertNotEqual(result.returncode, 0)
 
 
 if __name__ == '__main__':

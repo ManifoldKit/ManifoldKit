@@ -284,7 +284,7 @@ for p in "${CHANGED[@]}"; do
     # block below explicitly forbids for blanket use (#2290). Accepted here only
     # because it is bounded to edits of this one script, which are rare, and the
     # alternative is FuzzCIGateScriptTests first failing inside the merge queue.
-    scripts/consumer-registry.json|scripts/consumer-registry.py|scripts/tests/test_consumer_registry.py|scripts/dispatch-core-release.sh|scripts/companion-canary-check.sh|scripts/release-train-check.sh)
+    scripts/consumer-registry.json|scripts/consumer-registry.py|scripts/tests/test_consumer_registry.py|scripts/app-canary-check.py|scripts/tests/test_app_canary.py|scripts/dispatch-core-release.sh|scripts/companion-canary-check.sh|scripts/release-train-check.sh)
       changed_targets_add "ManifoldCoreTests"
       log "changed: $p → target ManifoldCoreTests (release tooling; registry regression tests also run in required lint)"
       continue

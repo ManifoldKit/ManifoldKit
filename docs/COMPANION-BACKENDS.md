@@ -157,19 +157,24 @@ public API but is intentionally shared with backend packages; don't reach for
 ## 4. Pin and release lifecycle
 
 The checked-in [consumer registry](../scripts/consumer-registry.json) drives
-release notifications, pre-release canaries, the compatibility matrix, and
-pin/bump freshness checks. Every entry must provide `canary.yml` on `main`,
-with `workflow_dispatch`, building and testing against core main. Missing,
-failed, incomplete, or stale results fail the release gate. The table below
-is validated in required lint; regenerate it with
+release notifications and compatibility evidence. Entries are kind-routed:
+Swift-package consumers provide `canary.yml` on `main` and participate in pin
+and bump checks, while the application consumer provides the documented
+`core-canary.yml` exact-pair artifact contract. An app is never sent through
+package pin, release, or matrix logic. Missing, failed, incomplete, stale, or
+identity-mismatched evidence fails the release gate. The table below is
+validated in required lint; regenerate it with
 `python3 scripts/consumer-registry.py docs` after changing the registry.
+The application-side trigger and artifact fields are documented at the
+[immutable canary contract](https://github.com/ManifoldKit/manifold-apps/blob/aa4bf255007133aacaa837bc80f00c01cc100478/docs/core-canary.md).
 
 <!-- consumer-registry:start -->
-| Consumer | Core pin | Bump branch |
-|---|---|---|
-| `manifold-mlx` | current minor | `release-please--branches--main` |
-| `manifold-llama` | current minor | `release-please--branches--main` |
-| `manifold-eval` | exact release | `auto/bump-manifoldkit-*` |
+| Consumer | Kind | Core pin | Bump branch / canary |
+|---|---|---|---|
+| `manifold-mlx` | swift-package | current minor | `release-please--branches--main` |
+| `manifold-llama` | swift-package | current minor | `release-please--branches--main` |
+| `manifold-eval` | swift-package | exact release | `auto/bump-manifoldkit-*` |
+| `manifold-apps` | app-canary | exact dispatched commit | `core-canary.yml` / `manifoldkit-apps-canary` |
 <!-- consumer-registry:end -->
 
 > **1.0 semantics.** Core and companion packages version independently —
