@@ -108,6 +108,8 @@ on:
       - "scripts/snippet-skip-baseline.tsv"
       - "scripts/consumer-registry.*"
       - "scripts/tests/test_consumer_registry.py"
+      - "scripts/app-canary-check.py"
+      - "scripts/tests/test_app_canary.py"
       - "scripts/dispatch-core-release.sh"
       - "scripts/companion-canary-check.sh"
       - "scripts/release-train-check.sh"
@@ -139,13 +141,11 @@ jobs:
     # This job had no explicit timeout and so inherited GitHub's 360-minute
     # default — an unbounded default wastes a runner slot and delays detection
     # of a hang (#2099's CI review makes the same point about release-please.yml).
-    # 60 is sized for the one genuinely slow step: companion-canary-gate's
-    # `--dispatch` path polls each companion for up to 20 min (POLL_SECONDS=30 ×
-    # POLL_MAX=40), so ~40 min worst case plus the ordinary lint steps. Every
-    # other run of this job finishes in a couple of minutes. The dispatch step
-    # carries its own tighter step-level timeout so a hang there is attributed
-    # to that step rather than reading as "lint hung".
-    timeout-minutes: 60
+    # Release PRs run the package gate (up to 45 min) and then the application
+    # gate (up to 110 min; its hosted macOS workflow has a 90-min ceiling).
+    # Ordinary lint runs still finish in minutes. Each slow step has its own
+    # tighter timeout so a hang is attributed to the responsible adapter.
+    timeout-minutes: 165
     steps:
       # Single checkout shared by every step. fetch-depth: 0 is required by:
       #   - trufflehog (diffs git history for secret leakage)
@@ -882,6 +882,7 @@ jobs:
         run: |
           python3 scripts/consumer-registry.py check
           python3 scripts/tests/test_consumer_registry.py
+          python3 scripts/tests/test_app_canary.py
 
       # ── companion-canary-gate ─────────────────────────────────────────────
       # Also fires on merge_group even for a real release: the canary gate runs
@@ -933,7 +934,7 @@ jobs:
       # passed here.
       #
       # `--dispatch` needs COMPANION_DISPATCH_TOKEN — a fine-grained PAT with
-      # contents read+write on all registered consumers, the same secret
+      # contents read+write on all registered Swift-package consumers, the same secret
       # release-please.yml's `notify-companions` job uses (see its header
       # comment: "the default `secrets.GITHUB_TOKEN` is scoped to THIS
       # repository and cannot fire [cross-repo requests]" — that constraint
@@ -945,7 +946,7 @@ jobs:
         # Bounds the one step that can legitimately run for tens of minutes, so
         # a hang here is attributed to the dispatch wait rather than to `lint`
         # as a whole. The script shares one 20-minute poll window across
-        # all registered consumers; leave headroom for API/freshness checks.
+        # all registered Swift-package consumers; leave headroom for API/freshness checks.
         timeout-minutes: 45
         env:
           GH_TOKEN: ${{ secrets.COMPANION_DISPATCH_TOKEN }}
@@ -956,7 +957,7 @@ jobs:
             echo "::error::Without a fresh dispatch here this gate has no fresh evidence to grade, and a"
             echo "::error::downgrade to reading the last nightly would pass on a tree it never tested."
             echo "::error::Create/restore the fine-grained PAT documented in release-please.yml's"
-            echo "::error::notify-companions job — and note it needs Actions: read+write on every registered consumer"
+            echo "::error::notify-companions job — and note it needs Actions: read+write on every registered Swift-package consumer"
             echo "::error::for \`gh workflow run\`, which is a DIFFERENT scope from the"
             echo "::error::contents scope repository_dispatch uses."
             exit 1
@@ -981,11 +982,27 @@ jobs:
             echo "::error::script needs that read to resolve when the main tip actually merged; without it"
             echo "::error::it silently falls back to a +60min margin and can grade a stale canary as fresh."
             echo "::error::Grant the PAT contents:read on THIS repository as well as Actions:read+write"
-            echo "::error::(and contents:read+write) on every registered consumer."
+            echo "::error::(and contents:read+write) on every registered Swift-package consumer."
             exit 1
           fi
 
           bash scripts/companion-canary-check.sh --dispatch
+
+      - name: "application-canary-gate (pull_request) — dispatch exact pair and verify artifact"
+        if: always() && github.event_name == 'pull_request' && steps.release_context.outputs.is_release == 'true'
+        timeout-minutes: 110
+        env:
+          GH_TOKEN: ${{ secrets.COMPANION_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::COMPANION_DISPATCH_TOKEN is not set — cannot dispatch the application canary."
+            exit 1
+          fi
+          # The adapter resolves immutable core-main and app-main SHAs before
+          # dispatch. The token remains in this trusted release-only step; it
+          # is never included in the payload or exposed to either checkout.
+          python3 scripts/app-canary-check.py
 
       # THERE IS DELIBERATELY NO merge_group COMPANION-CANARY STEP. An earlier
       # revision ran a read-only check here on the theory that merge_group is

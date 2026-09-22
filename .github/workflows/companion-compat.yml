@@ -13,8 +13,10 @@ name: Companion compat (pre-release)
 # fills the residual "core tag is out while companion main is briefly red" gap
 # for risky minors, on demand. Press it before merging a feat!/minor release PR.
 #
-# All three repos are public, so cross-repo checkout needs no token — the
-# default GITHUB_TOKEN suffices.
+# The package-compat job checks out only public repositories and receives no
+# cross-repository secret. The separate app job uses the owner-controlled PAT
+# only in its dispatch-and-grade step; requested core code executes later in
+# manifold-apps' ephemeral read-only runner and never receives that PAT.
 #
 # CodeQL `actions/untrusted-checkout/medium` fires on the `ref: ${{ inputs.core_ref }}`
 # checkout below. It is ACCEPTED AS LOW IMPACT — not a false positive. Be precise
@@ -82,6 +84,15 @@ on:
         required: true
         default: main
         type: string
+      scope:
+        description: "Consumer class to validate"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - packages
+          - app
 
 permissions:
   contents: read
@@ -100,8 +111,9 @@ jobs:
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
   compat:
     needs: consumers
+    if: inputs.scope != 'app'
     strategy:
-      # Report every registered consumer even if one breaks.
+      # Report every registered Swift-package consumer even if one breaks.
       fail-fast: false
       matrix: ${{ fromJSON(needs.consumers.outputs.matrix) }}
     runs-on: macos-26
@@ -137,3 +149,31 @@ jobs:
         run: |
           swift package edit manifoldkit --path ../core
           swift build
+
+  app:
+    if: inputs.scope != 'packages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    env:
+      REQUESTED_CORE_REF: ${{ inputs.core_ref }}
+    steps:
+      # This checkout is the reviewed workflow ref. The requested core ref is
+      # resolved as data below and is built only in manifold-apps' ephemeral,
+      # read-only canary runner. Code from that ref never executes in this job,
+      # where the cross-repository token is present.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Dispatch exact-pair application canary and verify evidence
+        env:
+          GH_TOKEN: ${{ secrets.COMPANION_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::COMPANION_DISPATCH_TOKEN is not set; cannot dispatch the application canary."
+            exit 1
+          fi
+          core_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${REQUESTED_CORE_REF}" --jq .sha)"
+          if ! printf '%s' "$core_sha" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Requested core ref did not resolve to a full commit SHA."
+            exit 1
+          fi
+          python3 scripts/app-canary-check.py --core-ref "$core_sha"

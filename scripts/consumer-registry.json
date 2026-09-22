@@ -1,5 +1,6 @@
 [
-  {"repo": "manifold-mlx", "pin": "minor", "bump_branch": "release-please--branches--main", "bump_match": "exact"},
-  {"repo": "manifold-llama", "pin": "minor", "bump_branch": "release-please--branches--main", "bump_match": "exact"},
-  {"repo": "manifold-eval", "pin": "exact", "bump_branch": "auto/bump-manifoldkit-", "bump_match": "prefix"}
+  {"kind": "swift-package", "repo": "manifold-mlx", "pin": "minor", "bump_branch": "release-please--branches--main", "bump_match": "exact"},
+  {"kind": "swift-package", "repo": "manifold-llama", "pin": "minor", "bump_branch": "release-please--branches--main", "bump_match": "exact"},
+  {"kind": "swift-package", "repo": "manifold-eval", "pin": "exact", "bump_branch": "auto/bump-manifoldkit-", "bump_match": "prefix"},
+  {"kind": "app-canary", "repo": "manifold-apps", "workflow": "core-canary.yml", "event_type": "manifoldkit-apps-canary", "artifact_prefix": "manifold-apps-core-canary-"}
 ]
