@@ -192,6 +192,16 @@ def validate_archive(path: Path, expected_app: str, expected_core: str) -> dict[
         raise CanaryError("canary metadata is malformed") from error
     if not isinstance(metadata, dict):
         raise CanaryError("canary metadata must be an object")
+    schema_version = metadata.get("schemaVersion")
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version != 1
+    ):
+        raise CanaryError("canary metadata has an unsupported schema version")
+    exit_code = metadata.get("exitCode")
+    if isinstance(exit_code, bool) or not isinstance(exit_code, int):
+        raise CanaryError("canary metadata has an invalid exit code")
     app = metadata.get("app")
     core = metadata.get("core")
     if not isinstance(app, dict) or not isinstance(core, dict):
@@ -202,11 +212,6 @@ def validate_archive(path: Path, expected_app: str, expected_core: str) -> dict[
         raise PairMismatch(
             f"canary artifact tested the wrong pair (app={app_sha}, core={core_sha})"
         )
-    if metadata.get("schemaVersion") != 1:
-        raise CanaryError("canary metadata has an unsupported schema version")
-    exit_code = metadata.get("exitCode")
-    if isinstance(exit_code, bool) or not isinstance(exit_code, int):
-        raise CanaryError("canary metadata has an invalid exit code")
     return metadata
 
 

@@ -172,12 +172,24 @@ class AppCanaryTests(unittest.TestCase):
             (metadata(app={"commit": "b" * 40}), "wrong pair"),
             (metadata(core={"commit": "d" * 40}), "wrong pair"),
             (metadata(schemaVersion=2), "schema"),
+            (metadata(schemaVersion=True), "schema"),
+            (metadata(schemaVersion=1.0), "schema"),
+            (metadata(schemaVersion="1"), "schema"),
             (metadata(exitCode=True), "exit code"),
         )
         for payload, message in cases:
             with self.subTest(message=message):
                 with self.assertRaisesRegex(app_canary.CanaryError, message):
                     app_canary.validate_archive(self.make_archive(payload), APP_SHA, CORE_SHA)
+
+    def test_malformed_other_pair_is_not_skipped_as_concurrent_evidence(self):
+        payload = metadata(
+            schemaVersion=True,
+            core={"commit": "d" * 40},
+        )
+        with self.assertRaisesRegex(app_canary.CanaryError, "schema") as error:
+            app_canary.validate_archive(self.make_archive(payload), APP_SHA, CORE_SHA)
+        self.assertNotIsInstance(error.exception, app_canary.PairMismatch)
 
     def test_archive_rejects_missing_duplicate_and_traversal_metadata(self):
         cases = (
