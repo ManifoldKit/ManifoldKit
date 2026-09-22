@@ -197,13 +197,15 @@ The application-side trigger and artifact fields are documented at the
   shipped a matching `repository_dispatch: [core-release]` listener, so wire
   the listener and the dispatch target together.
 - **Canary against core `main` before a risky release.** `companion-compat.yml`
-  is an on-demand (`workflow_dispatch`) job that checks out all registered
-  consumer repos and builds each against an arbitrary core ref (default `main`) via
-  `swift package edit`, catching a breaking seam change (e.g. a new
+  is an on-demand (`workflow_dispatch`) job. Its package scope checks out all
+  registered Swift-package consumers and builds each against an arbitrary core
+  ref (default `main`) via `swift package edit`, catching a breaking seam change (e.g. a new
   non-frozen `GenerationEvent` case) before it ships in a tag. It's not a
   required gate — the breaking change usually lands on `main` before the
   release PR exists, so there's nothing on that PR's diff to gate — press the
-  button by hand before merging a `feat!`/minor release PR.
+  button by hand before merging a `feat!`/minor release PR. Its app scope
+  dispatches the exact core ref to `manifold-apps` and grades the exact-pair
+  terminal artifact without running the package matrix.
 - **Conventional Commits + release-please**, same as core: `feat:`/`fix:`
   drive the companion's own version bump; companion release notes are
   hand-rewritten (Prisma-style Highlights), not auto-published verbatim.

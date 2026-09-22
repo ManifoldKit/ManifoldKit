@@ -113,7 +113,7 @@ jobs:
     needs: consumers
     if: inputs.scope != 'app'
     strategy:
-      # Report every registered consumer even if one breaks.
+      # Report every registered Swift-package consumer even if one breaks.
       fail-fast: false
       matrix: ${{ fromJSON(needs.consumers.outputs.matrix) }}
     runs-on: macos-26

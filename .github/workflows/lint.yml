@@ -934,7 +934,7 @@ jobs:
       # passed here.
       #
       # `--dispatch` needs COMPANION_DISPATCH_TOKEN — a fine-grained PAT with
-      # contents read+write on all registered consumers, the same secret
+      # contents read+write on all registered Swift-package consumers, the same secret
       # release-please.yml's `notify-companions` job uses (see its header
       # comment: "the default `secrets.GITHUB_TOKEN` is scoped to THIS
       # repository and cannot fire [cross-repo requests]" — that constraint
@@ -946,7 +946,7 @@ jobs:
         # Bounds the one step that can legitimately run for tens of minutes, so
         # a hang here is attributed to the dispatch wait rather than to `lint`
         # as a whole. The script shares one 20-minute poll window across
-        # all registered consumers; leave headroom for API/freshness checks.
+        # all registered Swift-package consumers; leave headroom for API/freshness checks.
         timeout-minutes: 45
         env:
           GH_TOKEN: ${{ secrets.COMPANION_DISPATCH_TOKEN }}
@@ -957,7 +957,7 @@ jobs:
             echo "::error::Without a fresh dispatch here this gate has no fresh evidence to grade, and a"
             echo "::error::downgrade to reading the last nightly would pass on a tree it never tested."
             echo "::error::Create/restore the fine-grained PAT documented in release-please.yml's"
-            echo "::error::notify-companions job — and note it needs Actions: read+write on every registered consumer"
+            echo "::error::notify-companions job — and note it needs Actions: read+write on every registered Swift-package consumer"
             echo "::error::for \`gh workflow run\`, which is a DIFFERENT scope from the"
             echo "::error::contents scope repository_dispatch uses."
             exit 1
@@ -982,7 +982,7 @@ jobs:
             echo "::error::script needs that read to resolve when the main tip actually merged; without it"
             echo "::error::it silently falls back to a +60min margin and can grade a stale canary as fresh."
             echo "::error::Grant the PAT contents:read on THIS repository as well as Actions:read+write"
-            echo "::error::(and contents:read+write) on every registered consumer."
+            echo "::error::(and contents:read+write) on every registered Swift-package consumer."
             exit 1
           fi
 

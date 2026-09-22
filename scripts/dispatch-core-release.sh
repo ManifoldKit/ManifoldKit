@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dispatch every registered consumer, aggregating failures instead of stopping early.
+# Dispatch every registered Swift-package consumer, aggregating failures.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -z "${TAG_NAME:-}" ] || [ -z "${GH_TOKEN:-}" ]; then
@@ -21,4 +21,4 @@ if [ -n "$failed" ]; then
     echo "ERROR: core-release dispatch failed for:${failed}" >&2
     exit 1
 fi
-echo "All registered consumers dispatched for ${TAG_NAME}."
+echo "All registered Swift-package consumers dispatched for ${TAG_NAME}."

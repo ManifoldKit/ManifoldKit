@@ -97,6 +97,28 @@ class AppCanaryTests(unittest.TestCase):
         self.assertIn("app=" + APP_SHA, result)
         self.assertIn("core=" + CORE_SHA, result)
 
+    def test_concurrent_wrong_pair_is_skipped_before_intended_pair(self):
+        wrong_pair = app_canary.PairMismatch(
+            "canary artifact tested the wrong pair (app=" + APP_SHA + ", core=" + ("d" * 40) + ")"
+        )
+        with mock.patch.object(app_canary, "list_run_ids", return_value={101, 202, 203}), \
+             mock.patch.object(app_canary, "gh_json", side_effect=[run_payload(id=202), run_payload(id=203, html_url="https://github.com/ManifoldKit/manifold-apps/actions/runs/203")]), \
+             mock.patch.object(app_canary, "download_metadata", side_effect=[wrong_pair, metadata()]):
+            result = self.wait()
+        self.assertIn("canary 203", result)
+
+    def test_only_wrong_pair_times_out_without_accepting_it(self):
+        wrong_pair = app_canary.PairMismatch(
+            "canary artifact tested the wrong pair (app=" + APP_SHA + ", core=" + ("d" * 40) + ")"
+        )
+        with mock.patch.object(app_canary, "list_run_ids", return_value={101, 202}), \
+             mock.patch.object(app_canary, "gh_json", return_value=run_payload()), \
+             mock.patch.object(app_canary, "download_metadata", side_effect=wrong_pair), \
+             mock.patch.object(app_canary.time, "monotonic", side_effect=[0, 0, 2, 2]), \
+             mock.patch.object(app_canary.time, "sleep"):
+            with self.assertRaisesRegex(app_canary.CanaryError, "timed out"):
+                self.wait()
+
     def test_sabotage_missing_stale_and_pending_runs_timeout(self):
         scenarios = {
             "missing": ({101}, None),

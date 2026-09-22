@@ -29,6 +29,10 @@ class CanaryError(RuntimeError):
     pass
 
 
+class PairMismatch(CanaryError):
+    """Valid evidence for a different dispatch racing in the same workflow."""
+
+
 def load_registry(path: Path) -> list[dict[str, str]]:
     spec = importlib.util.spec_from_file_location("consumer_registry", REGISTRY_PATH)
     if spec is None or spec.loader is None:
@@ -195,7 +199,7 @@ def validate_archive(path: Path, expected_app: str, expected_core: str) -> dict[
     app_sha = require_sha(app.get("commit"), "canary app commit")
     core_sha = require_sha(core.get("commit"), "canary core commit")
     if app_sha != expected_app or core_sha != expected_core:
-        raise CanaryError(
+        raise PairMismatch(
             f"canary artifact tested the wrong pair (app={app_sha}, core={core_sha})"
         )
     if metadata.get("schemaVersion") != 1:
@@ -264,6 +268,13 @@ def wait_for_result(
             conclusion = run.get("conclusion")
             try:
                 metadata = download_metadata(repo, run_id, artifact_prefix, app_sha, core_sha)
+            except PairMismatch as error:
+                inspected.add(run_id)
+                print(
+                    f"SKIP: fresh trusted run {run_id} belongs to another exact pair: {error}",
+                    file=sys.stderr,
+                )
+                continue
             except CanaryError as error:
                 raise CanaryError(
                     f"app canary run {run_id} ({conclusion}) at {url}: {error}"
