@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 #if canImport(Metal)
 import Metal
 #endif
@@ -532,12 +537,18 @@ public enum HardwareRequirements {
         /// `.gguf` paths visited that failed size bounds or regular-file checks.
         public let rejectedGGUFFileCount: Int
         public let scannedDirectoryCount: Int
+        /// Existing directories whose contents could not be read.
+        public let unreadableDirectoryCount: Int
         public let maxDepth: Int
 
         /// Message suitable for `XCTSkip` / log lines when discovery yields no model.
         public var skipMessage: String {
             if acceptedCount > 0 {
                 return "Discovered \(acceptedCount) loadable GGUF model(s)."
+            }
+            if unreadableDirectoryCount > 0 {
+                return "Could not read \(unreadableDirectoryCount) GGUF search director\(unreadableDirectoryCount == 1 ? "y" : "ies") "
+                    + "(scanned \(scannedDirectoryCount) directories to depth \(maxDepth))."
             }
             if rejectedGGUFFileCount > 0 {
                 return "Found \(rejectedGGUFFileCount) .gguf file(s) but none were loadable "
@@ -589,6 +600,7 @@ public enum HardwareRequirements {
         var results: [GGUFModelCandidate] = []
         var rejectedGGUFFileCount = 0
         var scannedDirectoryCount = 0
+        var unreadableDirectoryCount = 0
         for dir in searchDirs {
             walkGGUFModelCandidates(
                 at: dir,
@@ -599,7 +611,8 @@ public enum HardwareRequirements {
                 maximumModelSize: maximumModelSize,
                 results: &results,
                 rejectedGGUFFileCount: &rejectedGGUFFileCount,
-                scannedDirectoryCount: &scannedDirectoryCount
+                scannedDirectoryCount: &scannedDirectoryCount,
+                unreadableDirectoryCount: &unreadableDirectoryCount
             )
         }
         let ordered = sortedUniqueGGUFCandidates(results)
@@ -607,6 +620,7 @@ public enum HardwareRequirements {
             acceptedCount: ordered.count,
             rejectedGGUFFileCount: rejectedGGUFFileCount,
             scannedDirectoryCount: scannedDirectoryCount,
+            unreadableDirectoryCount: unreadableDirectoryCount,
             maxDepth: ggufDiscoveryMaxDepth
         )
         return (ordered, diagnostics)
@@ -621,18 +635,50 @@ public enum HardwareRequirements {
         maximumModelSize: Int64?,
         results: inout [GGUFModelCandidate],
         rejectedGGUFFileCount: inout Int,
-        scannedDirectoryCount: inout Int
+        scannedDirectoryCount: inout Int,
+        unreadableDirectoryCount: inout Int
     ) {
         guard depth <= maxDepth else { return }
+        // `stat` lets us treat absent roots as normal without throwing through
+        // Foundation. A non-existence check with FileManager alone also hides
+        // permission failures, which should remain visible in diagnostics.
+        var fileStatus = stat()
+        #if canImport(Darwin)
+        let status = directory.path.withCString { Darwin.fstatat(AT_FDCWD, $0, &fileStatus, 0) }
+        #else
+        let status = directory.path.withCString { Glibc.fstatat(AT_FDCWD, $0, &fileStatus, 0) }
+        #endif
+        if status != 0 {
+            let code = errno
+            if code == ENOENT || code == ENOTDIR { return }
+            unreadableDirectoryCount += 1
+            fputs("HardwareRequirements.findGGUFModel: cannot inspect \(directory.path): \(String(cString: strerror(code)))\n", stderr)
+            return
+        }
+        guard (fileStatus.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR) else { return }
         scannedDirectoryCount += 1
-        guard let contents = try? fileManager.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else { return }
+        let contents: [URL]
+        do {
+            contents = try fileManager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .fileSizeKey],
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            unreadableDirectoryCount += 1
+            fputs("HardwareRequirements.findGGUFModel: cannot read \(directory.path): \(error)\n", stderr)
+            return
+        }
 
         for candidate in contents {
             if candidate.pathExtension.lowercased() == "gguf" {
+                // Vision projection sidecars have valid GGUF headers and can be
+                // smaller than the language model, but llama cannot generate
+                // text from their `clip` architecture. Explicit path overrides
+                // still validate through `isValidGGUFModel` unchanged.
+                if candidate.deletingPathExtension().lastPathComponent.lowercased().hasPrefix("mmproj") {
+                    continue
+                }
                 if let model = ggufModelCandidate(
                     candidate,
                     minimumModelSize: minimumModelSize,
@@ -658,7 +704,8 @@ public enum HardwareRequirements {
                 maximumModelSize: maximumModelSize,
                 results: &results,
                 rejectedGGUFFileCount: &rejectedGGUFFileCount,
-                scannedDirectoryCount: &scannedDirectoryCount
+                scannedDirectoryCount: &scannedDirectoryCount,
+                unreadableDirectoryCount: &unreadableDirectoryCount
             )
         }
     }

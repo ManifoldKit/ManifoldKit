@@ -305,11 +305,113 @@ final class HardwareRequirementsGGUFTests: XCTestCase {
         XCTAssertFalse(HardwareRequirements.isValidGGUFModel(tiny, minimumModelSize: 1, maximumModelSize: 0))
     }
 
+    func test_discoverGGUFModels_missingRootBesideModel() {
+        let missing = tempDirectory.appendingPathComponent("missing", isDirectory: true)
+        let grouped = createGGUFFile("gguf/Local/model.gguf")
+
+        let result = HardwareRequirements.discoverGGUFModelsWithDiagnostics(
+            in: [missing, tempDirectory],
+            minimumModelSize: 1
+        )
+
+        XCTAssertEqual(result.models.map(\.standardizedFileURL.path), [grouped.standardizedFileURL.path])
+        XCTAssertEqual(result.diagnostics.scannedDirectoryCount, 3)
+        XCTAssertEqual(result.diagnostics.unreadableDirectoryCount, 0)
+    }
+
+    // Sabotage-evidence:
+    //   M1: disable the `mmproj` exclusion → selects the smaller projector;
+    //       the URL assertion fails (verified 2026-09-23).
+    //   M2: change the expected URL to the projector → the URL assertion fails.
+    //   M3: no hardware capability gate; this isolated fixture always runs.
+    func test_findGGUFModel_skipsProjectorSidecarAndSelectsGroupedLanguageModel() {
+        let missing = tempDirectory.appendingPathComponent("missing", isDirectory: true)
+        let projector = createGGUFFile("gguf/Qwen3-VL/mmproj-Qwen3-VL.gguf", size: 4)
+        let languageModel = createGGUFFile("gguf/Qwen3-VL/Qwen3-VL-Q4.gguf", size: 12)
+
+        let selected = HardwareRequirements.findGGUFModel(
+            in: [missing, tempDirectory],
+            nameContains: "Qwen3-VL",
+            minimumModelSize: 1
+        )
+
+        XCTAssertEqual(selected?.standardizedFileURL.path, languageModel.standardizedFileURL.path)
+        XCTAssertTrue(HardwareRequirements.isValidGGUFModel(projector, minimumModelSize: 1),
+                      "An explicit projector path must retain normal GGUF validation")
+    }
+
+    func test_discoverGGUFModels_unreadableExistingRootIsReported() throws {
+        let unreadable = tempDirectory.appendingPathComponent("unreadable", isDirectory: true)
+        try fm.createDirectory(at: unreadable, withIntermediateDirectories: true)
+        let fileManager = UnreadableGGUFDirectoryFileManager(unreadablePath: unreadable.path)
+
+        let result = HardwareRequirements.discoverGGUFModelsWithDiagnostics(
+            in: [unreadable],
+            fileManager: fileManager,
+            minimumModelSize: 1
+        )
+
+        XCTAssertTrue(result.models.isEmpty)
+        XCTAssertEqual(result.diagnostics.scannedDirectoryCount, 1)
+        XCTAssertEqual(result.diagnostics.unreadableDirectoryCount, 1)
+        XCTAssertTrue(result.diagnostics.skipMessage.contains("Could not read 1 GGUF search directory"),
+                      result.diagnostics.skipMessage)
+    }
+
+    func test_discoverGGUFModels_missingOnlyRootHasNoModelAndNoReadFailure() {
+        let missing = tempDirectory.appendingPathComponent("missing", isDirectory: true)
+        let result = HardwareRequirements.discoverGGUFModelsWithDiagnostics(
+            in: [missing],
+            minimumModelSize: 1
+        )
+
+        XCTAssertTrue(result.models.isEmpty)
+        XCTAssertEqual(result.diagnostics.scannedDirectoryCount, 0)
+        XCTAssertEqual(result.diagnostics.unreadableDirectoryCount, 0)
+        XCTAssertTrue(result.diagnostics.skipMessage.contains("No GGUF models found"),
+                      result.diagnostics.skipMessage)
+    }
+
+    func test_publicFindGGUFModel_liveDefaultRoots() throws {
+        let environment = ProcessInfo.processInfo.environment
+        try XCTSkipUnless(environment["MANIFOLD_DISCOVER_LOCAL_MODELS"] == "1",
+                          "Set MANIFOLD_DISCOVER_LOCAL_MODELS=1 to scan real model directories")
+        // Keep ambient LLAMA_TEST_MODEL out of this call: an absolute override
+        // bypasses discovery and would make the live path assertion vacuous.
+        guard let model = HardwareRequirements.findGGUFModel(
+            environment: ["MANIFOLD_DISCOVER_LOCAL_MODELS": "1"]
+        ) else {
+            throw XCTSkip("No GGUF models found under default search roots")
+        }
+        XCTAssertFalse(model.lastPathComponent.lowercased().hasPrefix("mmproj"))
+        XCTAssertTrue(fm.fileExists(atPath: model.path))
+    }
+
     @discardableResult
     private func createGGUFFile(_ relativePath: String, size: Int = 4) -> URL {
         let url = tempDirectory.appendingPathComponent(relativePath)
         try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         fm.createFile(atPath: url.path, contents: Data(count: size))
         return url
+    }
+}
+
+private final class UnreadableGGUFDirectoryFileManager: FileManager {
+    private let unreadablePath: String
+
+    init(unreadablePath: String) {
+        self.unreadablePath = unreadablePath
+        super.init()
+    }
+
+    override func contentsOfDirectory(
+        at url: URL,
+        includingPropertiesForKeys keys: [URLResourceKey]?,
+        options mask: FileManager.DirectoryEnumerationOptions = []
+    ) throws -> [URL] {
+        if url.path == unreadablePath {
+            throw CocoaError(.fileReadNoPermission)
+        }
+        return try super.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: mask)
     }
 }
