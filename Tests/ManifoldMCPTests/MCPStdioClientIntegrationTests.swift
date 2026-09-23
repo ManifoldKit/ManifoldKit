@@ -23,6 +23,22 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         try await assertExited(pid)
     }
 
+    func test_delayedChildStartupDoesNotConsumeInitializeBudget() async throws {
+        let (descriptor, pidPath) = try makeDescriptor(mode: "delayed_start", initializationTimeout: .seconds(2))
+        defer { removeMarker(pidPath) }
+        let client = MCPClient()
+        // This fixture waits four seconds before entering its protocol loop.
+        // Prepare it first so the two-second initialize budget measures MCP,
+        // not interpreter launch or test-runner scheduling.
+        let pid = try await prepareClientTransport(for: descriptor, pidPath: pidPath, client: client)
+        let source = try await client.connect(descriptor)
+        try await source.refreshTools()
+        let names = await source.currentToolNames()
+        XCTAssertEqual(names, ["echo"])
+        await client.disconnect(serverID: descriptor.id)
+        try await assertExited(pid)
+    }
+
     func test_unexpectedEOFRemovesSourceAndReportsTransportClosedOnce() async throws {
         let (descriptor, pidPath) = try makeDescriptor(mode: "exit_after_initialize")
         defer { removeMarker(pidPath) }
@@ -31,6 +47,7 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         let collector = recordEvents(from: client, into: recorder)
         defer { collector.cancel() }
 
+        let pid = try await prepareClientTransport(for: descriptor, pidPath: pidPath, client: client)
         _ = try await client.connect(descriptor)
         try await waitForTerminalEvent(recorder, serverID: descriptor.id)
         await client.disconnect(serverID: descriptor.id)
@@ -42,7 +59,7 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         }
         let sources = await client.sources()
         XCTAssertTrue(sources.isEmpty)
-        try await assertExited(try await readPID(pidPath))
+        try await assertExited(pid)
     }
 
     func test_malformedOutputRemovesSourceAndReportsFailureOnce() async throws {
@@ -53,6 +70,7 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         let collector = recordEvents(from: client, into: recorder)
         defer { collector.cancel() }
 
+        let pid = try await prepareClientTransport(for: descriptor, pidPath: pidPath, client: client)
         _ = try await client.connect(descriptor)
         try await waitForTerminalEvent(recorder, serverID: descriptor.id)
         await client.disconnect(serverID: descriptor.id)
@@ -65,7 +83,7 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         XCTAssertFalse(detail.isEmpty)
         let sources = await client.sources()
         XCTAssertTrue(sources.isEmpty)
-        try await assertExited(try await readPID(pidPath))
+        try await assertExited(pid)
     }
 
     func test_initializeTimeoutClosesProvisionalProcessAndReportsOneError() async throws {
@@ -76,13 +94,14 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         let collector = recordEvents(from: client, into: recorder)
         defer { collector.cancel() }
 
+        let pid = try await prepareClientTransport(for: descriptor, pidPath: pidPath, client: client)
         do {
             _ = try await withTimeout(.seconds(5)) { try await client.connect(descriptor) }
             XCTFail("Expected initialize timeout")
         } catch let error as MCPError {
             XCTAssertEqual(error, .requestTimeout)
         }
-        try await assertExited(try await readPID(pidPath))
+        try await assertExited(pid)
         let sources = await client.sources()
         XCTAssertTrue(sources.isEmpty)
         try await waitForTerminalEvent(recorder, serverID: descriptor.id)
@@ -104,6 +123,7 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
             let recorder = MCPEventRecorder()
             let collector = recordEvents(from: client, into: recorder)
             defer { collector.cancel() }
+            let pid = try await prepareClientTransport(for: descriptor, pidPath: pidPath, client: client)
 
             do {
                 _ = try await withTimeout(.seconds(4)) { try await client.connect(descriptor) }
@@ -119,7 +139,7 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
             XCTAssertTrue(sources.isEmpty)
             let events = await drainedEvents(client: client, collector: collector, recorder: recorder)
             XCTAssertEqual(events.filter { $0.isTerminal(for: descriptor.id) }.count, 1)
-            try await assertExited(try await readPID(pidPath))
+            try await assertExited(pid)
         }
     }
 
@@ -131,8 +151,9 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         let collector = recordEvents(from: client, into: recorder)
         defer { collector.cancel() }
 
+        let pid = try await prepareClientTransport(for: descriptor, pidPath: pidPath, client: client)
         let connectTask = Task { try await client.connect(descriptor) }
-        let pid = try await readPID(pidPath)
+        try await waitForInitializeReceived(at: pidPath)
         connectTask.cancel()
         do {
             _ = try await withTimeout(.seconds(5)) { try await connectTask.value }
@@ -163,8 +184,9 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         let collector = recordEvents(from: client, into: recorder)
         defer { collector.cancel() }
 
+        let pid = try await prepareClientTransport(for: descriptor, pidPath: pidPath, client: client)
         let connectTask = Task { try await client.connect(descriptor) }
-        let pid = try await readPID(pidPath)
+        try await waitForInitializeReceived(at: pidPath)
         await client.disconnect(serverID: descriptor.id)
         do {
             _ = try await withTimeout(.seconds(5)) { try await connectTask.value }
@@ -228,6 +250,7 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         let recorder = MCPEventRecorder()
         let collector = recordEvents(from: client, into: recorder)
         defer { collector.cancel() }
+        let pid = try await prepareClientTransport(for: descriptor, pidPath: pidPath, client: client)
 
         // Suspend connect at the actor hop after isClosed, then deliver the
         // session callback before publication. This is the race a fast child
@@ -244,7 +267,7 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
             XCTAssertEqual(error, .transportClosed)
         }
         await client.setBeforePublicationForTesting(nil)
-        try await assertExited(try await readPID(pidPath))
+        try await assertExited(pid)
         let sources = await client.sources()
         XCTAssertTrue(sources.isEmpty)
         try await waitForTerminalEvent(recorder, serverID: descriptor.id)
@@ -267,6 +290,7 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         let collector = recordEvents(from: client, into: recorder)
         defer { collector.cancel() }
         let gate = MCPBoundaryGate()
+        let oldPID = try await prepareClientTransport(for: oldDescriptor, pidPath: oldPIDPath, client: client)
 
         await client.setBeforePublicationForTesting { serverID, attemptID in
             await client.handleSessionClosed(
@@ -276,9 +300,11 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         }
         let oldConnect = Task { try await client.connect(oldDescriptor) }
         try await withTimeout(.seconds(3)) { await gate.waitUntilParked() }
-        let oldPID = try await readPID(oldPIDPath)
         await client.setBeforePublicationForTesting(nil)
 
+        let replacementPID = try await prepareClientTransport(
+            for: replacementDescriptor, pidPath: replacementPIDPath, client: client
+        )
         let replacement = try await client.connect(replacementDescriptor)
         await gate.release()
         do {
@@ -293,7 +319,7 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         XCTAssertEqual(liveIDs, [oldDescriptor.id])
 
         await client.disconnect(serverID: oldDescriptor.id)
-        try await assertExited(try await readPID(replacementPIDPath))
+        try await assertExited(replacementPID)
         let events = await drainedEvents(client: client, collector: collector, recorder: recorder)
         let relevant = events.filter {
             switch $0 {
@@ -318,11 +344,13 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         defer { removeMarker(oldPIDPath); removeMarker(newPIDPath) }
         let client = MCPClient()
         let gate = MCPBoundaryGate()
+        let oldPID = try await prepareClientTransport(for: oldDescriptor, pidPath: oldPIDPath, client: client)
         _ = try await client.connect(oldDescriptor)
         await client.setAfterDisconnectAllSnapshotForTesting { await gate.parkOnce() }
 
         let disconnectTask = Task { await client.disconnectAll() }
         try await withTimeout(.seconds(3)) { await gate.waitUntilParked() }
+        let newPID = try await prepareClientTransport(for: newDescriptor, pidPath: newPIDPath, client: client)
         _ = try await client.connect(newDescriptor)
         await gate.release()
         await disconnectTask.value
@@ -330,19 +358,16 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
 
         let serverIDs = await client.sources().map(\.serverID)
         XCTAssertEqual(serverIDs, [newDescriptor.id])
-        try await assertExited(try await readPID(oldPIDPath))
+        try await assertExited(oldPID)
         await client.disconnect(serverID: newDescriptor.id)
-        try await assertExited(try await readPID(newPIDPath))
+        try await assertExited(newPID)
     }
 
     func test_cancellationBeforeRequestRegistrationResumesPromptlyAndKeepsSlotFree() async throws {
         let (descriptor, pidPath) = try makeDescriptor(mode: "normal")
         defer { removeMarker(pidPath) }
-        guard case .stdio(let command) = descriptor.transport else {
-            return XCTFail("Expected stdio fixture")
-        }
         let gate = MCPBoundaryGate()
-        let transport = MCPStdioTransport(command: command, maxMessageBytes: 4_096)
+        let (transport, pid) = try await prepareTransport(for: descriptor, pidPath: pidPath)
         let session = MCPSession(
             descriptor: descriptor,
             transport: transport,
@@ -376,16 +401,13 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         // The cancelled request must not consume the one available slot.
         _ = try await session.sendRequest(method: "tools/list", params: nil)
         await session.close()
-        try await assertExited(try await readPID(pidPath))
+        try await assertExited(pid)
     }
 
     func test_precancelledSteadyStateRequestNeverRegisters() async throws {
         let (descriptor, pidPath) = try makeDescriptor(mode: "normal")
         defer { removeMarker(pidPath) }
-        guard case .stdio(let command) = descriptor.transport else {
-            return XCTFail("Expected stdio fixture")
-        }
-        let transport = MCPStdioTransport(command: command, maxMessageBytes: 4_096)
+        let (transport, pid) = try await prepareTransport(for: descriptor, pidPath: pidPath)
         let session = MCPSession(
             descriptor: descriptor,
             transport: transport,
@@ -412,7 +434,7 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         XCTAssertEqual(deferredCount, 0)
         _ = try await session.sendRequest(method: "tools/list", params: nil)
         await session.close()
-        try await assertExited(try await readPID(pidPath))
+        try await assertExited(pid)
     }
 
     private func makeDescriptor(
@@ -454,6 +476,60 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
         }
     }
 
+    private func prepareTransport(
+        for descriptor: MCPServerDescriptor,
+        pidPath: URL
+    ) async throws -> (MCPStdioTransport, Int32) {
+        guard case .stdio(let command) = descriptor.transport else {
+            throw MCPError.transportFailure("Expected stdio fixture")
+        }
+        let transport = MCPStdioTransport(command: command, maxMessageBytes: 4_096)
+        do {
+            try await transport.start()
+            let clock = ContinuousClock()
+            let deadline = clock.now + .seconds(15)
+            while true {
+                if let text = try? String(contentsOf: pidPath, encoding: .ascii),
+                   let pid = Int32(text) {
+                    addTeardownBlock { await transport.close() }
+                    return (transport, pid)
+                }
+                guard await transport.launchedProcessIsRunningForTesting else {
+                    throw MCPError.transportFailure("stdio fixture exited before writing its ready marker")
+                }
+                guard clock.now < deadline else {
+                    throw MCPError.transportFailure("stdio fixture did not reach its ready marker")
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        } catch {
+            await transport.close()
+            throw error
+        }
+    }
+
+    private func prepareClientTransport(
+        for descriptor: MCPServerDescriptor,
+        pidPath: URL,
+        client: MCPClient
+    ) async throws -> Int32 {
+        let (transport, pid) = try await prepareTransport(for: descriptor, pidPath: pidPath)
+        guard case .stdio(let command) = descriptor.transport else {
+            throw MCPError.transportFailure("Expected stdio fixture")
+        }
+        await client.usePrestartedStdioTransportForTesting(transport, command: command)
+        return pid
+    }
+
+    private func waitForInitializeReceived(at pidPath: URL) async throws {
+        let marker = URL(fileURLWithPath: pidPath.path + ".initialized")
+        try await withTimeout(.seconds(3)) {
+            while !FileManager.default.fileExists(atPath: marker.path) {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+    }
+
     private func assertExited(_ pid: Int32) async throws {
         try await withTimeout(.seconds(4)) {
             while kill(pid, 0) == 0 {
@@ -463,12 +539,22 @@ final class MCPStdioClientIntegrationTests: XCTestCase {
     }
 
     private func removeMarker(_ path: URL) {
-        do {
-            try FileManager.default.removeItem(at: path)
-        } catch where (error as NSError).code == NSFileNoSuchFileError {
-            // A failed spawn may have left no marker.
-        } catch {
-            XCTFail("Could not remove process marker: \(error)")
+        if FileManager.default.fileExists(atPath: path.path) {
+            do {
+                try FileManager.default.removeItem(at: path)
+            } catch let cleanupError where (cleanupError as NSError).code == NSFileNoSuchFileError {
+                // An early process exit may race the existence check.
+            } catch let cleanupError {
+                XCTFail("Could not remove process marker: \(cleanupError)")
+            }
+        }
+        let initialized = URL(fileURLWithPath: path.path + ".initialized")
+        if FileManager.default.fileExists(atPath: initialized.path) {
+            do {
+                try FileManager.default.removeItem(at: initialized)
+            } catch {
+                XCTFail("Could not remove initialize marker: \(error)")
+            }
         }
     }
 

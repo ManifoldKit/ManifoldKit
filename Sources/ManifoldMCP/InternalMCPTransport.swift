@@ -270,6 +270,8 @@ internal actor MCPStdioTransport: MCPTransport {
     private var readTask: Task<Void, Never>?
     private var isClosed = false
 
+    internal var launchedProcessIsRunningForTesting: Bool { process?.isRunning ?? false }
+
     init(
         command: MCPStdioCommand,
         maxMessageBytes: Int,

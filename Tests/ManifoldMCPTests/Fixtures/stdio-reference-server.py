@@ -9,6 +9,8 @@ import time
 
 mode = sys.argv[1]
 pid_path = sys.argv[2]
+if mode == "delayed_start":
+    time.sleep(4)
 if mode == "silent_ignore_termination":
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 with open(pid_path, "w", encoding="ascii") as marker:
@@ -17,6 +19,9 @@ with open(pid_path, "w", encoding="ascii") as marker:
 for line in sys.stdin.buffer:
     request = json.loads(line)
     method = request.get("method")
+    if method == "initialize" and mode in ("silent", "silent_ignore_termination"):
+        with open(pid_path + ".initialized", "w", encoding="ascii") as marker:
+            marker.write("ready")
     if mode in ("silent", "silent_ignore_termination") and method == "initialize":
         time.sleep(60)
         break

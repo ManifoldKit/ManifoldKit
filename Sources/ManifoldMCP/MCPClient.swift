@@ -53,6 +53,9 @@ public actor MCPClient {
     private var provisionalSessionsByID: [UUID: (attemptID: UUID, session: MCPSession)] = [:]
     private var attemptIDsByServerID: [UUID: UUID] = [:]
     private var closedProvisionalAttempts: [UUID: MCPDisconnectReason] = [:]
+    #if os(macOS) && !targetEnvironment(macCatalyst)
+    private var prestartedStdioTransportsForTesting: [MCPStdioCommand: MCPStdioTransport] = [:]
+    #endif
     internal var beforePublicationForTesting: (@Sendable (UUID, UUID) async -> Void)?
     internal var afterDisconnectAllSnapshotForTesting: (@Sendable () async -> Void)?
     private var networkPathTask: Task<Void, Never>?
@@ -330,6 +333,12 @@ public actor MCPClient {
         connectionEventContinuation.finish()
     }
 
+    #if os(macOS) && !targetEnvironment(macCatalyst)
+    internal func usePrestartedStdioTransportForTesting(_ transport: MCPStdioTransport, command: MCPStdioCommand) {
+        prestartedStdioTransportsForTesting[command] = transport
+    }
+    #endif
+
     /// The consent gate for `sampling/createMessage`: a server can only issue sampling
     /// requests when it has opted in (`allowsSampling`) AND the host has wired up a
     /// handler. Extracted to a `nonisolated static` function (rather than inlined in
@@ -462,6 +471,9 @@ public actor MCPClient {
             ))
         case .stdio(let command):
             #if os(macOS) && !targetEnvironment(macCatalyst)
+            if let prestarted = prestartedStdioTransportsForTesting.removeValue(forKey: command) {
+                return prestarted
+            }
             return MCPStdioTransport(
                 command: command,
                 maxMessageBytes: configuration.maxMessageBytes
