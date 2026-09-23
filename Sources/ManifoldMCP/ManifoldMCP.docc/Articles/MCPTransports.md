@@ -30,7 +30,16 @@ let descriptor = MCPServerDescriptor(
 
 `MCPClient` launches stdio servers with an argv-only subprocess policy:
 
+- JSON-RPC messages use one UTF-8 JSON document per newline on stdin/stdout
 - shell executables are rejected
 - inherited environment variables are scrubbed to a fixed allowlist
 - explicit `MCPStdioCommand.environment` entries are validated and overlaid
 - shutdown is deterministic (`terminate` with bounded wait, then `SIGKILL` fallback)
+
+When the child closes stdout or sends malformed output, the client removes its
+tool source and emits a terminal connection event. A failed or cancelled
+initialization closes the child before `connect` returns.
+
+Local servers that used the former `Content-Length` stdio framing must emit and
+accept newline-delimited JSON-RPC instead. This change does not affect HTTP
+`Content-Length` headers.

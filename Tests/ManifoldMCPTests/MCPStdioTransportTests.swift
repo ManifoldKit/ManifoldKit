@@ -6,6 +6,24 @@ import ManifoldTestSupport
 
 final class MCPStdioTransportTests: XCTestCase {
     #if os(macOS) && !targetEnvironment(macCatalyst)
+    func test_lineParserHandlesMultipleMessagesAcrossChunksAndEnforcesLimit() throws {
+        var parser = MCPStdioFrameCodec.Parser()
+        try parser.append(Data("{\"id\":1}\n{\"id\":".utf8), maxMessageBytes: 16)
+        XCTAssertEqual(try parser.nextFrame(maxMessageBytes: 16), Data("{\"id\":1}".utf8))
+        XCTAssertNil(try parser.nextFrame(maxMessageBytes: 16))
+        try parser.append(Data("2}\n".utf8), maxMessageBytes: 16)
+        XCTAssertEqual(try parser.nextFrame(maxMessageBytes: 16), Data("{\"id\":2}".utf8))
+        XCTAssertNil(try parser.nextFrame(maxMessageBytes: 16))
+
+        // A partial next line is counted from the buffer's current startIndex.
+        // Removing a prior line may leave Data with a nonzero backing offset.
+        XCTAssertThrowsError(
+            try parser.append(Data("12345678901234567".utf8), maxMessageBytes: 16)
+        ) { error in
+            XCTAssertEqual(error as? MCPError, .oversizeMessage(17))
+        }
+    }
+
     func test_sendFramesPayloadAndParsesResponse() async throws {
         // Python3 subprocess echo; skip if interpreter not at the standard path.
         try XCTSkipUnless(
@@ -13,30 +31,9 @@ final class MCPStdioTransportTests: XCTestCase {
             "python3 not found at /usr/bin/python3"
         )
         let echoScript = """
-        import re, sys
-
-        header = b""
-        while b"\\r\\n\\r\\n" not in header:
-            chunk = sys.stdin.buffer.read(1)
-            if not chunk:
-                sys.exit(0)
-            header += chunk
-
-        head, rest = header.split(b"\\r\\n\\r\\n", 1)
-        match = re.search(br"Content-Length:\\s*(\\d+)", head, re.IGNORECASE)
-        if not match:
-            sys.exit(1)
-        length = int(match.group(1))
-
-        body = rest
-        while len(body) < length:
-            chunk = sys.stdin.buffer.read(length - len(body))
-            if not chunk:
-                sys.exit(1)
-            body += chunk
-
-        framed = b"Content-Length: " + str(len(body)).encode("ascii") + b"\\r\\n\\r\\n" + body
-        sys.stdout.buffer.write(framed)
+        import sys
+        body = sys.stdin.buffer.readline().removesuffix(b"\\n")
+        sys.stdout.buffer.write(body + b"\\n")
         sys.stdout.buffer.flush()
         """
 
@@ -222,8 +219,7 @@ final class MCPStdioTransportTests: XCTestCase {
         let replyScript = """
         import sys
         body = b'{"jsonrpc":"2.0","id":1,"result":{}}'
-        header = b"Content-Length: " + str(len(body)).encode("ascii") + b"\\r\\n\\r\\n"
-        sys.stdout.buffer.write(header + body)
+        sys.stdout.buffer.write(body + b"\\n")
         sys.stdout.buffer.flush()
         """
         let transport = MCPStdioTransport(

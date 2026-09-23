@@ -9,14 +9,18 @@ import ManifoldInference
 private final class MCPClientSessionHook: MCPSessionStateHook, @unchecked Sendable {
     weak var client: MCPClient?
     let serverID: UUID
+    let attemptID: UUID
 
-    init(client: MCPClient, serverID: UUID) {
+    init(client: MCPClient, serverID: UUID, attemptID: UUID) {
         self.client = client
         self.serverID = serverID
+        self.attemptID = attemptID
     }
 
     func sessionDidTransition(_ state: MCPSessionState) async {
-        _ = state
+        if case .closed(let reason) = state {
+            await client?.handleSessionClosed(serverID: serverID, attemptID: attemptID, reason: reason)
+        }
     }
 
     func sessionDidSend(_ message: MCPJSONRPCMessage) async {
@@ -46,6 +50,11 @@ public actor MCPClient {
     private let connectionStateContinuation: AsyncStream<MCPConnectionState>.Continuation
     private var sourcesByID: [UUID: MCPToolSource] = [:]
     private var sessionsByID: [UUID: MCPSession] = [:]
+    private var provisionalSessionsByID: [UUID: (attemptID: UUID, session: MCPSession)] = [:]
+    private var attemptIDsByServerID: [UUID: UUID] = [:]
+    private var closedProvisionalAttempts: [UUID: MCPDisconnectReason] = [:]
+    internal var beforePublicationForTesting: (@Sendable (UUID, UUID) async -> Void)?
+    internal var afterDisconnectAllSnapshotForTesting: (@Sendable () async -> Void)?
     private var networkPathTask: Task<Void, Never>?
     private var lifecycleTask: Task<Void, Never>?
 
@@ -122,9 +131,11 @@ public actor MCPClient {
         connectionStateContinuation.yield(.connecting)
         connectionEventContinuation.yield(.connecting(serverID: descriptor.id))
 
+        var provisionalSession: MCPSession?
+        let attemptID = UUID()
         do {
             let transport = try makeTransport(for: descriptor, authorization: authorization)
-            let stateHook = MCPClientSessionHook(client: self, serverID: descriptor.id)
+            let stateHook = MCPClientSessionHook(client: self, serverID: descriptor.id, attemptID: attemptID)
             let samplingEnabled = Self.samplingEnabled(for: descriptor, configuration: configuration)
             let elicitationEnabled = Self.elicitationEnabled(for: descriptor, configuration: configuration)
             let session = MCPSession(
@@ -145,8 +156,21 @@ public actor MCPClient {
                 advertisesSampling: samplingEnabled,
                 advertisesElicitation: elicitationEnabled
             )
+            provisionalSession = session
+            attemptIDsByServerID[descriptor.id] = attemptID
+            provisionalSessionsByID[descriptor.id] = (attemptID, session)
 
-            let capabilities = try await session.start()
+            let capabilities = try await withTaskCancellationHandler {
+                try await session.start()
+            } onCancel: {
+                Task { await session.close(reason: .requested) }
+            }
+            try Task.checkCancellation()
+            if await session.isClosed { throw MCPError.transportClosed }
+            if let beforePublicationForTesting {
+                await beforePublicationForTesting(descriptor.id, attemptID)
+            }
+            guard attemptIDsByServerID[descriptor.id] == attemptID else { throw MCPError.transportClosed }
             let source = MCPToolSource(
                 serverID: descriptor.id,
                 displayName: descriptor.displayName,
@@ -167,50 +191,143 @@ public actor MCPClient {
                     )
                 }
             )
+            try Task.checkCancellation()
+            if provisionalSessionsByID[descriptor.id]?.attemptID == attemptID {
+                provisionalSessionsByID.removeValue(forKey: descriptor.id)
+            }
             sessionsByID[descriptor.id] = session
             sourcesByID[descriptor.id] = source
             connectionStateContinuation.yield(.ready)
             connectionEventContinuation.yield(.connected(serverID: descriptor.id, capabilities: capabilities))
             return source
         } catch let error as MCPError {
-            connectionStateContinuation.yield(.failed)
-            connectionEventContinuation.yield(.error(serverID: descriptor.id, error))
-            throw error
+            let closedReason = closedProvisionalAttempts.removeValue(forKey: attemptID)
+            let ownsAttempt = attemptIDsByServerID[descriptor.id] == attemptID
+            let shouldReport = provisionalSession == nil || ownsAttempt
+            if provisionalSessionsByID[descriptor.id]?.attemptID == attemptID {
+                provisionalSessionsByID.removeValue(forKey: descriptor.id)
+            }
+            if ownsAttempt {
+                attemptIDsByServerID.removeValue(forKey: descriptor.id)
+            }
+            let reportedError: MCPError = Task.isCancelled ? .cancelled : Self.error(for: closedReason, fallback: error)
+            if shouldReport && closedReason == nil {
+                connectionStateContinuation.yield(sourcesByID.isEmpty ? .failed : .ready)
+                connectionEventContinuation.yield(.error(serverID: descriptor.id, reportedError))
+            }
+            await provisionalSession?.close(reason: .failed(error.localizedDescription))
+            throw reportedError
         } catch {
-            let mcpError = MCPError.transportFailure(error.localizedDescription)
-            connectionStateContinuation.yield(.failed)
-            connectionEventContinuation.yield(.error(serverID: descriptor.id, mcpError))
+            let closedReason = closedProvisionalAttempts.removeValue(forKey: attemptID)
+            let ownsAttempt = attemptIDsByServerID[descriptor.id] == attemptID
+            let shouldReport = provisionalSession == nil || ownsAttempt
+            if provisionalSessionsByID[descriptor.id]?.attemptID == attemptID {
+                provisionalSessionsByID.removeValue(forKey: descriptor.id)
+            }
+            if ownsAttempt {
+                attemptIDsByServerID.removeValue(forKey: descriptor.id)
+            }
+            let mcpError: MCPError = Task.isCancelled
+                ? .cancelled
+                : Self.error(for: closedReason, fallback: .transportFailure(error.localizedDescription))
+            if shouldReport && closedReason == nil {
+                connectionStateContinuation.yield(sourcesByID.isEmpty ? .failed : .ready)
+                connectionEventContinuation.yield(.error(serverID: descriptor.id, mcpError))
+            }
+            await provisionalSession?.close(reason: .failed(error.localizedDescription))
             throw mcpError
         }
     }
 
     public func disconnect(serverID: UUID) async {
-        if let session = sessionsByID.removeValue(forKey: serverID) {
-            await session.close(reason: .requested)
-        }
-        if let source = sourcesByID.removeValue(forKey: serverID) {
-            await source.close()
-        }
+        let provisional = provisionalSessionsByID.removeValue(forKey: serverID)
+        attemptIDsByServerID.removeValue(forKey: serverID)
+        let session = sessionsByID.removeValue(forKey: serverID)
+        let source = sourcesByID.removeValue(forKey: serverID)
+        guard provisional != nil || session != nil || source != nil else { return }
         connectionEventContinuation.yield(.disconnected(serverID: serverID, reason: .requested))
         connectionStateContinuation.yield(sourcesByID.isEmpty ? .idle : .ready)
+        if let provisional {
+            await provisional.session.close(reason: .requested)
+        }
+        if let session {
+            await session.close(reason: .requested)
+        }
+        if let source {
+            await source.close()
+        }
     }
 
     public func disconnectAll() async {
-        let sessions = sessionsByID.values
+        let serverIDs = Set(provisionalSessionsByID.keys)
+            .union(sessionsByID.keys).union(sourcesByID.keys)
+        let provisionalSessions = Array(provisionalSessionsByID.values)
+        let sessions = Array(sessionsByID.values)
+        let sources = Array(sourcesByID.values)
+        attemptIDsByServerID.removeAll()
+        provisionalSessionsByID.removeAll()
         sessionsByID.removeAll()
+        sourcesByID.removeAll()
+        for serverID in serverIDs {
+            connectionEventContinuation.yield(.disconnected(serverID: serverID, reason: .requested))
+        }
+        connectionStateContinuation.yield(.idle)
+        if let afterDisconnectAllSnapshotForTesting {
+            await afterDisconnectAllSnapshotForTesting()
+        }
+        for provisional in provisionalSessions {
+            await provisional.session.close(reason: .requested)
+        }
         for session in sessions {
             await session.close(reason: .requested)
         }
-        let sources = sourcesByID.values
-        sourcesByID.removeAll()
         for source in sources {
             await source.close()
         }
-        connectionStateContinuation.yield(.idle)
+    }
+
+    internal func handleSessionClosed(serverID: UUID, attemptID: UUID, reason: MCPDisconnectReason) async {
+        guard attemptIDsByServerID[serverID] == attemptID else { return }
+        if provisionalSessionsByID[serverID]?.attemptID == attemptID {
+            provisionalSessionsByID.removeValue(forKey: serverID)
+            attemptIDsByServerID.removeValue(forKey: serverID)
+            closedProvisionalAttempts[attemptID] = reason
+            connectionStateContinuation.yield(sourcesByID.isEmpty ? .failed : .ready)
+            connectionEventContinuation.yield(.error(serverID: serverID, Self.error(for: reason, fallback: .transportClosed)))
+            return
+        }
+        guard sourcesByID[serverID] != nil else { return }
+        attemptIDsByServerID.removeValue(forKey: serverID)
+        sessionsByID.removeValue(forKey: serverID)
+        let source = sourcesByID.removeValue(forKey: serverID)
+        connectionEventContinuation.yield(.disconnected(serverID: serverID, reason: reason))
+        connectionStateContinuation.yield(sourcesByID.isEmpty ? .failed : .ready)
+        await source?.close()
+    }
+
+    private nonisolated static func error(for reason: MCPDisconnectReason?, fallback: MCPError) -> MCPError {
+        switch reason {
+        case .failed(let detail): return .transportFailure(detail)
+        case .transportClosed: return .transportClosed
+        case .requested: return .cancelled
+        default: return fallback
+        }
     }
 
     public func sources() async -> [MCPToolSource] {
         Array(sourcesByID.values)
+    }
+
+    internal func setBeforePublicationForTesting(_ hook: (@Sendable (UUID, UUID) async -> Void)?) {
+        beforePublicationForTesting = hook
+    }
+
+    internal func setAfterDisconnectAllSnapshotForTesting(_ hook: (@Sendable () async -> Void)?) {
+        afterDisconnectAllSnapshotForTesting = hook
+    }
+
+    internal func finishConnectionEventsForTesting() {
+        connectionEventContinuation.finish()
     }
 
     /// The consent gate for `sampling/createMessage`: a server can only issue sampling

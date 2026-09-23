@@ -1,11 +1,12 @@
 #if os(macOS) && !targetEnvironment(macCatalyst)
 import Foundation
 import ManifoldInference
+import ManifoldMCP
 import os
 
 /// Stdio transport for ``ManifoldMCPHost``.
 ///
-/// Reads Content-Length–framed JSON-RPC messages from `stdin` and writes
+/// Reads newline-delimited JSON-RPC messages from `stdin` and writes
 /// responses to `stdout`. This is the transport shape used by Claude Desktop
 /// and other local MCP clients that launch the host app as a subprocess.
 ///
@@ -56,9 +57,10 @@ public actor MCPHostStdioTransport: MCPHostTransport {
         // correct: the read loop must run until EOF, an error, or `shutdown()`.
         let cap = continuation
         let maxBytes = maxMessageBytes
+        let inputFD = input.fileDescriptor
         self.readTask = Task.detached(priority: .utility) {
             await MCPHostStdioTransport.readLoop(
-                input: input,
+                inputFD: inputFD,
                 continuation: cap,
                 maxMessageBytes: maxBytes
             )
@@ -69,7 +71,7 @@ public actor MCPHostStdioTransport: MCPHostTransport {
 
     /// Unblocks the read loop and finishes ``incomingMessages``.
     ///
-    /// The read loop blocks in `input.read(upToCount:)`, which cooperative
+    /// The read loop blocks in a POSIX `read`, which cooperative
     /// `Task` cancellation alone cannot interrupt — there is no suspension
     /// point inside a blocking syscall. Closing the input handle out from
     /// under the blocked read makes it return/throw promptly (mirrors
@@ -107,12 +109,12 @@ public actor MCPHostStdioTransport: MCPHostTransport {
 
     // MARK: Send
 
-    /// Writes a single framed response payload to stdout.
+    /// Writes a single newline-delimited response payload to stdout.
     ///
     /// Actor isolation serialises concurrent send calls so stdout writes
     /// never interleave across concurrent MCP responses.
     public func send(_ payload: Data) async throws {
-        let framed = frame(payload)
+        let framed = MCPStdioFrameCodec.frame(payload)
         do {
             try FileHandle.standardOutput.write(contentsOf: framed)
         } catch {
@@ -120,35 +122,23 @@ public actor MCPHostStdioTransport: MCPHostTransport {
         }
     }
 
-    // MARK: Frame codec
-
-    private func frame(_ payload: Data) -> Data {
-        var framed = Data("Content-Length: \(payload.count)\r\n\r\n".utf8)
-        framed.append(payload)
-        return framed
-    }
-
     // MARK: Read loop (static to avoid implicit capture of self)
 
     private static func readLoop(
-        input: FileHandle,
+        inputFD: Int32,
         continuation: AsyncThrowingStream<Data, Error>.Continuation,
         maxMessageBytes: Int
     ) async {
-        var parser = FrameParser()
+        var parser = MCPStdioFrameCodec.Parser()
         do {
             while Task.isCancelled == false {
-                // `read(upToCount:)` blocks until data arrives, EOF (returns
-                // nil/empty), or the handle is closed out from under it (throws)
-                // — unlike `.availableData`, a closed-handle read surfaces as a
-                // catchable Swift error rather than an uncatchable ObjC
-                // exception, which is what makes `shutdown()`'s close-to-unblock
-                // safe here.
-                guard let chunk = try input.read(upToCount: 4096), chunk.isEmpty == false else {
+                // A single POSIX read returns as soon as a short JSON line
+                // arrives. Closing the handle unblocks it with a catchable error.
+                guard let chunk = try MCPStdioPipeReader.readAvailable(from: inputFD) else {
                     break
                 }
 
-                try parser.append(chunk)
+                try parser.append(chunk, maxMessageBytes: maxMessageBytes)
                 while let payload = try parser.nextFrame(maxMessageBytes: maxMessageBytes) {
                     continuation.yield(payload)
                 }
@@ -157,63 +147,14 @@ public actor MCPHostStdioTransport: MCPHostTransport {
         } catch {
             if Task.isCancelled {
                 continuation.finish()
+            } else if case MCPError.oversizeMessage(let bytes) = error {
+                continuation.finish(throwing: MCPHostTransportError.oversizeMessage(bytes))
             } else {
                 continuation.finish(throwing: error)
             }
         }
     }
 
-    // MARK: - FrameParser
-
-    private struct FrameParser {
-        private static let delimiter = Data("\r\n\r\n".utf8)
-        private static let maxHeaderBytes = 8 * 1024
-
-        private var buffer = Data()
-
-        mutating func append(_ bytes: Data) throws {
-            buffer.append(bytes)
-            if buffer.count > Self.maxHeaderBytes && buffer.range(of: Self.delimiter) == nil {
-                throw MCPHostTransportError.oversizeHeader
-            }
-        }
-
-        mutating func nextFrame(maxMessageBytes: Int) throws -> Data? {
-            guard let delimiterRange = buffer.range(of: Self.delimiter) else { return nil }
-            let headerData = buffer[..<delimiterRange.lowerBound]
-            guard let headerString = String(data: headerData, encoding: .utf8) else {
-                throw MCPHostTransportError.invalidHeader
-            }
-            let contentLength = try parseContentLength(headerString)
-            if contentLength > maxMessageBytes {
-                throw MCPHostTransportError.oversizeMessage(contentLength)
-            }
-
-            let frameStart = delimiterRange.upperBound
-            let available = buffer.distance(from: frameStart, to: buffer.endIndex)
-            guard available >= contentLength else { return nil }
-
-            let payloadEnd = buffer.index(frameStart, offsetBy: contentLength)
-            let payload = Data(buffer[frameStart..<payloadEnd])
-            buffer.removeSubrange(..<payloadEnd)
-            return payload
-        }
-
-        private func parseContentLength(_ headers: String) throws -> Int {
-            let lines = headers.components(separatedBy: "\r\n")
-            guard let lengthHeader = lines.first(where: {
-                $0.lowercased().hasPrefix("content-length:")
-            }) else {
-                throw MCPHostTransportError.missingContentLength
-            }
-
-            let value = lengthHeader.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)
-            guard let length = Int(value), length >= 0 else {
-                throw MCPHostTransportError.invalidContentLength(value)
-            }
-            return length
-        }
-    }
 }
 
 // MARK: - MCPHostTransportError

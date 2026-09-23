@@ -6,7 +6,7 @@ internal enum MCPSessionState: Sendable, Equatable {
     case idle
     case connecting
     case ready
-    case closed
+    case closed(MCPDisconnectReason)
 }
 
 internal protocol MCPSessionStateHook: Sendable {
@@ -30,6 +30,18 @@ internal typealias MCPServerRequestHandler = @Sendable (
 ) async -> Result<JSONSchemaValue, MCPJSONRPCErrorObject>
 
 internal actor MCPSession {
+    private enum DeferredRequestTermination {
+        case cancelled
+        case timedOut
+
+        var error: Error {
+            switch self {
+            case .cancelled: CancellationError()
+            case .timedOut: MCPError.requestTimeout
+            }
+        }
+    }
+
     private let descriptor: MCPServerDescriptor
     private let transport: any MCPTransport
     private let codec: MCPJSONRPCCodec
@@ -39,11 +51,22 @@ internal actor MCPSession {
     private let serverRequestHandler: MCPServerRequestHandler?
     private let advertisesSampling: Bool
     private let advertisesElicitation: Bool
+    private let beforeRequestRegistration: (@Sendable (String) async -> Void)?
 
     private var state: MCPSessionState = .idle
     private var nextRequestID: Int = 1
     private var receiveTask: Task<Void, Never>?
+    private var transportCloseTask: Task<Void, Never>?
     private var pendingRequests: [MCPRequestID: CheckedContinuation<JSONSchemaValue?, Error>] = [:]
+    private var awaitingRegistrationIDs: Set<MCPRequestID> = []
+    private var deferredRequestTerminations: [MCPRequestID: DeferredRequestTermination] = [:]
+
+    var deferredRequestTerminationCount: Int { deferredRequestTerminations.count }
+
+    var isClosed: Bool {
+        if case .closed = state { return true }
+        return false
+    }
 
     init(
         descriptor: MCPServerDescriptor,
@@ -54,7 +77,8 @@ internal actor MCPSession {
         stateHook: any MCPSessionStateHook = MCPNoopSessionStateHook(),
         serverRequestHandler: MCPServerRequestHandler? = nil,
         advertisesSampling: Bool = false,
-        advertisesElicitation: Bool = false
+        advertisesElicitation: Bool = false,
+        beforeRequestRegistration: (@Sendable (String) async -> Void)? = nil
     ) {
         self.descriptor = descriptor
         self.transport = transport
@@ -65,6 +89,7 @@ internal actor MCPSession {
         self.serverRequestHandler = serverRequestHandler
         self.advertisesSampling = advertisesSampling
         self.advertisesElicitation = advertisesElicitation
+        self.beforeRequestRegistration = beforeRequestRegistration
     }
 
     func start() async throws -> MCPCapabilities {
@@ -74,7 +99,11 @@ internal actor MCPSession {
 
         state = .connecting
         await stateHook.sessionDidTransition(.connecting)
+        try Task.checkCancellation()
+        guard !isClosed else { throw MCPError.transportClosed }
         try await transport.start()
+        try Task.checkCancellation()
+        guard !isClosed else { throw MCPError.transportClosed }
         startReceiveLoop()
 
         // Advertise each capability only when its own handler is actually wired up
@@ -110,11 +139,17 @@ internal actor MCPSession {
             params: initializeParams,
             timeout: descriptor.initializationTimeout
         )
+        try Task.checkCancellation()
+        guard !isClosed else { throw MCPError.transportClosed }
         let capabilities = try parseInitializeResponse(response)
         try await sendNotification(method: "notifications/initialized", params: nil)
 
+        try Task.checkCancellation()
+        guard !isClosed else { throw MCPError.transportClosed }
         state = .ready
         await stateHook.sessionDidTransition(.ready)
+        try Task.checkCancellation()
+        guard !isClosed else { throw MCPError.transportClosed }
         return capabilities
     }
 
@@ -126,9 +161,10 @@ internal actor MCPSession {
         params: JSONSchemaValue?,
         timeout: Duration? = nil
     ) async throws -> JSONSchemaValue? {
-        guard state != .closed else { throw MCPError.transportClosed }
+        try Task.checkCancellation()
+        guard !isClosed else { throw MCPError.transportClosed }
 
-        if pendingRequests.count >= maxConcurrentRequests {
+        if pendingRequests.count + awaitingRegistrationIDs.count >= maxConcurrentRequests {
             throw MCPError.transportFailure("Exceeded max concurrent MCP requests")
         }
 
@@ -136,14 +172,17 @@ internal actor MCPSession {
         nextRequestID += 1
         let request = MCPJSONRPCMessage.request(id: id, method: method, params: params)
         let payload = try codec.encode(request)
+        awaitingRegistrationIDs.insert(id)
 
-        // Capture a reference for the cancellation notification. The onCancel closure runs
-        // synchronously and cannot be async, so we spawn a detached Task to deliver
-        // notifications/cancelled before the server wastes work on an abandoned call.
+        // Cancellation must resume the pending continuation as well as notify the server.
+        // Otherwise an unanswered initialize can keep connect suspended indefinitely.
         return try await withTaskCancellationHandler {
             try await withTimeout(timeout ?? requestTimeout) { [self] in
                 try await withCheckedThrowingContinuation { continuation in
                     Task {
+                        if let beforeRequestRegistration {
+                            await beforeRequestRegistration(method)
+                        }
                         await registerPendingAndSend(
                             id: id,
                             request: request,
@@ -157,21 +196,14 @@ internal actor MCPSession {
             }
         } onCancel: { [weak self] in
             guard let session = self else { return }
-            let cancelParams: JSONSchemaValue = .object([
-                "requestId": .string(id.description),
-                "reason": .string("Cancelled by client"),
-            ])
             Task {
-                await session.sendNotificationIgnoringErrors(
-                    method: "notifications/cancelled",
-                    params: cancelParams
-                )
+                await session.handleRequestCancellation(id: id)
             }
         }
     }
 
     func sendNotification(method: String, params: JSONSchemaValue?) async throws {
-        guard state != .closed else { throw MCPError.transportClosed }
+        guard !isClosed else { throw MCPError.transportClosed }
         let message = MCPJSONRPCMessage.notification(method: method, params: params)
         let payload = try codec.encode(message)
         try await transport.send(payload, routing: routing(for: message))
@@ -199,7 +231,7 @@ internal actor MCPSession {
     /// Replies to a server-initiated request (e.g. `sampling/createMessage`) with a
     /// JSON-RPC result frame.
     func sendResult(id: MCPRequestID, result: JSONSchemaValue) async {
-        guard state != .closed else { return }
+        guard !isClosed else { return }
         let message = MCPJSONRPCMessage.result(id: id, result: result)
         do {
             let payload = try codec.encode(message)
@@ -214,7 +246,7 @@ internal actor MCPSession {
     /// when the handler throws and when no handler is configured for the method —
     /// a server request must always get a reply, never a silent drop.
     func sendError(id: MCPRequestID, error: MCPJSONRPCErrorObject) async {
-        guard state != .closed else { return }
+        guard !isClosed else { return }
         let message = MCPJSONRPCMessage.error(id: id, error: error)
         do {
             let payload = try codec.encode(message)
@@ -226,18 +258,30 @@ internal actor MCPSession {
     }
 
     func close(reason: MCPDisconnectReason = .requested) async {
-        _ = reason
-        state = .closed
-        await stateHook.sessionDidTransition(.closed)
-        receiveTask?.cancel()
-        receiveTask = nil
-        await transport.close()
-
+        if let transportCloseTask {
+            await transportCloseTask.value
+            return
+        }
+        guard !isClosed else { return }
+        state = .closed(reason)
+        // Resume work before calling out to the client hook, which can reenter.
         let remaining = pendingRequests
         pendingRequests.removeAll()
         for (_, continuation) in remaining {
-            continuation.resume(throwing: MCPError.transportClosed)
+            continuation.resume(throwing: Self.error(for: reason))
         }
+        receiveTask?.cancel()
+        receiveTask = nil
+        // Publish the one transport-cleanup task before the first suspension.
+        // A resumed initialize can call close again while cancellation is still
+        // tearing down the child; it must join that teardown before returning.
+        let transport = self.transport
+        let closeTask = Task { await transport.close() }
+        transportCloseTask = closeTask
+        await closeTask.value
+        // Keep the hook outside the shared task: it can reenter client/source
+        // cleanup, which may call session.close again.
+        await stateHook.sessionDidTransition(.closed(reason))
     }
 
     private func startReceiveLoop() {
@@ -356,7 +400,11 @@ internal actor MCPSession {
     /// is reclaimed) and tell the server to stop wasting work on the abandoned
     /// call.
     private func handleRequestTimeout(id: MCPRequestID) async {
-        failPendingRequest(id: id, error: MCPError.requestTimeout)
+        if awaitingRegistrationIDs.contains(id) {
+            if deferredRequestTerminations[id] == nil { deferredRequestTerminations[id] = .timedOut }
+        } else {
+            failPendingRequest(id: id, error: MCPError.requestTimeout)
+        }
         let cancelParams: JSONSchemaValue = .object([
             "requestId": .string(id.description),
             "reason": .string("Request timed out"),
@@ -367,18 +415,49 @@ internal actor MCPSession {
         )
     }
 
+    private func handleRequestCancellation(id: MCPRequestID) async {
+        if awaitingRegistrationIDs.contains(id) {
+            if deferredRequestTerminations[id] == nil { deferredRequestTerminations[id] = .cancelled }
+        } else {
+            failPendingRequest(id: id, error: CancellationError())
+        }
+        let cancelParams: JSONSchemaValue = .object([
+            "requestId": .string(id.description),
+            "reason": .string("Cancelled by client"),
+        ])
+        await sendNotificationIgnoringErrors(method: "notifications/cancelled", params: cancelParams)
+    }
+
     private func registerPendingAndSend(
         id: MCPRequestID,
         request: MCPJSONRPCMessage,
         payload: Data,
         continuation: CheckedContinuation<JSONSchemaValue?, Error>
     ) async {
-        pendingRequests[id] = continuation
-        do {
-            try await transport.send(payload, routing: routing(for: request))
-            await stateHook.sessionDidSend(request)
-        } catch {
-            failPendingRequest(id: id, error: error)
+        awaitingRegistrationIDs.remove(id)
+        if let termination = deferredRequestTerminations.removeValue(forKey: id) {
+            continuation.resume(throwing: termination.error)
+            return
+        }
+        guard case .closed = state else {
+            pendingRequests[id] = continuation
+            do {
+                try await transport.send(payload, routing: routing(for: request))
+                await stateHook.sessionDidSend(request)
+            } catch {
+                failPendingRequest(id: id, error: error)
+            }
+            return
+        }
+        continuation.resume(throwing: MCPError.transportClosed)
+    }
+
+    private static func error(for reason: MCPDisconnectReason) -> MCPError {
+        switch reason {
+        case .failed(let detail): .transportFailure(detail)
+        case .networkUnavailable: .networkUnavailable
+        case .unauthorized: .unauthorized
+        default: .transportClosed
         }
     }
 

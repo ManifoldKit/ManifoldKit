@@ -268,6 +268,7 @@ internal actor MCPStdioTransport: MCPTransport {
     private var stdoutHandle: FileHandle?
     private var stderrHandle: FileHandle?
     private var readTask: Task<Void, Never>?
+    private var isClosed = false
 
     init(
         command: MCPStdioCommand,
@@ -283,6 +284,7 @@ internal actor MCPStdioTransport: MCPTransport {
     }
 
     func start() async throws {
+        guard !isClosed else { throw MCPError.transportClosed }
         guard process == nil else { return }
         try MCPStdioCommandValidator.validate(command)
 
@@ -344,11 +346,12 @@ internal actor MCPStdioTransport: MCPTransport {
         self.stdoutHandle = stdoutPipe.fileHandleForReading
         self.stderrHandle = stderrPipe.fileHandleForReading
         let stdoutHandle = stdoutPipe.fileHandleForReading
+        let stdoutFD = stdoutHandle.fileDescriptor
         let continuation = self.continuation
         let maxMessageBytes = self.maxMessageBytes
         self.readTask = Task.detached {
             await MCPStdioTransport.readOutputLoop(
-                stdoutHandle: stdoutHandle,
+                stdoutFD: stdoutFD,
                 continuation: continuation,
                 maxMessageBytes: maxMessageBytes
             )
@@ -356,7 +359,7 @@ internal actor MCPStdioTransport: MCPTransport {
     }
 
     func send(_ payload: Data, routing: MCPRouting?) async throws {
-        // Routing metadata has no representation in the stdio Content-Length framing;
+        // Routing metadata has no representation in the stdio JSON-RPC line;
         // it exists purely for the HTTP transport's spec-mandated headers.
         _ = routing
         if payload.count > maxMessageBytes {
@@ -374,6 +377,7 @@ internal actor MCPStdioTransport: MCPTransport {
     }
 
     func close() async {
+        isClosed = true
         readTask?.cancel()
         // Signal EOF on the child's stdin so a well-behaved server can exit on its own.
         closeHandle(stdinHandle, label: "stdin")
@@ -423,17 +427,17 @@ internal actor MCPStdioTransport: MCPTransport {
     }
 
     private nonisolated static func readOutputLoop(
-        stdoutHandle: FileHandle,
+        stdoutFD: Int32,
         continuation: AsyncThrowingStream<Data, Error>.Continuation,
         maxMessageBytes: Int
     ) async {
         var parser = MCPStdioFrameCodec.Parser()
         do {
             while Task.isCancelled == false {
-                guard let chunk = try stdoutHandle.read(upToCount: 4096), chunk.isEmpty == false else {
+                guard let chunk = try MCPStdioPipeReader.readAvailable(from: stdoutFD) else {
                     break
                 }
-                try parser.append(chunk)
+                try parser.append(chunk, maxMessageBytes: maxMessageBytes)
                 while let payload = try parser.nextFrame(maxMessageBytes: maxMessageBytes) {
                     continuation.yield(payload)
                 }
@@ -533,60 +537,60 @@ private enum MCPStdioTermination {
     }
 }
 
-private enum MCPStdioFrameCodec {
-    static func frame(_ payload: Data) -> Data {
-        var framed = Data("Content-Length: \(payload.count)\r\n\r\n".utf8)
-        framed.append(payload)
+package enum MCPStdioFrameCodec {
+    package static func frame(_ payload: Data) -> Data {
+        var framed = payload
+        framed.append(0x0A)
         return framed
     }
 
-    struct Parser {
-        private static let delimiter = Data("\r\n\r\n".utf8)
-        private static let maxHeaderBytes = 8 * 1024
-
+    package struct Parser {
         private var buffer = Data()
 
-        mutating func append(_ bytes: Data) throws {
+        package init() {}
+
+        package mutating func append(_ bytes: Data, maxMessageBytes: Int) throws {
             buffer.append(bytes)
-            if buffer.count > Self.maxHeaderBytes && buffer.range(of: Self.delimiter) == nil {
-                throw MCPError.transportFailure("stdio header exceeds maximum size")
+            // Check the current line even when a chunk also contains complete lines.
+            // This bounds memory before an untrusted child can send a huge line.
+            let firstLineEnd = buffer.firstIndex(of: 0x0A) ?? buffer.endIndex
+            let firstLineBytes = buffer.distance(from: buffer.startIndex, to: firstLineEnd)
+            if firstLineBytes > maxMessageBytes {
+                throw MCPError.oversizeMessage(firstLineBytes)
             }
         }
 
-        mutating func nextFrame(maxMessageBytes: Int) throws -> Data? {
-            guard let delimiterRange = buffer.range(of: Self.delimiter) else { return nil }
-            let headerData = buffer[..<delimiterRange.lowerBound]
-            guard let headerString = String(data: headerData, encoding: .utf8) else {
-                throw MCPError.transportFailure("stdio header is not valid UTF-8")
+        package mutating func nextFrame(maxMessageBytes: Int) throws -> Data? {
+            guard let newline = buffer.firstIndex(of: 0x0A) else { return nil }
+            let lineBytes = buffer.distance(from: buffer.startIndex, to: newline)
+            guard lineBytes <= maxMessageBytes else { throw MCPError.oversizeMessage(lineBytes) }
+            let payload = Data(buffer[..<newline])
+            buffer.removeSubrange(...newline)
+            let nextLineEnd = buffer.firstIndex(of: 0x0A) ?? buffer.endIndex
+            let nextLineBytes = buffer.distance(from: buffer.startIndex, to: nextLineEnd)
+            if nextLineBytes > maxMessageBytes {
+                throw MCPError.oversizeMessage(nextLineBytes)
             }
-            let contentLength = try parseContentLength(headerString)
-            if contentLength > maxMessageBytes {
-                throw MCPError.oversizeMessage(contentLength)
-            }
-
-            let frameStart = delimiterRange.upperBound
-            let available = buffer.distance(from: frameStart, to: buffer.endIndex)
-            guard available >= contentLength else { return nil }
-
-            let payloadEnd = buffer.index(frameStart, offsetBy: contentLength)
-            let payload = Data(buffer[frameStart..<payloadEnd])
-            buffer.removeSubrange(..<payloadEnd)
             return payload
         }
+    }
+}
 
-        private func parseContentLength(_ headers: String) throws -> Int {
-            let lines = headers.components(separatedBy: "\r\n")
-            guard let lengthHeader = lines.first(where: {
-                $0.lowercased().hasPrefix("content-length:")
-            }) else {
-                throw MCPError.transportFailure("stdio frame missing Content-Length header")
+/// One POSIX read returns when a pipe has any bytes. FileHandle.read(upToCount:)
+/// may wait to fill its requested count, which deadlocks a live MCP peer that
+/// sends a short reply and keeps stdout open for the next request.
+package enum MCPStdioPipeReader {
+    package static func readAvailable(from fileDescriptor: Int32) throws -> Data? {
+        var bytes = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = bytes.withUnsafeMutableBytes { buffer in
+                Darwin.read(fileDescriptor, buffer.baseAddress, buffer.count)
             }
-
-            let value = lengthHeader.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)
-            guard let length = Int(value), length >= 0 else {
-                throw MCPError.transportFailure("stdio frame has invalid Content-Length header")
-            }
-            return length
+            if count > 0 { return Data(bytes.prefix(count)) }
+            if count == 0 { return nil }
+            let code = errno
+            if code == EINTR { continue }
+            throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
         }
     }
 }
