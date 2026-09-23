@@ -2,7 +2,7 @@
 #
 # Pre-release companion-canary gate.
 #
-# Reports whether each companion package (manifold-mlx, manifold-llama) still
+# Reports whether every package in scripts/consumer-registry.json still
 # builds against THIS repo's main HEAD, and exits non-zero if any of them
 # doesn't — or if the evidence is too old to mean anything.
 #
@@ -55,7 +55,11 @@
 
 set -uo pipefail   # fail-open-ok: NOT -e — check every companion and report all failures
 
-COMPANIONS="manifold-mlx manifold-llama"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if ! COMPANIONS=$(python3 "$REPO_ROOT/scripts/consumer-registry.py" repos); then
+    echo "ERROR: cannot load the release consumer registry." >&2
+    exit 2
+fi
 WORKFLOW="canary.yml"
 WORKFLOW_NAME="Canary (core main)"
 MAX_AGE_HOURS=24
@@ -111,87 +115,69 @@ iso_to_epoch() {
 }
 
 latest_run_id() {
-    gh run list --repo "ManifoldKit/$1" --workflow "$WORKFLOW" --limit 1 \
+    gh run list --repo "ManifoldKit/$1" --workflow "$WORKFLOW" --branch main --event workflow_dispatch --limit 1 \
         --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null
 }
 
+# Pin a new workflow_dispatch run per consumer, then grade that same run.
+# All dispatches share one bounded polling window, regardless of registry size.
+run_ids=""
 if [ "$DISPATCH" -eq 1 ]; then
     echo "Dispatching fresh canary runs..."
-    # Record the run each repo is on BEFORE dispatching. `workflow_dispatch`
-    # registration routinely lags more than a few seconds, so polling `.[0]`
-    # right after dispatch can observe the PREVIOUS run — already `completed` —
-    # break instantly, and then grade that stale run as if it were the fresh
-    # one. Waiting for the id to CHANGE is what makes --dispatch mean anything.
     prior_ids=""
-    dispatched=""
     dispatch_failed=""
     for repo in $COMPANIONS; do
-        prior_ids="${prior_ids}${repo}=$(latest_run_id "$repo") "
-        # Capture stderr: the usual cause of failure here is an under-scoped
-        # token, and `gh`'s own message ("HTTP 403") is the only thing that
-        # distinguishes that from the repo/workflow being missing.
-        if dispatch_err="$(gh workflow run "$WORKFLOW" --repo "ManifoldKit/$repo" 2>&1 >/dev/null)"; then
+        if ! prior=$(latest_run_id "$repo"); then
+            echo "ERROR: cannot read prior canary for $repo." >&2
+            dispatch_failed="${dispatch_failed}${repo} "
+            continue
+        fi
+        prior_ids="${prior_ids}${repo}=${prior} "
+        if dispatch_err=$(gh workflow run "$WORKFLOW" --ref main --repo "ManifoldKit/$repo" 2>&1); then
             echo "  dispatched: $repo"
-            dispatched="${dispatched}${repo} "
         else
-            echo "  ERROR: could not dispatch $repo: ${dispatch_err:-<no output>}" >&2
+            echo "ERROR: could not dispatch $repo: $dispatch_err" >&2
             dispatch_failed="${dispatch_failed}${repo} "
         fi
     done
-
-    # A failed dispatch used to warn and fall through to grading the PREVIOUS
-    # run. That is a fail-open: on a quiet main the stale run can still satisfy
-    # freshness, so --dispatch would exit 0 having dispatched nothing and
-    # verified nothing — while both AGENTS.md and RELEASE.md promise the
-    # opposite ("fails loudly rather than silently downgrading to a read that
-    # could pass on stale evidence"). Callers asked for fresh evidence; if we
-    # cannot produce it, say so instead of quietly answering a weaker question.
-    #
-    # The most likely cause is token scope: `gh workflow run` needs Actions
-    # read+write on the target repo, which is a DIFFERENT permission from the
-    # `contents: read+write` that repository_dispatch needs (see
-    # release-please.yml's notify-companions job). A PAT minted only for that
-    # job will 403 here.
     if [ -n "$dispatch_failed" ]; then
-        echo "" >&2
-        echo "ERROR: --dispatch could not trigger: ${dispatch_failed}" >&2
-        echo "Refusing to grade the previous runs instead — you asked for fresh evidence." >&2
-        echo "If this is HTTP 403, the token needs Actions: read+write on the companion repos" >&2
-        echo "(distinct from the contents scope repository_dispatch uses)." >&2
+        echo "ERROR: --dispatch failed for: $dispatch_failed; refusing to grade previous runs." >&2
         exit 2
     fi
-
-    for repo in $COMPANIONS; do
-        # Belt-and-braces: any dispatch failure now exits 2 above, so by this
-        # point every repo is in $dispatched and this guard cannot fire. Kept
-        # deliberately rather than deleted — it is the thing that stops a poll
-        # burning its full 20-minute ceiling waiting for a run that can never
-        # appear, and if the exit above is ever softened (e.g. to tolerate one
-        # companion being temporarily unreachable) this becomes load-bearing
-        # again immediately.
-        case " $dispatched " in
-            *" $repo "*) ;;
-            *) echo "  skipping wait for $repo (dispatch failed)"; continue ;;
-        esac
-        prior=$(printf '%s' "$prior_ids" | tr ' ' '\n' | sed -n "s/^${repo}=//p")
-        printf '  waiting for %s' "$repo"
-        i=0
-        while [ "$i" -lt "$POLL_MAX" ]; do
-            current=$(latest_run_id "$repo")
-            if [ -n "$current" ] && [ "$current" != "$prior" ]; then
-                status=$(gh run view "$current" --repo "ManifoldKit/$repo" \
-                            --json status --jq '.status' 2>/dev/null)
-                [ "$status" = "completed" ] && break
+    pending="$COMPANIONS"
+    i=0
+    while [ -n "$pending" ] && [ "$i" -lt "$POLL_MAX" ]; do
+        next_pending=""
+        for repo in $pending; do
+            current=$(printf '%s' "$run_ids" | tr ' ' '\n' | sed -n "s/^${repo}=//p")
+            if [ -z "$current" ]; then
+                prior=$(printf '%s' "$prior_ids" | tr ' ' '\n' | sed -n "s/^${repo}=//p")
+                if ! current=$(latest_run_id "$repo"); then
+                    echo "ERROR: cannot read dispatched canary for $repo." >&2
+                    exit 2
+                fi
+                if [ -z "$current" ] || [ "$current" = "$prior" ]; then
+                    next_pending="${next_pending}${repo} "
+                    continue
+                fi
+                run_ids="${run_ids}${repo}=${current} "
             fi
-            printf '.'
-            sleep "$POLL_SECONDS"
-            i=$((i + 1))
+            if ! status=$(gh run view "$current" --repo "ManifoldKit/$repo" --json status --jq '.status'); then
+                echo "ERROR: cannot read canary $current for $repo." >&2
+                exit 2
+            fi
+            if [ "$status" != "completed" ]; then
+                next_pending="${next_pending}${repo} "
+            fi
         done
-        printf '\n'
-        if [ "$i" -ge "$POLL_MAX" ]; then
-            echo "  WARNING: $repo canary did not produce a completed new run after $((POLL_MAX * POLL_SECONDS / 60))m" >&2
-        fi
+        pending="$next_pending"
+        if [ -n "$pending" ]; then sleep "$POLL_SECONDS"; fi
+        i=$((i + 1))
     done
+    if [ -n "$pending" ]; then
+        echo "ERROR: timed out waiting for new completed canaries: $pending" >&2
+        exit 1
+    fi
 fi
 
 now_epoch=$(date -u "+%s")
@@ -296,8 +282,21 @@ else
 fi
 
 for repo in $COMPANIONS; do
-    run_json=$(gh run list --repo "ManifoldKit/$repo" --workflow "$WORKFLOW" --limit 1 \
-                  --json conclusion,status,createdAt,url --jq '.[0]' 2>/dev/null)
+    run_id=$(printf '%s' "$run_ids" | tr ' ' '\n' | sed -n "s/^${repo}=//p")
+    if [ "$DISPATCH" -eq 1 ]; then
+        run_json=$(gh run view "$run_id" --repo "ManifoldKit/$repo" \
+            --json conclusion,status,createdAt,url --jq '.' 2>/dev/null)
+        read_status=$?
+    else
+        run_json=$(gh run list --repo "ManifoldKit/$repo" --workflow "$WORKFLOW" --branch main --limit 1 \
+            --json conclusion,status,createdAt,url --jq '.[0]' 2>/dev/null)
+        read_status=$?
+    fi
+    if [ "$read_status" -ne 0 ]; then
+        summary="${summary}  ${repo}  ERROR reading canary result\n"
+        failures=$((failures + 1))
+        continue
+    fi
 
     if [ -z "$run_json" ] || [ "$run_json" = "null" ]; then
         summary="${summary}  ${repo}  NO RUNS FOUND — canary never ran\n"
@@ -305,6 +304,7 @@ for repo in $COMPANIONS; do
         continue
     fi
 
+    status=$(printf '%s' "$run_json" | sed -n 's/.*"status":"\([^"]*\)".*/\1/p')
     conclusion=$(printf '%s' "$run_json" | sed -n 's/.*"conclusion":"\([^"]*\)".*/\1/p')
     created=$(printf '%s' "$run_json"    | sed -n 's/.*"createdAt":"\([^"]*\)".*/\1/p')
     url=$(printf '%s' "$run_json"        | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
@@ -316,7 +316,7 @@ for repo in $COMPANIONS; do
         age_hours=-1
     fi
 
-    if [ "$conclusion" != "success" ]; then
+    if [ "$status" != "completed" ] || [ "$conclusion" != "success" ]; then
         summary="${summary}  ${repo}  FAIL (${conclusion:-in-progress}, ${age_hours}h ago)\n      ${url}\n"
         failures=$((failures + 1))
     elif [ "$age_hours" -lt 0 ]; then
