@@ -483,12 +483,12 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
         }
     }
 
-    /// Losing the event consumer suspends the run at its last safe checkpoint.
-    /// It is not an explicit user cancellation: a later durable resume may
-    /// replay an incomplete step through the provider.
+    /// Losing the event consumer suspends the run at its last safe checkpoint,
+    /// unless the host already requested explicit cancellation. That request
+    /// remains terminal even when the observer vanishes before the turn ends.
     private func checkpointAbandonedRun(_ run: ConversationRun) async {
         var checkpoint = run
-        checkpoint.status = .paused
+        checkpoint.status = await runState.checkCancelled() ? .cancelled : .paused
         checkpoint.updatedAt = Date()
         await runState.setActiveRun(nil)
         await storeProxy.updateRun(checkpoint)
@@ -669,8 +669,8 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
             }
 
             if Task.isCancelled {
-                // Leave this step incomplete so durable resume can supersede
-                // and replay it. The cancelled turn has already settled.
+                // Leave this step incomplete. Durable resume can supersede and
+                // replay it only when observation ended without explicit cancel.
                 await checkpointAbandonedRun(currentRun)
                 break stepLoop
             }

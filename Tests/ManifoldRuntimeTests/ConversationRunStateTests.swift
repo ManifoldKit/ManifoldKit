@@ -440,6 +440,60 @@ final class ConversationRunStateTests: XCTestCase {
         XCTAssertFalse(backend.isGenerating)
     }
 
+    func test_explicitCancelThenStreamTermination_keepsTerminalCancellation() async throws {
+        let persistenceStack = try InMemoryPersistenceHarness.make()
+        let backend = SlowMockBackend(tokenCount: 100, delayMilliseconds: 100)
+        let service = InferenceService(backend: backend, name: "CancelTerminationRaceTest")
+        let runStore = InMemoryRunStore2()
+        let driver = ResumableRunDriver(runStore: runStore)
+        let runtime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service,
+            emptyResponseObserver: nil,
+            turnDriver: driver
+        )
+        let run = ConversationRun(sessionID: UUID(), goal: "cancel while active")
+
+        let consumer = Task { () -> Bool in
+            for await event in runtime.startRun(run, using: FixedGoalRunInputProvider()) {
+                if case .stepStarted = event {
+                    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+                    while !backend.isGenerating && ContinuousClock.now < deadline {
+                        do {
+                            try await Task.sleep(for: .milliseconds(10))
+                        } catch {
+                            return false
+                        }
+                    }
+                    guard backend.isGenerating else { return false }
+                    await runtime.cancelActiveRun()
+                    return true // Terminate observation after the explicit cancel.
+                }
+            }
+            return false
+        }
+        let cancelledDuringTurn = await consumer.value
+        XCTAssertTrue(cancelledDuringTurn, "Cancellation must be requested during a live turn")
+        let cancelled = runStore.expectStatus(.cancelled, for: run.id)
+        await fulfillment(of: [cancelled], timeout: 3)
+        let fetched = try await runStore.fetchRun(run.id)
+        XCTAssertEqual(fetched?.status, .cancelled)
+        XCTAssertEqual(fetched?.stepCount, 0)
+        XCTAssertFalse(backend.isGenerating)
+
+        let recorder = IndexRecorder()
+        var resumeEvents: [RunEvent] = []
+        for await event in runtime.resumeRun(
+            run.id, using: RecordingCountingProvider(stepCount: 1, recorder: recorder)
+        ) {
+            resumeEvents.append(event)
+        }
+        XCTAssertEqual(resumeEvents, [.runCancelled(runID: run.id, stepCount: 0)])
+        let requested = await recorder.requested
+        XCTAssertTrue(requested.isEmpty, "A cancelled run must never replay its step")
+    }
+
     private struct SuspendedProvider: RunInputProvider {
         func nextInput(
             for run: ConversationRun,
