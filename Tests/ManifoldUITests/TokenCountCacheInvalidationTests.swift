@@ -7,25 +7,9 @@ import ManifoldPersistenceTestSupport
 @testable import ManifoldInference
 @testable import ManifoldTestSupport
 
-/// Perf-audit β-1: contract tests for the `tokenCountCache` invalidation path.
-///
-/// `ChatViewModel.tokenCountCache` is a hand-rolled cache keyed by message
-/// UUID. The audit identified a hole: when `ConversationEvent.messageUpdated`
-/// fires (e.g. the runtime's `edit` sub-flow rewrites a message body in
-/// place), the runtime adapter at `ChatViewModel+RuntimeAdapter.swift:57-60`
-/// replaces `messages[idx] = record` but does **not** invalidate
-/// `tokenCountCache[record.id]`. The next `updateContextEstimate()` returns
-/// the stale token count for that UUID.
-///
-/// Today this is masked because the only caller that triggers `.messageUpdated`
-/// is `ChatViewModel.editMessage(...)`, which proactively calls
-/// `tokenCountCache.removeValue(forKey: messageID)` BEFORE invoking the
-/// runtime (`ChatViewModel+Messages.swift:120`). Any future caller that drives
-/// the runtime directly (e.g. compression rewrites, sub-flow patches, debugger
-/// attach) would silently expose the bug.
-///
-/// These tests drive `handle(runtimeEvent:)` directly so the adapter's
-/// behaviour is pinned independent of caller compensation.
+/// Pins token-count cache behavior when runtime events change message content.
+/// Events are driven directly so invalidation does not depend on a caller
+/// clearing the cache before it asks the runtime to edit a message.
 @MainActor
 final class TokenCountCacheInvalidationTests: XCTestCase {
 
@@ -74,24 +58,9 @@ final class TokenCountCacheInvalidationTests: XCTestCase {
             "CharTokenizer must produce 11 tokens for 'Hello world'")
     }
 
-    // MARK: - Stale-cache demonstration on .messageUpdated
+    // MARK: - Content replacement on .messageUpdated
 
-    /// `.messageUpdated` rewrites a message in place, but the runtime adapter
-    /// does NOT invalidate `tokenCountCache[record.id]`. The next
-    /// `updateContextEstimate()` therefore returns the **stale** token count
-    /// for that UUID.
-    ///
-    /// This test passes today by demonstrating the stale behaviour. Once the
-    /// adapter is fixed to invalidate the cache entry on `.messageUpdated`,
-    /// flip the assertion direction — the audit's tracking note for this hole
-    /// is in the perf-audit plan at `.claude/plans/put-a-plan-together-gentle-journal.md`.
-    ///
-    /// FIXME(perf-audit): tokenCountCache has no auto-invalidation on
-    /// .messageUpdated. The runtime adapter at
-    /// `ChatViewModel+RuntimeAdapter.swift:57-60` mutates messages[idx] but
-    /// not the cache. Today the only caller compensates explicitly in
-    /// `editMessage(...)`; any future direct emitter would surface the bug.
-    func testCacheStaleAfterMessageUpdatedSameId() async {
+    func testMessageUpdatedInvalidatesCachedCountAndContextEstimate() async {
         let vm = await makeVM()
         guard let sessionID = vm.activeSession?.id else {
             XCTFail("Active session must be set")
@@ -110,10 +79,10 @@ final class TokenCountCacheInvalidationTests: XCTestCase {
         vm.updateContextEstimate()
         XCTAssertEqual(vm.tokenCountCache[messageID], 1,
             "Precondition: cache should hold 1 token for the initial 1-char content")
+        let usedTokensBeforeUpdate = vm.contextUsedTokens
 
         // Step 2: emit `.messageUpdated` with the SAME UUID but a much longer
-        // body. The adapter replaces the in-memory record but leaves the
-        // cache entry untouched.
+        // body. The runtime event must invalidate the existing count.
         let updated = ChatMessage(
             id: messageID,
             role: .user,
@@ -121,20 +90,19 @@ final class TokenCountCacheInvalidationTests: XCTestCase {
             sessionID: sessionID
         )
         await vm.handle(runtimeEvent: .messageUpdated(updated))
+        XCTAssertNil(vm.tokenCountCache[messageID],
+            "Replacing content must invalidate the cached count before estimation")
 
-        // Step 3: re-run the estimate. The cache lookup hits the OLD count.
+        // Step 3: re-run the estimate and verify both the cached value and
+        // published context usage reflect the new content.
         vm.updateContextEstimate()
+        XCTAssertEqual(vm.tokenCountCache[messageID], 80,
+            "The updated message must be retokenized with its new content")
+        XCTAssertEqual(vm.contextUsedTokens, usedTokensBeforeUpdate + 79,
+            "The context estimate must include the new token count")
 
-        // Document the current (buggy) behaviour: the cache is stale, the
-        // estimate uses the stale count, and the message-ID still maps to
-        // the old token count.
-        XCTAssertEqual(vm.tokenCountCache[messageID], 1,
-            "BUG: cache returns stale 1-token count for the updated message instead of recomputing to 80. "
-            + "When the adapter is fixed to invalidate on .messageUpdated, change this to XCTAssertEqual(..., 80).")
-
-        // Sanity: the in-memory message is the new content; only the cache is wrong.
         XCTAssertEqual(vm.messages.first?.content, String(repeating: "a", count: 80),
-            "Adapter must apply the .messageUpdated content to the in-memory record")
+            "The event must apply the updated content to the in-memory record")
     }
 
     // MARK: - Sanity: explicit removal on chat clear

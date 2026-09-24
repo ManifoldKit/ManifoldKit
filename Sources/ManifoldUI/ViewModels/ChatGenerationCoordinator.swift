@@ -66,6 +66,9 @@ final class ChatGenerationCoordinator {
     /// Removes messages matching the predicate from `ChatViewModel.messages`.
     var removeMessages: @MainActor ((ChatMessage) -> Bool) -> Void = { _ in }
 
+    /// Drops the cached token count for a message whose content was replaced.
+    var invalidateMessageTokenCount: @MainActor (UUID) -> Void = { _ in }
+
     // MARK: - Side-effect closures
 
     /// Forwards to `ChatViewModel.updateContextEstimate()`.
@@ -459,7 +462,9 @@ final class ChatGenerationCoordinator {
             removeMessages { $0.id == id }
 
         case .messageUpdated(let record):
-            _ = mutateMessage(record.id) { $0 = record }
+            if mutateMessage(record.id, { $0 = record }) {
+                invalidateMessageTokenCount(record.id)
+            }
 
         // MARK: Stream lifecycle
 
