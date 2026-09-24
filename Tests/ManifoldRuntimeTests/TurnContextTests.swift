@@ -4,12 +4,8 @@ import XCTest
 /// Tests for ``TurnContext`` value semantics and construction.
 ///
 /// The conversationText assembly (lowercasing, nil on empty history) lives
-/// in ``ConversationTurnExecutor``. An integration test verifying that
-/// specific behaviour requires a MockInferenceBackend-backed runtime fixture;
-/// see `ConversationRuntimeTests` for the full setup pattern.
-// TODO: Add an integration test verifying that conversationText is lowercased
-// in the assembled TurnContext once MockInferenceBackend exposes a hook to
-// observe the TurnContext passed to PromptContextProvider at assembly time.
+/// in ``ConversationTurnExecutor``. `ConversationRuntimeTurnPreparationTests`
+/// covers the assembled context through a runtime fixture.
 final class TurnContextTests: XCTestCase {
 
     func test_nilConversationText_isValid() {
