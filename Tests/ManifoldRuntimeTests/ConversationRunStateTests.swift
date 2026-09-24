@@ -92,6 +92,17 @@ final class ConversationRunStateTests: XCTestCase {
     private final class InMemoryRunStore2: RunStore {
         private var runs: [ConversationRun] = []
         private var steps: [RunStep] = []
+        private var statusObservers: [(UUID, RunStatus, XCTestExpectation)] = []
+
+        func expectStatus(_ status: RunStatus, for runID: UUID) -> XCTestExpectation {
+            let expectation = XCTestExpectation(description: "run \(runID) reaches \(status)")
+            if runs.first(where: { $0.id == runID })?.status == status {
+                expectation.fulfill()
+            } else {
+                statusObservers.append((runID, status, expectation))
+            }
+            return expectation
+        }
 
         func insertRun(_ run: ConversationRun) async throws { runs.append(run) }
         func updateRun(_ run: ConversationRun) async throws {
@@ -99,6 +110,9 @@ final class ConversationRunStateTests: XCTestCase {
                 throw RunStoreError.runNotFound(run.id)
             }
             runs[i] = run
+            let matching = statusObservers.filter { $0.0 == run.id && $0.1 == run.status }
+            statusObservers.removeAll { $0.0 == run.id && $0.1 == run.status }
+            for (_, _, expectation) in matching { expectation.fulfill() }
         }
         func deleteRun(_ id: UUID) async throws {
             guard let i = runs.firstIndex(where: { $0.id == id }) else {
@@ -266,6 +280,222 @@ final class ConversationRunStateTests: XCTestCase {
                 config: TurnConfig()
             )
         }
+    }
+
+    /// Requests a pause during step zero, then offers no more work. The
+    /// pause is reached at a step boundary regardless of backend speed.
+    private struct PauseAfterFirstStepProvider: RunInputProvider {
+        let driver: ResumableRunDriver
+        let recorder: IndexRecorder
+
+        func nextInput(
+            for run: ConversationRun,
+            stepIndex: Int,
+            prior: RunStep?
+        ) async -> TurnInput? {
+            await recorder.record(stepIndex)
+            guard stepIndex == 0 else { return nil }
+            await driver.pauseRun()
+            return TurnInput(sessionID: run.sessionID, kind: .send(text: "first step"))
+        }
+    }
+
+    func test_streamTerminationWhilePaused_preservesDurableCheckpoint() async throws {
+        let persistenceStack = try InMemoryPersistenceHarness.make()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["ok"]
+        let service = InferenceService(backend: backend, name: "PausedTerminationTest")
+        let runStore = InMemoryRunStore2()
+        let driver = ResumableRunDriver(runStore: runStore)
+        let runtime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service,
+            emptyResponseObserver: nil,
+            turnDriver: driver
+        )
+        let run = ConversationRun(sessionID: UUID(), goal: "pause and abandon")
+        let recorder = IndexRecorder()
+        let provider = PauseAfterFirstStepProvider(driver: driver, recorder: recorder)
+
+        // Ending the consumer at runPaused must cancel the producer's wait.
+        let consumer = Task { () -> RunEvent? in
+            for await event in runtime.startRun(run, using: provider) {
+                if case .runPaused = event { return event }
+            }
+            return nil
+        }
+        guard case let .runPaused(id, count) = await consumer.value else {
+            return XCTFail("Expected the first step to reach the pause boundary")
+        }
+        XCTAssertEqual(id, run.id)
+        XCTAssertEqual(count, 1)
+
+        let paused = runStore.expectStatus(.paused, for: run.id)
+        await fulfillment(of: [paused], timeout: 3)
+        let pausedRun = try await runStore.fetchRun(run.id)
+        XCTAssertEqual(pausedRun?.stepCount, 1)
+
+        // Clearing the in-memory pause cannot resurrect an abandoned producer.
+        await driver.resumeRun()
+        try await Task.sleep(for: .milliseconds(300))
+        let stillPaused = try await runStore.fetchRun(run.id)
+        XCTAssertEqual(stillPaused?.status, .paused)
+        let requested = await recorder.requested
+        XCTAssertEqual(requested, [0])
+
+        // The persisted checkpoint is still usable by a new stream.
+        var resumedEvents: [RunEvent] = []
+        for await event in runtime.resumeRun(run.id, using: CountingProvider(stepCount: 1)) {
+            resumedEvents.append(event)
+        }
+        XCTAssertEqual(resumedEvents.last, .runCompleted(runID: run.id, stepCount: 1))
+        let completedRun = try await runStore.fetchRun(run.id)
+        XCTAssertEqual(completedRun?.status, .completed)
+    }
+
+    func test_explicitCancelWhilePaused_remainsTerminal() async throws {
+        let persistenceStack = try InMemoryPersistenceHarness.make()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["ok"]
+        let service = InferenceService(backend: backend, name: "PausedCancelTest")
+        let runStore = InMemoryRunStore2()
+        let driver = ResumableRunDriver(runStore: runStore)
+        let runtime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service,
+            emptyResponseObserver: nil,
+            turnDriver: driver
+        )
+        let run = ConversationRun(sessionID: UUID(), goal: "pause then cancel")
+        let recorder = IndexRecorder()
+        let provider = PauseAfterFirstStepProvider(driver: driver, recorder: recorder)
+
+        var events: [RunEvent] = []
+        for await event in runtime.startRun(run, using: provider) {
+            events.append(event)
+            if case .runPaused = event { await runtime.cancelActiveRun() }
+        }
+        XCTAssertTrue(events.contains(.runPaused(runID: run.id, stepCount: 1)))
+        XCTAssertEqual(events.last, .runCancelled(runID: run.id, stepCount: 1))
+        let stored = try await runStore.fetchRun(run.id)
+        XCTAssertEqual(stored?.status, .cancelled)
+        XCTAssertEqual(stored?.stepCount, 1)
+        let requested = await recorder.requested
+        XCTAssertEqual(requested, [0])
+    }
+
+    func test_streamTerminationDuringTurn_cancelsTurnAndLeavesReplayableStep() async throws {
+        let persistenceStack = try InMemoryPersistenceHarness.make()
+        let backend = SlowMockBackend(tokenCount: 100, delayMilliseconds: 100)
+        let service = InferenceService(backend: backend, name: "ActiveTerminationTest")
+        let runStore = InMemoryRunStore2()
+        let driver = ResumableRunDriver(runStore: runStore)
+        let runtime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service,
+            emptyResponseObserver: nil,
+            turnDriver: driver
+        )
+        let run = ConversationRun(sessionID: UUID(), goal: "abandon active turn")
+
+        let consumer = Task { () -> (RunEvent?, Bool) in
+            for await event in runtime.startRun(run, using: FixedGoalRunInputProvider()) {
+                if case .stepStarted = event {
+                    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+                    while !backend.isGenerating && ContinuousClock.now < deadline {
+                        do {
+                            try await Task.sleep(for: .milliseconds(10))
+                        } catch {
+                            return (event, false)
+                        }
+                    }
+                    return (event, backend.isGenerating)
+                }
+            }
+            return (nil, false)
+        }
+        let (observedEvent, wasGenerating) = await consumer.value
+        guard case let .stepStarted(id, index, _) = observedEvent else {
+            return XCTFail("Expected an active step before terminating observation")
+        }
+        XCTAssertEqual(id, run.id)
+        XCTAssertEqual(index, 0)
+        XCTAssertTrue(wasGenerating, "Observation must end while generation is active")
+        XCTAssertEqual(backend.generateCallCount, 1)
+
+        let paused = runStore.expectStatus(.paused, for: run.id)
+        await fulfillment(of: [paused], timeout: 3)
+        let fetchedRun = try await runStore.fetchRun(run.id)
+        let stored = try XCTUnwrap(fetchedRun)
+        XCTAssertEqual(stored.status, .paused)
+        XCTAssertEqual(stored.stepCount, 0)
+        let steps = try await runStore.fetchSteps(for: run.id)
+        XCTAssertEqual(steps.count, 1)
+        XCTAssertFalse(steps[0].isCompleted)
+        XCTAssertFalse(backend.isGenerating)
+    }
+
+    private struct SuspendedProvider: RunInputProvider {
+        func nextInput(
+            for run: ConversationRun,
+            stepIndex: Int,
+            prior: RunStep?
+        ) async -> TurnInput? {
+            do {
+                try await Task.sleep(for: .seconds(10))
+            } catch {
+                return nil
+            }
+            return TurnInput(sessionID: run.sessionID, kind: .send(text: "late work"))
+        }
+    }
+
+    func test_resumeStreamTermination_leavesExistingCheckpointPaused() async throws {
+        let persistenceStack = try InMemoryPersistenceHarness.make()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        let service = InferenceService(backend: backend, name: "ResumeTerminationTest")
+        let runStore = InMemoryRunStore2()
+        let driver = ResumableRunDriver(runStore: runStore)
+        let runtime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service,
+            emptyResponseObserver: nil,
+            turnDriver: driver
+        )
+        let now = Date()
+        let run = ConversationRun(
+            id: UUID(), sessionID: UUID(), goal: "resume then abandon",
+            status: .paused, createdAt: now, updatedAt: now
+        )
+        try await runStore.insertRun(run)
+
+        let consumer = Task { () -> RunEvent? in
+            for await event in runtime.resumeRun(run.id, using: SuspendedProvider()) {
+                if case .runResumed = event { return event }
+            }
+            return nil
+        }
+        guard case let .runResumed(id, count) = await consumer.value else {
+            return XCTFail("Expected a resume event before observation ends")
+        }
+        XCTAssertEqual(id, run.id)
+        XCTAssertEqual(count, 0)
+
+        let paused = runStore.expectStatus(.paused, for: run.id)
+        await fulfillment(of: [paused], timeout: 3)
+        let fetchedRun = try await runStore.fetchRun(run.id)
+        let checkpoint = try XCTUnwrap(fetchedRun)
+        XCTAssertEqual(checkpoint.status, .paused)
+        XCTAssertEqual(checkpoint.stepCount, 0)
+        let steps = try await runStore.fetchSteps(for: run.id)
+        XCTAssertTrue(steps.isEmpty)
     }
 
     func test_resumableRunDriver_multiStep_runsEachStepInOrder() async throws {

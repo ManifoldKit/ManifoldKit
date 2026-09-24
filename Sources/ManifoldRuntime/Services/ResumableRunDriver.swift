@@ -277,7 +277,8 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
     ///   - executor:     The ``ConversationTurnExecutor`` from the runtime.
     ///   - taskRegistry: The ``ConversationTurnTaskRegistry`` from the runtime.
     /// - Returns: An `AsyncStream<RunEvent>` delivering lifecycle events until
-    ///   the run reaches a terminal state.
+    ///   the run reaches a terminal state. Ending observation early cancels
+    ///   the producer and leaves a `.paused` checkpoint for durable resume.
     package func startRun(
         _ run: ConversationRun,
         using provider: any RunInputProvider,
@@ -289,7 +290,7 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
         let driver = self
 
         return AsyncStream { continuation in
-            Task {
+            let producer = Task {
                 await runState.clearFlags()
                 var currentRun = run
 
@@ -299,6 +300,11 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                 currentRun.updatedAt = Date()
                 await storeProxy.updateRun(currentRun)
                 await runState.setActiveRun(currentRun)
+                if Task.isCancelled {
+                    await driver.checkpointAbandonedRun(currentRun)
+                    continuation.finish()
+                    return
+                }
                 continuation.yield(.runStarted(
                     runID: currentRun.id,
                     sessionID: currentRun.sessionID,
@@ -318,6 +324,7 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
 
                 continuation.finish()
             }
+            continuation.onTermination = { @Sendable _ in producer.cancel() }
         }
     }
 
@@ -373,7 +380,8 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
     ///   - executor:     The ``ConversationTurnExecutor`` from the runtime.
     ///   - taskRegistry: The ``ConversationTurnTaskRegistry`` from the runtime.
     /// - Returns: An `AsyncStream<RunEvent>` delivering lifecycle events until
-    ///   the run reaches a terminal state. If no run is persisted for `runID`,
+    ///   the run reaches a terminal state. Ending observation early leaves a
+    ///   `.paused` checkpoint. If no run is persisted for `runID`,
     ///   or the run is already terminal, the stream finishes after a single
     ///   terminal event without executing any steps.
     package func resume(
@@ -387,7 +395,7 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
         let driver = self
 
         return AsyncStream { continuation in
-            Task {
+            let producer = Task {
                 // 1. Load the persisted run.
                 guard let fetched = await storeProxy.fetchRun(runID) else {
                     continuation.yield(.runFailed(
@@ -419,6 +427,12 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                     break
                 }
 
+                // A dropped observer must not mutate an existing checkpoint.
+                if Task.isCancelled {
+                    continuation.finish()
+                    return
+                }
+
                 // 2. Determine the resume point from persisted steps.
                 let steps = await storeProxy.fetchSteps(fetched.id)
                 let completed = steps.filter(\.isCompleted)
@@ -445,6 +459,11 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                 currentRun.updatedAt = Date()
                 await storeProxy.updateRun(currentRun)
                 await runState.setActiveRun(currentRun)
+                if Task.isCancelled {
+                    await driver.checkpointAbandonedRun(currentRun)
+                    continuation.finish()
+                    return
+                }
                 continuation.yield(.runResumed(runID: currentRun.id, stepCount: resumeIndex))
 
                 // 4. Hand off to the shared step loop seeded at the resume point.
@@ -460,7 +479,19 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
 
                 continuation.finish()
             }
+            continuation.onTermination = { @Sendable _ in producer.cancel() }
         }
+    }
+
+    /// Losing the event consumer suspends the run at its last safe checkpoint.
+    /// It is not an explicit user cancellation: a later durable resume may
+    /// replay an incomplete step through the provider.
+    private func checkpointAbandonedRun(_ run: ConversationRun) async {
+        var checkpoint = run
+        checkpoint.status = .paused
+        checkpoint.updatedAt = Date()
+        await runState.setActiveRun(nil)
+        await storeProxy.updateRun(checkpoint)
     }
 
     // MARK: Shared step loop
@@ -502,6 +533,10 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                 continuation.yield(.runCancelled(runID: currentRun.id, stepCount: stepIndex))
                 break stepLoop
             }
+            if Task.isCancelled {
+                await checkpointAbandonedRun(currentRun)
+                break stepLoop
+            }
 
             // Pause/resume cycle.
             if await runState.checkPaused() {
@@ -513,7 +548,12 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                 // Poll until un-paused or cancelled.
                 while await runState.checkPaused() {
                     if await runState.checkCancelled() { break }
-                    try? await Task.sleep(for: .milliseconds(100))
+                    if Task.isCancelled { break }
+                    do {
+                        try await Task.sleep(for: .milliseconds(100))
+                    } catch {
+                        break
+                    }
                 }
 
                 if await runState.checkCancelled() {
@@ -522,6 +562,10 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                     await storeProxy.updateRun(currentRun)
                     await runState.setActiveRun(nil)
                     continuation.yield(.runCancelled(runID: currentRun.id, stepCount: stepIndex))
+                    break stepLoop
+                }
+                if Task.isCancelled {
+                    await checkpointAbandonedRun(currentRun)
                     break stepLoop
                 }
 
@@ -548,12 +592,20 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                 stepIndex: stepIndex,
                 prior: priorStep
             ) else {
+                if Task.isCancelled {
+                    await checkpointAbandonedRun(currentRun)
+                    break stepLoop
+                }
                 currentRun.status = .completed
                 currentRun.stepCount = stepIndex
                 currentRun.updatedAt = Date()
                 await storeProxy.updateRun(currentRun)
                 await runState.setActiveRun(nil)
                 continuation.yield(.runCompleted(runID: currentRun.id, stepCount: stepIndex))
+                break stepLoop
+            }
+            if Task.isCancelled {
+                await checkpointAbandonedRun(currentRun)
                 break stepLoop
             }
 
@@ -583,11 +635,20 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                     outcomeCompletion: outcomeCompletion
                 )
                 // Wait for the turn to fully complete before advancing.
-                if handle != nil {
-                    let outcome = await outcomeCompletion.value()
+                if let handle {
+                    let outcome = await withTaskCancellationHandler {
+                        if Task.isCancelled { taskRegistry.cancel(handle) }
+                        return await outcomeCompletion.value()
+                    } onCancel: {
+                        taskRegistry.cancel(handle)
+                    }
                     step.messageID = outcome.assistantMessage?.id
                 }
             } catch {
+                if Task.isCancelled {
+                    await checkpointAbandonedRun(currentRun)
+                    break stepLoop
+                }
                 let reason = error.localizedDescription
                 step.isFailed = true
                 step.failureReason = reason
@@ -604,6 +665,13 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                     reason: reason
                 ))
                 continuation.yield(.runFailed(runID: currentRun.id, reason: reason))
+                break stepLoop
+            }
+
+            if Task.isCancelled {
+                // Leave this step incomplete so durable resume can supersede
+                // and replay it. The cancelled turn has already settled.
+                await checkpointAbandonedRun(currentRun)
                 break stepLoop
             }
 
