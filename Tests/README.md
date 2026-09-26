@@ -48,6 +48,15 @@ scripts/test.sh --profile local
 
 `--skip-update` is safe unless you touched `Package.swift` (drop it then to refresh resolution).
 
+For live GGUF discovery, set `MANIFOLD_DISCOVER_LOCAL_MODELS=1` and place a
+language model under `~/Documents/Models/gguf/<name>/*.gguf`. The
+`HardwareRequirementsGGUFTests` live case skips cleanly when discovery is not
+enabled or no model is present. Automatic selection ignores `mmproj` vision
+projector sidecars; an explicit `LLAMA_TEST_MODEL=<path>` still validates the
+path directly. `GGUFDiscoveryDiagnostics.unreadableDirectoryCount` distinguishes
+real directory read failures from absent search roots, which are normal and
+excluded from the scanned-directory count.
+
 ## Test classification
 
 | Kind | Where it lives | What it does |

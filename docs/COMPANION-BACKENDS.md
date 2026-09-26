@@ -156,6 +156,22 @@ public API but is intentionally shared with backend packages; don't reach for
 
 ## 4. Pin and release lifecycle
 
+The checked-in [consumer registry](../scripts/consumer-registry.json) drives
+release notifications, pre-release canaries, the compatibility matrix, and
+pin/bump freshness checks. Every entry must provide `canary.yml` on `main`,
+with `workflow_dispatch`, building and testing against core main. Missing,
+failed, incomplete, or stale results fail the release gate. The table below
+is validated in required lint; regenerate it with
+`python3 scripts/consumer-registry.py docs` after changing the registry.
+
+<!-- consumer-registry:start -->
+| Consumer | Core pin | Bump branch |
+|---|---|---|
+| `manifold-mlx` | current minor | `release-please--branches--main` |
+| `manifold-llama` | current minor | `release-please--branches--main` |
+| `manifold-eval` | exact release | `auto/bump-manifoldkit-*` |
+<!-- consumer-registry:end -->
+
 > **1.0 semantics.** Core and companion packages version independently —
 > core reaching 1.0 does not require or wait for a companion's 1.0, and a
 > companion is free to stay pre-1.0 tracking core's stable API from the
@@ -176,8 +192,8 @@ public API but is intentionally shared with backend packages; don't reach for
   shipped a matching `repository_dispatch: [core-release]` listener, so wire
   the listener and the dispatch target together.
 - **Canary against core `main` before a risky release.** `companion-compat.yml`
-  is an on-demand (`workflow_dispatch`) job that checks out both companion
-  repos and builds each against an arbitrary core ref (default `main`) via
+  is an on-demand (`workflow_dispatch`) job that checks out all registered
+  consumer repos and builds each against an arbitrary core ref (default `main`) via
   `swift package edit`, catching a breaking seam change (e.g. a new
   non-frozen `GenerationEvent` case) before it ships in a tag. It's not a
   required gate — the breaking change usually lands on `main` before the

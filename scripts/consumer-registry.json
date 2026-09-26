@@ -1,0 +1,5 @@
+[
+  {"repo": "manifold-mlx", "pin": "minor", "bump_branch": "release-please--branches--main", "bump_match": "exact"},
+  {"repo": "manifold-llama", "pin": "minor", "bump_branch": "release-please--branches--main", "bump_match": "exact"},
+  {"repo": "manifold-eval", "pin": "exact", "bump_branch": "auto/bump-manifoldkit-", "bump_match": "prefix"}
+]

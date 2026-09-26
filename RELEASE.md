@@ -161,7 +161,8 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    the changelog rewrite in step 3 — using `--dispatch`, which triggers fresh
    canary runs on both companions and waits for them. It needs the
    `COMPANION_DISPATCH_TOKEN` repo secret. That PAT needs **Actions: read+write**
-   (and contents:read+write) on manifold-mlx / manifold-llama **and
+   (and contents:read+write) on every entry in
+   `scripts/consumer-registry.json` **and
    contents:read on this repository** — the script reads
    `GET /repos/ManifoldKit/ManifoldKit/commits/{sha}/pulls` to resolve when
    `main`'s tip actually landed, and a companion-only PAT fails that preflight
@@ -176,7 +177,7 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
 
    **Sequencing, so this doesn't surprise you:** the dispatch happens when you
    push in step 3, not now, and it can take **up to 45 minutes** (it waits for
-   both companion canaries). Budget for that before you expect to run step 4's
+   all registered consumer canaries). Budget for that before you expect to run step 4's
    `--auto`. To front-run it, trigger the canaries by hand now and let them
    build while you write the changelog:
 

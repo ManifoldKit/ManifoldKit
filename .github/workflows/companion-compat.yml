@@ -87,12 +87,23 @@ permissions:
   contents: read
 
 jobs:
+  consumers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.registry.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: registry
+        run: |
+          matrix=$(python3 scripts/consumer-registry.py matrix)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
   compat:
+    needs: consumers
     strategy:
-      # Report both companions even if one breaks.
+      # Report every registered consumer even if one breaks.
       fail-fast: false
-      matrix:
-        companion: [manifold-mlx, manifold-llama]
+      matrix: ${{ fromJSON(needs.consumers.outputs.matrix) }}
     runs-on: macos-26
     # macOS jobs are org-capped at ~5 concurrent; an unbounded default (360
     # min) can stall the whole org queue if this job hangs (#2099 CI review).

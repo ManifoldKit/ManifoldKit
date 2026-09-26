@@ -1,7 +1,9 @@
 #if os(macOS) && !targetEnvironment(macCatalyst)
 import Foundation
 import XCTest
+@testable import ManifoldMCP
 @testable import ManifoldMCPHost
+import ManifoldTestSupport
 
 // MARK: - MCPHostStdioTransportTests
 //
@@ -11,6 +13,47 @@ import XCTest
 // `MCPHostServer.run(transport:)` never terminated it. `shutdown()` now
 // closes the input handle to unblock the read and joins the read task.
 final class MCPHostStdioTransportTests: XCTestCase {
+
+    func test_readsNewlineDelimitedMessagesFromPipe() async throws {
+        let pipe = Pipe()
+        let transport = MCPHostStdioTransport(input: pipe.fileHandleForReading, maxMessageBytes: 32)
+        let first = Data("{\"id\":1}".utf8)
+        let second = Data("{\"id\":2}".utf8)
+        var input = MCPStdioFrameCodec.frame(first)
+        input.append(MCPStdioFrameCodec.frame(second))
+        try pipe.fileHandleForWriting.write(contentsOf: input)
+
+        let messages = try await withTimeout(.seconds(3)) {
+            var iterator = transport.incomingMessages.makeAsyncIterator()
+            let one = try await iterator.next()
+            let two = try await iterator.next()
+            return [one, two].compactMap { $0 }
+        }
+        XCTAssertEqual(messages, [first, second])
+        await transport.shutdown()
+        try pipe.fileHandleForWriting.close()
+    }
+
+    func test_rejectsOversizeUnterminatedLineWithHostError() async throws {
+        let pipe = Pipe()
+        let transport = MCPHostStdioTransport(input: pipe.fileHandleForReading, maxMessageBytes: 16)
+        try pipe.fileHandleForWriting.write(contentsOf: Data(repeating: 0x61, count: 17))
+
+        do {
+            try await withTimeout(.seconds(3)) {
+                for try await _ in transport.incomingMessages {}
+            }
+            XCTFail("Expected oversized stdio line to fail")
+        } catch let error as MCPHostTransportError {
+            guard case .oversizeMessage(let bytes) = error else {
+                return XCTFail("Unexpected host transport error: \(error)")
+            }
+            XCTAssertEqual(bytes, 17)
+        }
+        await transport.shutdown()
+        try pipe.fileHandleForWriting.close()
+    }
+
 
     // MARK: shutdown terminates iteration
 
