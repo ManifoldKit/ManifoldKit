@@ -498,9 +498,6 @@ if case .available = NeuralAcceleratorProbe.availability {
 #endif
 ```
 
-> **macOS 26.2 status:** macOS 26.2 was in beta as of June 2026. Check Apple's release
-> notes for the stable availability date.
-
 *Source: [Apple ML Research, June 2026](https://machinelearning.apple.com/research/exploring-llms-mlx-m5)*
 
 ### Bring your own UI

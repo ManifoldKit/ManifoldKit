@@ -25,12 +25,12 @@ import Darwin
 ///
 /// 1. **Idiom rule** — if the line contains a `try?` followed by one of
 ///    the patterns in ``approvedTryIdioms`` (e.g. `try? JSONSerialization.`,
-///    `try? FileManager.default.`, `try? await Task.sleep`, `try? container.decode`),
+///    `try? await Task.sleep`, `try? container.decode`),
 ///    the swallow is treated as a globally-approved category. No per-line
 ///    allowlist entry is required, and refactors that move the call do
-///    not invalidate the approval. Idiom rules codify CLAUDE.md's
-///    "optional decoding at trust boundaries" carve-out plus the
-///    best-effort cleanup patterns established across the codebase.
+///    not invalidate the approval. The remaining operational idioms are
+///    legacy exceptions to AGENTS.reference.md's narrow decoding rule;
+///    review them before adding a new pattern.
 ///
 /// 2. **Path-based allowlist** — anything that doesn't match an idiom
 ///    falls through to `silent_catch_allowlist.txt`, sitting next to this
@@ -60,9 +60,8 @@ final class SilentCatchAuditTest: XCTestCase {
     /// fingerprints into a single, refactor-stable rule.
     ///
     /// Each entry is a substring matched against the text following
-    /// `try?` (whitespace-tolerant). The set codifies CLAUDE.md's
-    /// "optional decoding at trust boundaries" exception plus best-effort
-    /// cleanup patterns established across the codebase.
+    /// `try?` (whitespace-tolerant). This still contains legacy operational
+    /// exceptions; new I/O sites must handle and report their errors.
     ///
     /// Adding an idiom widens the approved set globally, so requires
     /// reviewer sign-off. Prefer adding a path entry for one-off cases.
@@ -73,13 +72,6 @@ final class SilentCatchAuditTest: XCTestCase {
         "JSONDecoder(",
         "container.decode",
         "decoder.decode",
-
-        // Best-effort filesystem cleanup / enumeration. The local-variable
-        // forms (`fileManager.`, `fm.`) match call sites that bind a local
-        // before invoking the same method.
-        "FileManager.default.",
-        "fileManager.",
-        "fm.",
 
         // File handles — best-effort open/read/close.
         "FileHandle(",
@@ -161,7 +153,8 @@ final class SilentCatchAuditTest: XCTestCase {
     // MARK: - Sabotage (exercises the same `scan(sourcesRoot:allowlist:)` the audit runs)
 
     /// Plants a temp source tree containing an unapproved `try?` swallow,
-    /// an idiom-approved `try?` (must NOT be flagged), and a multi-line
+    /// an idiom-approved `try?` (must NOT be flagged), an operational
+    /// filesystem failure formerly hidden by a broad idiom, and a multi-line
     /// empty `catch { }` block, and asserts the REAL detection pipeline
     /// flags exactly the unapproved cases — plus that a fingerprint
     /// allowlist entry exempts the swallow it names.
@@ -181,6 +174,7 @@ final class SilentCatchAuditTest: XCTestCase {
         func swallow() {
             try? reallyImportantOperation()
             let x = try? JSONDecoder().decode(Foo.self, from: data)
+            try? FileManager.default.removeItem(at: tempURL)
             do {
                 try f()
             } catch {
@@ -193,6 +187,10 @@ final class SilentCatchAuditTest: XCTestCase {
         XCTAssertTrue(
             offenders.contains { $0.text.contains("try? reallyImportantOperation()") },
             "The unapproved try? swallow must be flagged; got \(offenders)"
+        )
+        XCTAssertTrue(
+            offenders.contains { $0.text.contains("try? FileManager.default.removeItem") },
+            "Filesystem cleanup errors must be reported; got \(offenders)"
         )
         XCTAssertFalse(
             offenders.contains { $0.text.contains("try? JSONDecoder().decode") },

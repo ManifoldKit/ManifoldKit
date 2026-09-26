@@ -1,4 +1,5 @@
 import Foundation
+import os
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
@@ -13,6 +14,7 @@ import Metal
 /// Use these with `XCTSkipUnless` / `XCTSkipIf` at the top of tests that
 /// require specific hardware or OS capabilities.
 public enum HardwareRequirements {
+    private static let logger = Logger(subsystem: "ManifoldKit", category: "HardwareRequirements")
 
     /// `true` when running on Apple Silicon (arm64). MLX and llama.cpp
     /// backends require this architecture.
@@ -405,6 +407,22 @@ public enum HardwareRequirements {
         results: inout [URL]
     ) {
         guard depth <= maxDepth else { return }
+        // Default roots include app containers without a Models directory.
+        // Check stat first so absence never throws through Foundation, while
+        // permission failures still produce a diagnostic.
+        var fileStatus = stat()
+        #if canImport(Darwin)
+        let result = directory.path.withCString { Darwin.fstatat(AT_FDCWD, $0, &fileStatus, 0) }
+        #else
+        let result = directory.path.withCString { Glibc.fstatat(AT_FDCWD, $0, &fileStatus, 0) }
+        #endif
+        if result != 0 {
+            let code = errno
+            if code == ENOENT || code == ENOTDIR { return }
+            logger.warning("Failed to inspect MLX model directory: \(String(cString: strerror(code)), privacy: .public)")
+            return
+        }
+        guard (fileStatus.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR) else { return }
         if depth > 0, isValidMLXDirectory(directory, fileManager: fileManager) {
             results.append(directory)
             // A valid MLX snapshot is a leaf for discovery — do not descend into
@@ -412,11 +430,17 @@ public enum HardwareRequirements {
             return
         }
         guard depth < maxDepth else { return }
-        guard let contents = try? fileManager.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else { return }
+        let contents: [URL]
+        do {
+            contents = try fileManager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            logger.warning("Failed to inspect MLX model directory: \(error.localizedDescription)")
+            return
+        }
 
         for candidate in contents {
             guard shouldDescendIntoDiscoveryDirectory(candidate, fileManager: fileManager) else {
@@ -766,11 +790,17 @@ public enum HardwareRequirements {
             return false
         }
 
-        guard let files = try? fileManager.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) else { return false }
+        let files: [URL]
+        do {
+            files = try fileManager.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            logger.warning("Failed to inspect MLX model files: \(error.localizedDescription)")
+            return false
+        }
 
         let fileNames = Set(files.map { $0.lastPathComponent.lowercased() })
         let hasWeights = files.contains { $0.pathExtension.lowercased() == "safetensors" }
@@ -964,16 +994,21 @@ public enum HardwareRequirements {
 
         if let library = fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first {
             let containersDir = library.appendingPathComponent("Containers", isDirectory: true)
-            if let containers = try? fileManager.contentsOfDirectory(
-                at: containersDir,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            ) {
+            do {
+                let containers = try fileManager.contentsOfDirectory(
+                    at: containersDir,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+                )
                 for container in containers {
                     searchDirs.append(
                         container.appendingPathComponent("Data/Documents/Models", isDirectory: true)
                     )
                 }
+            } catch CocoaError.fileReadNoSuchFile {
+                // A system without app containers has no additional model roots.
+            } catch {
+                logger.warning("Failed to inspect app container directories: \(error.localizedDescription)")
             }
         }
 

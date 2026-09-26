@@ -723,7 +723,11 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         // The download was cancelled; discard the file without transitioning to .failed.
         // Staging cleanup happens in removeTaskTracking once all tasks have drained.
         if snapshot.isCancelling {
-            try? FileManager.default.removeItem(at: tempURL)
+            do {
+                try FileManager.default.removeItem(at: tempURL)
+            } catch {
+                Log.download.warning("Failed to discard cancelled snapshot file: \(error.localizedDescription)")
+            }
             return
         }
 
@@ -733,7 +737,11 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         let resolvedDestination = destination.resolvingSymlinksInPath()
         let resolvedStaging = snapshot.stagingDirectory.resolvingSymlinksInPath()
         guard resolvedDestination.path.hasPrefix(resolvedStaging.path + "/") else {
-            try? FileManager.default.removeItem(at: tempURL)
+            do {
+                try FileManager.default.removeItem(at: tempURL)
+            } catch {
+                Log.download.warning("Failed to discard rejected snapshot file: \(error.localizedDescription)")
+            }
             throw HuggingFaceError.invalidDownloadedFile(reason: "Snapshot file path escapes staging directory: \(relativePath)")
         }
         try FileManager.default.createDirectory(

@@ -229,6 +229,7 @@ final class GateReliabilityScriptTests: XCTestCase {
                     #!/bin/bash
                     set -uo pipefail
                     if [[ "$CANCELLATION_MODE" == "late-fork" ]]; then
+                        trap '' HUP INT
                         trap 'sleep 30 & printf "%s\\n" "$!" > "$CANCELLATION_READY.late"; wait' TERM
                     else
                         trap '' HUP INT TERM
@@ -236,7 +237,13 @@ final class GateReliabilityScriptTests: XCTestCase {
                     /bin/ps -p "$$" -o pgid= > "$CANCELLATION_READY.group"
                     test "$(head -n 1 "$MANIFOLD_GATE_LOCK_FILE")" = "$MANIFOLD_GATE_LOCK_OWNER_PID" || exit 65
                     printf '%s\\n' "$$" > "$CANCELLATION_READY"
-                    while :; do sleep 0.05; done
+                    if [[ "$CANCELLATION_MODE" == "late-fork" ]]; then
+                        # A foreground command can defer Bash trap dispatch;
+                        # readiness must lead straight to the TERM handler.
+                        while :; do :; done
+                    else
+                        while :; do sleep 0.05; done
+                    fi
                     """,
                     to: bin.appendingPathComponent("swift")
                 )

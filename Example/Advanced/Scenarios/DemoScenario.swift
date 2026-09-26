@@ -74,13 +74,6 @@ struct DemoScenario: Identifiable, Sendable {
     /// context type docs).
     let configureContext: (@MainActor @Sendable (inout DemoScenarioRuntimeContext) -> Void)?
 
-    /// Synthetic `transfer_to_<agent>` tool names the scenario is expected to
-    /// emit. Asserted loudly by the W3B scripted UITest harness — the demo
-    /// fails clearly when a handoff fails to materialise (per plan §Demo
-    /// realism / AI reviewer fix #9). `nil` for scenarios that don't exercise
-    /// agent handoffs.
-    let expectedHandoffs: [String]?
-
     /// Minimum model capability tier under which the scenario produces a
     /// reliable demonstration. Used by the empty-state card to surface an
     /// "install a larger model" hint when the active model is below the bar,
@@ -114,7 +107,6 @@ struct DemoScenario: Identifiable, Sendable {
         accessibilityID: String,
         configure: (@MainActor @Sendable (ToolRegistry) -> Void)? = nil,
         configureContext: (@MainActor @Sendable (inout DemoScenarioRuntimeContext) -> Void)? = nil,
-        expectedHandoffs: [String]? = nil,
         minCapableModel: ModelCapabilityTier? = nil,
         handoffFollowUpPrompt: String? = nil
     ) {
@@ -129,7 +121,6 @@ struct DemoScenario: Identifiable, Sendable {
         self.accessibilityID = accessibilityID
         self.configure = configure
         self.configureContext = configureContext
-        self.expectedHandoffs = expectedHandoffs
         self.minCapableModel = minCapableModel
         self.handoffFollowUpPrompt = handoffFollowUpPrompt
     }

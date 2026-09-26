@@ -69,7 +69,7 @@ If your test hits SwiftData, it's an integration test — name and place it acco
 
 ## Per-protocol contract mixins
 
-`Sources/ManifoldTestSupport/Contracts/` contains opt-in XCTestCase mixin protocols for the core ManifoldKit protocols. Each file is named `<ProtocolName>Contract.swift`.
+`Sources/ManifoldContractTestSupport/` contains opt-in XCTestCase mixin protocols for the core ManifoldKit protocols. Each file is named `<ProtocolName>Contract.swift`.
 
 | Contract protocol | Validates |
 |---|---|
@@ -82,9 +82,9 @@ If your test hits SwiftData, it's an integration test — name and place it acco
 | `PersonaStoreContract` | `PersonaStore` — insert/fetch/delete, most-recently-created ordering |
 | `BenchmarkCacheContract` | `BenchmarkCache` — upsert/fetchAll, replacement semantics, multi-key isolation |
 
-`ManifoldMCPTests/Contracts/MCPToolSourceContractTests.swift` covers `MCPToolSource` behavioral invariants (not a mixin — `ManifoldMCP` is not a dependency of `ManifoldTestSupport`).
+`ManifoldMCPTests/Contracts/MCPToolSourceContractTests.swift` covers `MCPToolSource` behavioral invariants (not a mixin — `ManifoldMCP` is not a dependency of `ManifoldContractTestSupport`).
 
-`ManifoldBackendsTests/Contracts/URLSessionProviderContractTests.swift` covers `URLSessionProvider` security and configuration invariants (not a mixin — `ManifoldCloudCore` is not a dependency of `ManifoldTestSupport`).
+`ManifoldBackendsTests/Contracts/URLSessionProviderContractTests.swift` covers `URLSessionProvider` security and configuration invariants (not a mixin — `ManifoldCloudCore` is not a dependency of `ManifoldContractTestSupport`).
 
 ### Adopting a contract mixin
 
