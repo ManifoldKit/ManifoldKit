@@ -4,7 +4,7 @@
 **Status:** living
 
 The pre-WWDC traits were added on 2026-05-31 and retired by
-[PR #2536](https://github.com/ManifoldKit/ManifoldKit/pull/2536) on 2026-09-18.
+[PR #2536](https://github.com/ManifoldKit/ManifoldKit/pull/2536) on 2026-09-19.
 Neither `SystemAIProviderExtension` nor `CoreAI` unlocked a target or source
 file. Keeping names for unadopted APIs made no-op switches part of the public
 manifest.
