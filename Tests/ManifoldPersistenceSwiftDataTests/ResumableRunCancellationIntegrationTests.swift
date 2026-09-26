@@ -2,7 +2,7 @@ import XCTest
 import SwiftData
 @testable import ManifoldPersistenceSwiftData
 import ManifoldInference
-import ManifoldRuntime
+@testable import ManifoldRuntime
 import ManifoldTestSupport
 import ManifoldPersistenceTestSupport
 
@@ -208,6 +208,121 @@ final class ResumableRunCancellationIntegrationTests: XCTestCase {
         XCTAssertEqual(steps.filter(\.isCompleted).count, 1)
         let final = try await fixture.store.base.fetchRun(run.id)
         XCTAssertEqual(final?.status, .completed)
+    }
+
+    private func waitForQueueCount(_ count: Int, fixture: Fixture) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while await fixture.driver.queuedProducerCountForTesting != count {
+            if ContinuousClock.now >= deadline {
+                XCTFail("Producer queue did not reach expected count \(count)")
+                return false
+            }
+            await Task.yield()
+        }
+        return true
+    }
+
+    func test_threeQueuedProducers_revalidatesTakeoverAfterPromotion() async throws {
+        let fixture = try makeFixture()
+        let entered = expectation(description: "original provider held")
+        let gate = Gate(entered)
+        let run = ConversationRun(sessionID: UUID(), goal: "queued takeover", maxSteps: 1)
+        let original = Task {
+            for await _ in fixture.runtime.startRun(run, using: GatedProvider(gate: gate)) {}
+        }
+        await fulfillment(of: [entered], timeout: 3)
+        original.cancel()
+        await original.value
+
+        let middleFinished = expectation(description: "middle resume finished")
+        let finalFinished = expectation(description: "final resume finished")
+        let middle = Task { () -> [RunEvent] in
+            var events: [RunEvent] = []
+            for await event in fixture.runtime.resumeRun(
+                run.id, using: PauseAfterFirstStepProvider(driver: fixture.driver, recorder: IndexRecorder())
+            ) { events.append(event) }
+            middleFinished.fulfill()
+            return events
+        }
+        let middleQueued = await waitForQueueCount(1, fixture: fixture)
+        let final = Task { () -> [RunEvent] in
+            var events: [RunEvent] = []
+            for await event in fixture.runtime.resumeRun(run.id) { events.append(event) }
+            finalFinished.fulfill()
+            return events
+        }
+        let bothQueued = await waitForQueueCount(2, fixture: fixture)
+        await gate.release()
+        if middleQueued && bothQueued {
+            await fulfillment(of: [middleFinished, finalFinished], timeout: 3)
+        }
+        // On sabotage/timeout, cancel both observers and join the producers
+        // before releasing their real SwiftData container.
+        middle.cancel()
+        final.cancel()
+        let middleEvents = await middle.value
+        let finalEvents = await final.value
+        await joinProducer(fixture)
+        XCTAssertTrue(middleEvents.isEmpty, "A queued successor must cancel the promoted middle producer before it starts")
+        XCTAssertEqual(finalEvents.last, .runCompleted(runID: run.id, stepCount: 1))
+        let saved = try await fixture.store.base.fetchRun(run.id)
+        let steps = try await fixture.store.base.fetchSteps(for: run.id)
+        XCTAssertEqual(saved?.status, .completed)
+        XCTAssertEqual(steps.filter(\.isCompleted).count, 1)
+    }
+
+    func test_queuedCancelledAndUnrelatedResumes_doNotCancelPromotedOwner() async throws {
+        let fixture = try makeFixture()
+        let entered = expectation(description: "original provider held")
+        let gate = Gate(entered)
+        let run = ConversationRun(sessionID: UUID(), goal: "rightful owner", maxSteps: 1)
+        let original = Task {
+            for await _ in fixture.runtime.startRun(run, using: GatedProvider(gate: gate)) {}
+        }
+        await fulfillment(of: [entered], timeout: 3)
+        original.cancel()
+        await original.value
+        let paused = expectation(description: "promoted owner remains live and pauses")
+        var ownerFinished = false
+        let owner = Task {
+            for await event in fixture.runtime.resumeRun(
+                run.id, using: PauseAfterFirstStepProvider(driver: fixture.driver, recorder: IndexRecorder())
+            ) {
+                if case .runPaused = event { paused.fulfill() }
+            }
+            ownerFinished = true
+        }
+        let ownerQueued = await waitForQueueCount(1, fixture: fixture)
+        let abandoned = Task { for await _ in fixture.runtime.resumeRun(run.id) {} }
+        let abandonedQueued = await waitForQueueCount(2, fixture: fixture)
+        abandoned.cancel()
+        await abandoned.value
+
+        let unrelated = ConversationRun(id: UUID(), sessionID: UUID(), goal: "unrelated",
+                                        status: .paused, createdAt: Date(), updatedAt: Date())
+        try await fixture.store.base.insertRun(unrelated)
+        let rejected = expectation(description: "unrelated queued resume fails busy")
+        let other = Task { () -> [RunEvent] in
+            var events: [RunEvent] = []
+            for await event in fixture.runtime.resumeRun(unrelated.id) { events.append(event) }
+            rejected.fulfill()
+            return events
+        }
+        let allQueued = await waitForQueueCount(3, fixture: fixture)
+        await gate.release()
+        if ownerQueued && abandonedQueued && allQueued {
+            await fulfillment(of: [paused, rejected], timeout: 3)
+        }
+        XCTAssertFalse(ownerFinished, "An abandoned or unrelated queued resume must not cancel the promoted owner")
+        owner.cancel()
+        other.cancel()
+        await owner.value
+        let rejectedEvents = await other.value
+        await joinProducer(fixture)
+        guard case .runFailed = rejectedEvents.first else { return XCTFail("Unrelated queued work must fail busy") }
+        let unchanged = try await fixture.store.base.fetchRun(unrelated.id)
+        XCTAssertEqual(unchanged?.updatedAt, unrelated.updatedAt)
+        XCTAssertEqual(unchanged?.status, .paused)
     }
 
     func test_dropDuringResumeFetch_leavesSavedRunAndStepUnchanged() async throws {

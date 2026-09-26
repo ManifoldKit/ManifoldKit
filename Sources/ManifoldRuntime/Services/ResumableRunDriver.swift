@@ -98,7 +98,9 @@ private final class RunProducerCancellation: @unchecked Sendable {
 // busy rather than cancelling someone else's work or waiting on a paused loop.
 private actor RunProducerGate {
     private var owner: (UUID, RunProducerCancellation)?
-    private var waiters: [(UUID, RunProducerCancellation, CheckedContinuation<Void, Never>)] = []
+    private var waiters: [(UUID, Bool, RunProducerCancellation, CheckedContinuation<Bool, Never>)] = []
+
+    var queuedCount: Int { waiters.count }
 
     func acquire(runID: UUID, resuming: Bool, cancellation: RunProducerCancellation) async -> Bool {
         if let owner {
@@ -106,7 +108,7 @@ private actor RunProducerGate {
                 guard resuming && owner.0 == runID else { return false }
                 owner.1.cancel()
             }
-            await withCheckedContinuation { waiters.append((runID, cancellation, $0)) }
+            return await withCheckedContinuation { waiters.append((runID, resuming, cancellation, $0)) }
         } else {
             owner = (runID, cancellation)
         }
@@ -118,8 +120,22 @@ private actor RunProducerGate {
             owner = nil
         } else {
             let next = waiters.removeFirst()
-            owner = (next.0, next.1)
-            next.2.resume()
+            owner = (next.0, next.2)
+
+            // Admission was checked against the old owner. Recheck queued
+            // requests against the promoted owner before it can pause: a
+            // same-run successor still needs takeover, while unrelated work
+            // must fail busy and an abandoned waiter must not cancel it.
+            while let pending = waiters.first, !next.2.isCancelled {
+                if pending.2.isCancelled {
+                    waiters.removeFirst().3.resume(returning: false)
+                } else if pending.1 && pending.0 == next.0 {
+                    next.2.cancel()
+                } else {
+                    waiters.removeFirst().3.resume(returning: false)
+                }
+            }
+            next.3.resume(returning: true)
         }
     }
 }
@@ -299,6 +315,12 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
     private let storeProxy: RunStoreProxy
     private let runState = ResumableRunState()
     private let producerGate = RunProducerGate()
+
+    // Module-internal observation keeps deterministic queue tests out of the
+    // package API and never permits tests to alter producer ownership.
+    var queuedProducerCountForTesting: Int {
+        get async { await producerGate.queuedCount }
+    }
 
     // MARK: Init
 
