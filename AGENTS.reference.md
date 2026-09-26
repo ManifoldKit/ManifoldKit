@@ -889,6 +889,8 @@ Runs XCTest + Swift Testing on the full core surface plus the `Macros` trait. Th
 
 **Each of the three invocations is routed through `scripts/ci-test-with-watchdog.sh`** — the same wrapper CI uses, not a reimplementation — so a hung test SIGABRTs locally instead of just looking slow (a dev machine absorbs subprocess load differently than a CI runner, which is exactly how four locally-green `--profile local` runs failed to predict a CI stall in one night). Default stall threshold is **480s (2x CI's 240s)**, deliberate headroom for legitimate local contention (a second concurrent gate, Xcode indexing, SwiftPM cache-lock contention) without defeating the point — a genuine hang is silent forever, so even 480s still catches it. `--profile ci` keeps CI's own 240s by default, since its purpose is reproducing a CI failure at CI's own threshold. Override either with `STALL_SECONDS=<n>`. The watchdog fails closed: a missing/non-executable wrapper aborts the gate rather than silently running unprotected, and the only way to skip it (`MANIFOLD_DISABLE_LOCAL_WATCHDOG=1`) prints a loud warning banner every time, so an unprotected run is never mistaken for a protected one.
 
+The top-level `--profile local` process also owns a macOS idle-sleep assertion (`caffeinate -i -w <gate-pid>`) from before the gate-lock wait through all three invocations. Its EXIT/signal cleanup terminates and reaps the assertion; `-w` is the crash backstop. Non-macOS hosts take a portable no-op path. This changes no persistent power setting.
+
 **Pre-push (CI repro — only when chasing a CI failure):**
 
 ```bash
