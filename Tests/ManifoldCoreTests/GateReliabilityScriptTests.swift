@@ -1,6 +1,5 @@
 import XCTest
 import Darwin
-import os
 
 /// Regression coverage for the local/CI gate reliability plumbing. These
 /// tests execute the real shell entrypoints against disposable fake children;
@@ -36,7 +35,8 @@ final class GateReliabilityScriptTests: XCTestCase {
         environment: [String: String] = [:],
         timeout: TimeInterval = 15,
         signalAfterReady: URL? = nil,
-        signal: Int32 = SIGTERM
+        signal: Int32 = SIGTERM,
+        context: String = ""
     ) throws -> RunResult {
         let process = Process()
         process.executableURL = executable
@@ -44,20 +44,20 @@ final class GateReliabilityScriptTests: XCTestCase {
         process.environment = ProcessInfo.processInfo.environment.merging(
             environment, uniquingKeysWith: { _, new in new }
         )
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        let data = OSAllocatedUnfairLock<Data>(initialState: Data())
-        let readDone = DispatchSemaphore(value: 0)
+        // A file preserves partial diagnostics even when a descendant keeps
+        // stdout open or a busy global queue delays a pipe-draining callback.
+        let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("gate-fixture-output-\(UUID().uuidString).log")
+        try Data().write(to: outputURL)
+        let outputHandle = try FileHandle(forWritingTo: outputURL)
+        defer {
+            try? outputHandle.close()
+            try? FileManager.default.removeItem(at: outputURL)
+        }
+        process.standardOutput = outputHandle
+        process.standardError = outputHandle
         let exitDone = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in exitDone.signal() }
         try process.run()
-        DispatchQueue.global(qos: .utility).async {
-            let captured = pipe.fileHandleForReading.readDataToEndOfFile()
-            data.withLock { $0 = captured }
-            readDone.signal()
-        }
 
         if let signalAfterReady {
             let deadline = Date().addingTimeInterval(5)
@@ -69,16 +69,31 @@ final class GateReliabilityScriptTests: XCTestCase {
         }
 
         guard exitDone.wait(timeout: .now() + timeout) == .success else {
-            process.terminate()
+            let output = try String(contentsOf: outputURL, encoding: .utf8)
+            var state = "parentPID=\(process.processIdentifier) alive=\(Darwin.kill(process.processIdentifier, 0) == 0)"
+            if let signalAfterReady {
+                let child = (try? String(contentsOf: signalAfterReady, encoding: .utf8)) ?? "missing"
+                let group = (try? String(contentsOfFile: signalAfterReady.path + ".group", encoding: .utf8)) ?? "missing"
+                state += " childPID=\(child.trimmingCharacters(in: .whitespacesAndNewlines)) groupPID=\(group.trimmingCharacters(in: .whitespacesAndNewlines))"
+                // Only this isolated fixture's recorded group is eligible for
+                // cleanup. Never send a signal to the XCTest caller's group.
+                if let groupPID = Int32(group.trimmingCharacters(in: .whitespacesAndNewlines)),
+                   groupPID > 0, groupPID != Darwin.getpgrp(),
+                   let childPID = Int32(child.trimmingCharacters(in: .whitespacesAndNewlines)),
+                   Darwin.getpgid(childPID) == groupPID {
+                    _ = Darwin.kill(-groupPID, SIGKILL)
+                }
+            }
+            _ = Darwin.kill(process.processIdentifier, SIGKILL)
             _ = exitDone.wait(timeout: .now() + 2)
-            XCTFail("\(executable.lastPathComponent) did not finish within \(timeout)s")
-            throw CocoaError(.coderReadCorrupt)
+            let details = "\(context) \(executable.lastPathComponent) did not finish within \(timeout)s after \(signalAfterReady == nil ? "launch" : "ready + signal \(signal)"). \(state)\nOutput:\n\(output)"
+            XCTFail(details)
+            throw NSError(domain: "GateReliabilityScriptTests", code: 1, userInfo: [NSLocalizedDescriptionKey: details])
         }
-        _ = readDone.wait(timeout: .now() + 2)
         process.waitUntilExit()
         return RunResult(
             status: process.terminationStatus,
-            output: data.withLock { String(data: $0, encoding: .utf8) ?? "" }
+            output: try String(contentsOf: outputURL, encoding: .utf8)
         )
     }
 
@@ -278,14 +293,31 @@ final class GateReliabilityScriptTests: XCTestCase {
                     set -euo pipefail
                     printf 'started\\n' >> "$CANCELLATION_ASSERTION"
                     trap 'printf "stopped\\n" >> "$CANCELLATION_ASSERTION"; exit 0' HUP INT TERM
-                    while :; do sleep 0.1; done
+                    # Mirror -w cleanup even if timeout recovery KILLs the
+                    # owning shell before its EXIT trap can run.
+                    while kill -0 "$3" 2>/dev/null; do sleep 0.1; done
+                    printf 'stopped\\n' >> "$CANCELLATION_ASSERTION"
                     """,
                     to: caffeinate
                 )
                 let originalPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+                let launcher = root.appendingPathComponent("signal-launcher.py")
+                try """
+                import os, signal, sys
+                # SwiftPM/XCTest workers may start with INT ignored. Seed that
+                # disposition here, then reset only this isolated child before
+                # Bash starts: Bash cannot trap an INT it inherited as ignored.
+                signal.signal(signal.SIGINT, signal.SIG_IGN)
+                signal.signal(signal.SIGINT, signal.SIG_DFL)
+                os.execv("/bin/bash", ["/bin/bash", *sys.argv[1:]])
+                """.write(to: launcher, atomically: true, encoding: .utf8)
+                guard FileManager.default.isExecutableFile(atPath: "/usr/bin/python3") else {
+                    XCTFail("The isolated signal fixture requires macOS /usr/bin/python3")
+                    throw CocoaError(.fileNoSuchFile)
+                }
                 let result = try run(
-                    URL(fileURLWithPath: "/bin/bash"),
-                    arguments: [scripts.appendingPathComponent("test.sh").path, "--profile", "local", "--filter", "ManifoldCoreTests"],
+                    URL(fileURLWithPath: "/usr/bin/python3"),
+                    arguments: [launcher.path, scripts.appendingPathComponent("test.sh").path, "--profile", "local", "--filter", "ManifoldCoreTests"],
                     environment: [
                         "PATH": "\(bin.path):\(originalPath)",
                         "MANIFOLD_GATE_LOCK_FILE": lock.path,
@@ -304,7 +336,8 @@ final class GateReliabilityScriptTests: XCTestCase {
                     ],
                     timeout: 3,
                     signalAfterReady: ready,
-                    signal: signal
+                    signal: signal,
+                    context: "mode=\(configuration.mode) watchdogDisabled=\(configuration.disabled) signal=\(signal)"
                 )
                 XCTAssertEqual(result.status, 128 + signal, result.output)
                 XCTAssertTrue(unrelated.isRunning, "cancellation must leave unrelated processes alive")
