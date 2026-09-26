@@ -113,6 +113,7 @@ GATE_LOCK_HELD_BY_SELF=0
 # recovers from that case instead.
 GATE_RECLAIM_MUTEX_HELD_BY_SELF=0
 LOCAL_GATE_SLEEP_ASSERTION_PID=""
+ACTIVE_GATE_CHILD_PID=""
 
 # A full local gate is long enough for macOS idle sleep to invalidate timing
 # and watchdog evidence. The gate-owning parent holds one `caffeinate -i`
@@ -498,17 +499,71 @@ cleanup_gate_process() {
     release_gate_lock
 }
 
+# A foreground external command defers Bash's traps until it finishes. Profile
+# children therefore run in the background and are joined by interruptible
+# `wait`; cancellation owns only that child's captured process tree.
+stop_active_gate_child() {
+    [[ -n "$ACTIVE_GATE_CHILD_PID" ]] || return 0
+    local process_table descendants pid
+    if process_table="$(ps -ax -o pid=,ppid=)"; then
+        descendants="$(printf '%s\n' "$process_table" | awk -v root="$ACTIVE_GATE_CHILD_PID" '
+            { parent[$1] = $2 }
+            function visit(owner, candidate) {
+                for (candidate in parent) if (parent[candidate] == owner) visit(candidate)
+                print owner
+            }
+            END { visit(root) }
+        ')"
+    else
+        echo "::error::scripts/test.sh: could not snapshot owned gate child descendants during cancellation." >&2
+        descendants="$ACTIVE_GATE_CHILD_PID"
+    fi
+    for pid in $descendants; do
+        # fail-open-ok: a captured child may have exited before cancellation reaches it
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+    # Give cooperative children a bounded cleanup interval, then stop any
+    # survivors before releasing the machine-wide lock to another gate.
+    local attempt=0 alive=1
+    while [[ $attempt -lt 20 && $alive -eq 1 ]]; do
+        alive=0
+        for pid in $descendants; do
+            if kill -0 "$pid" 2>/dev/null; then alive=1; fi
+        done
+        if [[ $alive -eq 1 ]]; then sleep 0.05; fi
+        attempt=$((attempt + 1))
+    done
+    for pid in $descendants; do
+        if kill -0 "$pid" 2>/dev/null; then
+            # fail-open-ok: a child may exit between the liveness check and forced termination
+            kill -KILL "$pid" 2>/dev/null || true
+        fi
+    done
+    # fail-open-ok: a cancelled child is expected to exit nonzero; reap it before unlocking
+    wait "$ACTIVE_GATE_CHILD_PID" 2>/dev/null || true
+    ACTIVE_GATE_CHILD_PID=""
+}
+
+wait_for_gate_child() {
+    ACTIVE_GATE_CHILD_PID=$!
+    local child_status
+    if wait "$ACTIVE_GATE_CHILD_PID"; then child_status=0; else child_status=$?; fi
+    ACTIVE_GATE_CHILD_PID=""
+    return "$child_status"
+}
+
 exit_from_signal() {
-    local signal="$1"
-    local status="$2"
-    trap - "$signal"
+    local status="$1"
+    # Ignore repeat cancellation while the owned child tree is being joined.
+    trap '' HUP INT TERM
+    stop_active_gate_child
     exit "$status"
 }
 
 trap cleanup_gate_process EXIT
-trap 'exit_from_signal HUP 129' HUP
-trap 'exit_from_signal INT 130' INT
-trap 'exit_from_signal TERM 143' TERM
+trap 'exit_from_signal 129' HUP
+trap 'exit_from_signal 130' INT
+trap 'exit_from_signal 143' TERM
 
 # Narrow self-test seam for scenario F's cleanup proof. The outer
 # `--lock-selftest` never receives this variable: it is passed only to the
@@ -2503,7 +2558,8 @@ run_leaf_with_local_watchdog() {
     # shape is #2464 again.
     if is_authenticated_outer_watchdog; then
         set +e
-        "$SCRIPT_PATH" "$@"
+        "$SCRIPT_PATH" "$@" &
+        wait_for_gate_child
         rc=$?
         set -e
         return $rc
@@ -2520,7 +2576,8 @@ run_leaf_with_local_watchdog() {
         # protected path is careful about.
         set +e
         MANIFOLD_TEST_OUTPUT_FILE="$PACKAGE_DIR/test-diagnostics/test_output_${label}.txt" \
-            "$SCRIPT_PATH" "$@"
+            "$SCRIPT_PATH" "$@" &
+        wait_for_gate_child
         rc=$?
         set -e
         return $rc
@@ -2539,7 +2596,8 @@ run_leaf_with_local_watchdog() {
         WATCHDOG_POLL_INTERVAL="$poll_interval" \
         MANIFOLD_TEST_OUTPUT_FILE="$PACKAGE_DIR/test-diagnostics/test_output_${label}.txt" \
         WATCHDOG_DIAGNOSTICS_DIR="$PACKAGE_DIR/test-diagnostics" \
-        "$CI_TEST_WATCHDOG" "$@"
+        "$CI_TEST_WATCHDOG" "$@" &
+    wait_for_gate_child
     rc=$?
     set -e
     return $rc

@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 import os
 
 /// Regression coverage for the local/CI gate reliability plumbing. These
@@ -33,7 +34,9 @@ final class GateReliabilityScriptTests: XCTestCase {
         _ executable: URL,
         arguments: [String] = [],
         environment: [String: String] = [:],
-        timeout: TimeInterval = 15
+        timeout: TimeInterval = 15,
+        signalAfterReady: URL? = nil,
+        signal: Int32 = SIGTERM
     ) throws -> RunResult {
         let process = Process()
         process.executableURL = executable
@@ -54,6 +57,15 @@ final class GateReliabilityScriptTests: XCTestCase {
             let captured = pipe.fileHandleForReading.readDataToEndOfFile()
             data.withLock { $0 = captured }
             readDone.signal()
+        }
+
+        if let signalAfterReady {
+            let deadline = Date().addingTimeInterval(5)
+            while !FileManager.default.fileExists(atPath: signalAfterReady.path), Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+            XCTAssertTrue(FileManager.default.fileExists(atPath: signalAfterReady.path), "child must start before cancellation")
+            XCTAssertEqual(Darwin.kill(process.processIdentifier, signal), 0)
         }
 
         guard exitDone.wait(timeout: .now() + timeout) == .success else {
@@ -184,6 +196,88 @@ final class GateReliabilityScriptTests: XCTestCase {
         XCTAssertEqual(nonMac.status, 0, nonMac.output)
         XCTAssertFalse(FileManager.default.fileExists(atPath: nonMacRecord.path))
         XCTAssertTrue(nonMac.output.contains("not needed"), nonMac.output)
+    }
+
+    func test_runningLocalProfileCancelsOwnedChildrenBeforeReleasingLockAndAssertion() throws {
+        for watchdogDisabled in [false, true] {
+            for signal in [SIGTERM, SIGHUP, SIGINT] {
+                let root = try makeTempDirectory()
+                defer { try? FileManager.default.removeItem(at: root) }
+                let scripts = root.appendingPathComponent("scripts")
+                let bin = root.appendingPathComponent("bin")
+                try FileManager.default.createDirectory(at: scripts, withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+                for name in ["test.sh", "ci-test-with-watchdog.sh"] {
+                    try FileManager.default.copyItem(
+                        at: repoRoot().appendingPathComponent("scripts/\(name)"),
+                        to: scripts.appendingPathComponent(name)
+                    )
+                }
+                let ready = root.appendingPathComponent("ready")
+                let record = root.appendingPathComponent("assertion")
+                let lock = root.appendingPathComponent("gate.lock")
+                // A resistant Swift child proves escalation stops descendants;
+                // a natural completion after 30 seconds cannot satisfy this test.
+                try writeExecutable(
+                    """
+                    #!/bin/bash
+                    set -euo pipefail
+                    trap '' HUP INT TERM
+                    test "$(head -n 1 "$MANIFOLD_GATE_LOCK_FILE")" = "$MANIFOLD_GATE_LOCK_OWNER_PID"
+                    printf '%s\\n' "$$" > "$CANCELLATION_READY"
+                    while :; do sleep 1; done
+                    """,
+                    to: bin.appendingPathComponent("swift")
+                )
+                let caffeinate = bin.appendingPathComponent("caffeinate")
+                try writeExecutable(
+                    """
+                    #!/bin/bash
+                    set -euo pipefail
+                    printf 'started\\n' >> "$CANCELLATION_ASSERTION"
+                    trap 'printf "stopped\\n" >> "$CANCELLATION_ASSERTION"; exit 0' HUP INT TERM
+                    while :; do sleep 0.1; done
+                    """,
+                    to: caffeinate
+                )
+                let originalPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+                let result = try run(
+                    URL(fileURLWithPath: "/bin/bash"),
+                    arguments: [scripts.appendingPathComponent("test.sh").path, "--profile", "local", "--filter", "ManifoldCoreTests"],
+                    environment: [
+                        "PATH": "\(bin.path):\(originalPath)",
+                        "MANIFOLD_GATE_LOCK_FILE": lock.path,
+                        "MANIFOLD_GATE_LOCK_OWNER_PID": "",
+                        "MANIFOLD_WATCHDOG_ACTIVE": "0",
+                        "MANIFOLD_TEST_OUTPUT_FILE": root.appendingPathComponent("output.log").path,
+                        "MANIFOLD_DISABLE_LOCAL_WATCHDOG": watchdogDisabled ? "1" : "0",
+                        "MANIFOLD_SLEEP_ASSERTION_SELFTEST": "1",
+                        "MANIFOLD_SLEEP_ASSERTION_SELFTEST_PLATFORM": "Darwin",
+                        "MANIFOLD_SLEEP_ASSERTION_SELFTEST_CAFFEINATE_BIN": caffeinate.path,
+                        "MANIFOLD_SLEEP_ASSERTION_SELFTEST_CHILD_READY_FILE": record.path,
+                        "CANCELLATION_READY": ready.path,
+                        "CANCELLATION_ASSERTION": record.path,
+                        "WATCHDOG_POLL_INTERVAL": "0.1",
+                    ],
+                    timeout: 3,
+                    signalAfterReady: ready,
+                    signal: signal
+                )
+                XCTAssertEqual(result.status, 128 + signal, result.output)
+                XCTAssertFalse(FileManager.default.fileExists(atPath: lock.path), result.output)
+                let lifecycle = try String(contentsOf: record, encoding: .utf8)
+                XCTAssertTrue(lifecycle.contains("stopped"), lifecycle)
+                let childPID = try XCTUnwrap(Int32(String(contentsOf: ready, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
+                // A zombie has already stopped executing, but must never be a
+                // live orphan consuming Swift build/test resources after unlock.
+                let state = try run(
+                    URL(fileURLWithPath: "/bin/ps"),
+                    arguments: ["-p", String(childPID), "-o", "stat="]
+                )
+                XCTAssertTrue(state.status != 0 || state.output.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("Z"), state.output)
+                XCTAssertTrue(result.output.contains("released macOS idle-sleep assertion"), result.output)
+            }
+        }
     }
 
     func test_ciConcurrencySeparatesDraftFromReadyAndPreservesCancellationSemantics() throws {
