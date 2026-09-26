@@ -199,8 +199,14 @@ final class GateReliabilityScriptTests: XCTestCase {
     }
 
     func test_runningLocalProfileCancelsOwnedChildrenBeforeReleasingLockAndAssertion() throws {
-        for watchdogDisabled in [false, true] {
-            for signal in [SIGTERM, SIGHUP, SIGINT] {
+        let configurations = [
+            (disabled: false, mode: "resistant", signals: [SIGTERM, SIGHUP, SIGINT]),
+            (disabled: true, mode: "resistant", signals: [SIGTERM, SIGHUP, SIGINT]),
+            (disabled: false, mode: "failed-ps", signals: [SIGTERM]),
+            (disabled: false, mode: "late-fork", signals: [SIGTERM]),
+        ]
+        for configuration in configurations {
+            for signal in configuration.signals {
                 let root = try makeTempDirectory()
                 defer { try? FileManager.default.removeItem(at: root) }
                 let scripts = root.appendingPathComponent("scripts")
@@ -221,14 +227,27 @@ final class GateReliabilityScriptTests: XCTestCase {
                 try writeExecutable(
                     """
                     #!/bin/bash
-                    set -euo pipefail
-                    trap '' HUP INT TERM
+                    set -uo pipefail
+                    if [[ "$CANCELLATION_MODE" == "late-fork" ]]; then
+                        trap 'sleep 30 & printf "%s\\n" "$!" > "$CANCELLATION_READY.late"; wait' TERM
+                    else
+                        trap '' HUP INT TERM
+                    fi
+                    /bin/ps -p "$$" -o pgid= > "$CANCELLATION_READY.group"
                     test "$(head -n 1 "$MANIFOLD_GATE_LOCK_FILE")" = "$MANIFOLD_GATE_LOCK_OWNER_PID"
                     printf '%s\\n' "$$" > "$CANCELLATION_READY"
-                    while :; do sleep 1; done
+                    while :; do sleep 0.05; done
                     """,
                     to: bin.appendingPathComponent("swift")
                 )
+                if configuration.mode == "failed-ps" {
+                    try writeExecutable("#!/bin/bash\nexit 71\n", to: bin.appendingPathComponent("ps"))
+                }
+                let unrelated = Process()
+                unrelated.executableURL = URL(fileURLWithPath: "/bin/sleep")
+                unrelated.arguments = ["30"]
+                try unrelated.run()
+                defer { unrelated.terminate(); unrelated.waitUntilExit() }
                 let caffeinate = bin.appendingPathComponent("caffeinate")
                 try writeExecutable(
                     """
@@ -250,12 +269,13 @@ final class GateReliabilityScriptTests: XCTestCase {
                         "MANIFOLD_GATE_LOCK_OWNER_PID": "",
                         "MANIFOLD_WATCHDOG_ACTIVE": "0",
                         "MANIFOLD_TEST_OUTPUT_FILE": root.appendingPathComponent("output.log").path,
-                        "MANIFOLD_DISABLE_LOCAL_WATCHDOG": watchdogDisabled ? "1" : "0",
+                        "MANIFOLD_DISABLE_LOCAL_WATCHDOG": configuration.disabled ? "1" : "0",
                         "MANIFOLD_SLEEP_ASSERTION_SELFTEST": "1",
                         "MANIFOLD_SLEEP_ASSERTION_SELFTEST_PLATFORM": "Darwin",
                         "MANIFOLD_SLEEP_ASSERTION_SELFTEST_CAFFEINATE_BIN": caffeinate.path,
                         "MANIFOLD_SLEEP_ASSERTION_SELFTEST_CHILD_READY_FILE": record.path,
                         "CANCELLATION_READY": ready.path,
+                        "CANCELLATION_MODE": configuration.mode,
                         "CANCELLATION_ASSERTION": record.path,
                         "WATCHDOG_POLL_INTERVAL": "0.1",
                     ],
@@ -264,6 +284,15 @@ final class GateReliabilityScriptTests: XCTestCase {
                     signal: signal
                 )
                 XCTAssertEqual(result.status, 128 + signal, result.output)
+                XCTAssertTrue(unrelated.isRunning, "cancellation must leave unrelated processes alive")
+                let groupPID = try XCTUnwrap(Int32(String(contentsOfFile: ready.path + ".group", encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
+                XCTAssertGreaterThan(groupPID, 0)
+                XCTAssertNotEqual(groupPID, Darwin.getpgrp(), "the profile child must own a separate group")
+                if configuration.mode == "late-fork" {
+                    let latePID = try XCTUnwrap(Int32(String(contentsOfFile: ready.path + ".late", encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
+                    let lateState = try run(URL(fileURLWithPath: "/bin/ps"), arguments: ["-p", String(latePID), "-o", "stat="])
+                    XCTAssertTrue(lateState.status != 0 || lateState.output.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("Z"), lateState.output)
+                }
                 XCTAssertFalse(FileManager.default.fileExists(atPath: lock.path), result.output)
                 let lifecycle = try String(contentsOf: record, encoding: .utf8)
                 XCTAssertTrue(lifecycle.contains("stopped"), lifecycle)

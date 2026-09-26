@@ -501,51 +501,34 @@ cleanup_gate_process() {
 
 # A foreground external command defers Bash's traps until it finishes. Profile
 # children therefore run in the background and are joined by interruptible
-# `wait`; cancellation owns only that child's captured process tree.
+# `wait`; cancellation owns only the group established for that child.
 stop_active_gate_child() {
     [[ -n "$ACTIVE_GATE_CHILD_PID" ]] || return 0
-    local process_table descendants pid
-    if process_table="$(ps -ax -o pid=,ppid=)"; then
-        descendants="$(printf '%s\n' "$process_table" | awk -v root="$ACTIVE_GATE_CHILD_PID" '
-            { parent[$1] = $2 }
-            function visit(owner, candidate) {
-                for (candidate in parent) if (parent[candidate] == owner) visit(candidate)
-                print owner
-            }
-            END { visit(root) }
-        ')"
-    else
-        echo "::error::scripts/test.sh: could not snapshot owned gate child descendants during cancellation." >&2
-        descendants="$ACTIVE_GATE_CHILD_PID"
-    fi
-    for pid in $descendants; do
-        # fail-open-ok: a captured child may have exited before cancellation reaches it
-        kill -TERM "$pid" 2>/dev/null || true
-    done
-    # Give cooperative children a bounded cleanup interval, then stop any
-    # survivors before releasing the machine-wide lock to another gate.
-    local attempt=0 alive=1
-    while [[ $attempt -lt 20 && $alive -eq 1 ]]; do
-        alive=0
-        for pid in $descendants; do
-            if kill -0 "$pid" 2>/dev/null; then alive=1; fi
-        done
-        if [[ $alive -eq 1 ]]; then sleep 0.05; fi
+    # Bash monitor mode establishes a new process group whose ID is the
+    # launched child's PID. Negative IDs target that owned group only, so a
+    # TERM handler's newly forked children remain covered by escalation.
+    # fail-open-ok: the owned group may have already completed naturally
+    kill -TERM -- "-$ACTIVE_GATE_CHILD_PID" 2>/dev/null || true
+    local attempt=0
+    while [[ $attempt -lt 20 ]] && kill -0 -- "-$ACTIVE_GATE_CHILD_PID" 2>/dev/null; do
+        sleep 0.05
         attempt=$((attempt + 1))
     done
-    for pid in $descendants; do
-        if kill -0 "$pid" 2>/dev/null; then
-            # fail-open-ok: a child may exit between the liveness check and forced termination
-            kill -KILL "$pid" 2>/dev/null || true
-        fi
-    done
-    # fail-open-ok: a cancelled child is expected to exit nonzero; reap it before unlocking
+    # fail-open-ok: the owned group may disappear between the probe and KILL
+    kill -KILL -- "-$ACTIVE_GATE_CHILD_PID" 2>/dev/null || true
+    # fail-open-ok: cancellation expects a nonzero child status; join before unlocking
     wait "$ACTIVE_GATE_CHILD_PID" 2>/dev/null || true
     ACTIVE_GATE_CHILD_PID=""
 }
 
 wait_for_gate_child() {
+    # Bash 3.2 job control creates the group at launch, without ps/setsid or
+    # targeting the caller's process group. Disable monitor mode after launch
+    # so ordinary foreground cleanup commands keep their usual semantics.
+    set -m
+    "$@" &
     ACTIVE_GATE_CHILD_PID=$!
+    set +m
     local child_status
     if wait "$ACTIVE_GATE_CHILD_PID"; then child_status=0; else child_status=$?; fi
     ACTIVE_GATE_CHILD_PID=""
@@ -2558,8 +2541,7 @@ run_leaf_with_local_watchdog() {
     # shape is #2464 again.
     if is_authenticated_outer_watchdog; then
         set +e
-        "$SCRIPT_PATH" "$@" &
-        wait_for_gate_child
+        wait_for_gate_child "$SCRIPT_PATH" "$@"
         rc=$?
         set -e
         return $rc
@@ -2576,8 +2558,7 @@ run_leaf_with_local_watchdog() {
         # protected path is careful about.
         set +e
         MANIFOLD_TEST_OUTPUT_FILE="$PACKAGE_DIR/test-diagnostics/test_output_${label}.txt" \
-            "$SCRIPT_PATH" "$@" &
-        wait_for_gate_child
+            wait_for_gate_child "$SCRIPT_PATH" "$@"
         rc=$?
         set -e
         return $rc
@@ -2596,8 +2577,7 @@ run_leaf_with_local_watchdog() {
         WATCHDOG_POLL_INTERVAL="$poll_interval" \
         MANIFOLD_TEST_OUTPUT_FILE="$PACKAGE_DIR/test-diagnostics/test_output_${label}.txt" \
         WATCHDOG_DIAGNOSTICS_DIR="$PACKAGE_DIR/test-diagnostics" \
-        "$CI_TEST_WATCHDOG" "$@" &
-    wait_for_gate_child
+        wait_for_gate_child "$CI_TEST_WATCHDOG" "$@"
     rc=$?
     set -e
     return $rc
