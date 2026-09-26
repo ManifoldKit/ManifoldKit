@@ -92,7 +92,6 @@ final class ConversationRunStateTests: XCTestCase {
     private final class InMemoryRunStore2: RunStore {
         private var runs: [ConversationRun] = []
         private var steps: [RunStep] = []
-
         func insertRun(_ run: ConversationRun) async throws { runs.append(run) }
         func updateRun(_ run: ConversationRun) async throws {
             guard let i = runs.firstIndex(where: { $0.id == run.id }) else {

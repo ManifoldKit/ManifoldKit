@@ -61,6 +61,18 @@ final class HardwareRequirementsMLXTests: XCTestCase {
         XCTAssertFalse(HardwareRequirements.isValidMLXDirectory(tempDirectory))
     }
 
+    func test_discovery_skipsMissingAndNonDirectoryRootsBeforeEnumeration() {
+        let missing = tempDirectory.appendingPathComponent("missing/Models")
+        let file = createFile("not-a-directory", in: tempDirectory)
+        let fileManager = UnexpectedMLXEnumerationFileManager()
+
+        let models = HardwareRequirements.discoverMLXModelDirectories(
+            in: [missing, file], fileManager: fileManager
+        )
+
+        XCTAssertTrue(models.isEmpty)
+    }
+
     func test_isValidMLXDirectory_fileInsteadOfDirectory_returnsFalse() {
         let fileURL = tempDirectory.appendingPathComponent("not-a-directory")
         fm.createFile(atPath: fileURL.path, contents: Data("hello".utf8))
@@ -196,5 +208,17 @@ final class HardwareRequirementsMLXTests: XCTestCase {
         let url = directory.appendingPathComponent(name)
         fm.createFile(atPath: url.path, contents: Data(contents.utf8))
         return url
+    }
+}
+
+/// No mutable state: any call is itself the regression being asserted.
+private final class UnexpectedMLXEnumerationFileManager: FileManager {
+    override func contentsOfDirectory(
+        at url: URL,
+        includingPropertiesForKeys keys: [URLResourceKey]?,
+        options mask: FileManager.DirectoryEnumerationOptions = []
+    ) throws -> [URL] {
+        XCTFail("Expected missing/non-directory root to be skipped before enumeration: \(url.path)")
+        throw CocoaError(.fileReadNoSuchFile)
     }
 }

@@ -5,10 +5,10 @@
 #
 #   1. Idiom rules — broad call-shape patterns defined in
 #      `SilentCatchAuditTest.approvedTryIdioms` (e.g. `try? JSONSerialization.`,
-#      `try? FileManager.default.`, `try? await Task.sleep`,
+#      `try? await Task.sleep`,
 #      `try? container.decode`). These cover the bulk of approved usages
-#      and are refactor-stable. Prefer adding an idiom over a path entry
-#      when the same call shape recurs across the codebase.
+#      and are refactor-stable. Do not add an idiom for operational I/O;
+#      each failure needs an explicit handling decision.
 #
 #   2. Path allowlist — this file. Reserved for one-off swallows that
 #      don't fit any idiom, plus the small set of approved empty catches.

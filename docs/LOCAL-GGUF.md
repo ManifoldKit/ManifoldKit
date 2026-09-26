@@ -79,6 +79,4 @@ sheet without any extra setup. A user who installs a model via the SwiftUI
 Download tab will see it in the same sheet; CLI hosts that read
 `~/Documents/Models` directly will not see those app-scoped installs.
 
-> TODO: once PR #1471 lands `docs/SWIFTUI-MULTI-SESSION.md`, fold this page's
-> first two sections into a "Local GGUF" subsection there and link the rest
-> from the quickstart.
+For session-based SwiftUI wiring, see the [multi-session guide](SWIFTUI-MULTI-SESSION.md#local-gguf-llamacpp-and-mlx).

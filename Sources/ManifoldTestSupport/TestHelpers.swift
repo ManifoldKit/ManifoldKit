@@ -23,9 +23,14 @@ public func makeE2ETempDir() throws -> URL {
     return dir
 }
 
-/// Removes a file or directory, ignoring errors.
+/// Removes a file or directory, reporting cleanup failures without failing the test.
 public func cleanupE2ETempDir(_ url: URL) {
-    try? FileManager.default.removeItem(at: url)
+    do {
+        try FileManager.default.removeItem(at: url)
+    } catch {
+        Logger(subsystem: "ManifoldKit", category: "TestSupport")
+            .warning("Failed to clean E2E temporary directory: \(error.localizedDescription)")
+    }
 }
 
 // MARK: - Isolated Models Directory

@@ -105,7 +105,11 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
                     let resolvedDestination = destination.resolvingSymlinksInPath()
                     let resolvedModels = self.storageService.modelsDirectory.resolvingSymlinksInPath()
                     guard resolvedDestination.path.hasPrefix(resolvedModels.path + "/") else {
-                        try? FileManager.default.removeItem(at: tempURL)
+                        do {
+                            try FileManager.default.removeItem(at: tempURL)
+                        } catch {
+                            Log.download.warning("Failed to discard rejected model file: \(error.localizedDescription)")
+                        }
                         self.unregisterActiveTempPath(tempURL)
                         throw HuggingFaceError.invalidDownloadedFile(reason: "Model filename escapes models directory: \(model.fileName)")
                     }
@@ -163,10 +167,13 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
                 }
                 self.unregisterActiveTempPath(tempURL)
                 self.removeTaskTracking(taskID: taskID, modelID: context.modelID)
-                // Use try? — the file may already have been removed in a guard
-                // block above (e.g. path-traversal rejection), so a "not found"
-                // error here is expected and should not be logged as a failure.
-                try? FileManager.default.removeItem(at: tempURL)
+                do {
+                    try FileManager.default.removeItem(at: tempURL)
+                } catch CocoaError.fileNoSuchFile {
+                    // A rejection guard may already have discarded the file.
+                } catch {
+                    Log.download.warning("Failed to discard unsuccessful download file: \(error.localizedDescription)")
+                }
             }
         }
     }

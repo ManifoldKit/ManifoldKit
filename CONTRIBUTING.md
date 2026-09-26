@@ -420,7 +420,7 @@ real money and reviewer attention.
   the current PR or leave a `// TODO:` in the code. The issue tracker is for
   things that need cross-session memory **and** external visibility.
 
-For the full PR-hygiene rationale, see [AGENTS.md § Issue & PR hygiene](AGENTS.md).
+For the full PR-hygiene rationale, see [AGENTS.reference.md § Issue & PR hygiene](AGENTS.reference.md#issue--pr-hygiene).
 
 ## Reporting bugs
 

@@ -784,7 +784,13 @@ public extension HuggingFaceService {
                     }
                     if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                         Log.download.error("HTTP \(http.statusCode) for \(filename, privacy: .public)")
-                        if let url = tempURL { try? FileManager.default.removeItem(at: url) }
+                        if let url = tempURL {
+                            do {
+                                try FileManager.default.removeItem(at: url)
+                            } catch {
+                                Log.download.warning("Failed to discard HTTP error download file: \(error.localizedDescription)")
+                            }
+                        }
                         continuation.resume(throwing: HuggingFaceError.downloadFailed(
                             underlying: NSError(
                                 domain: "ManifoldHuggingFace",
@@ -863,7 +869,12 @@ public extension HuggingFaceService {
 private extension URL {
     /// On-disk size of the file at this URL, or `nil` when unavailable.
     var fileSize: Int64? {
-        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
-        return (attrs?[.size] as? Int64)
+        do {
+            let attrs = try FileManager.default.attributesOfItem(atPath: path)
+            return attrs[.size] as? Int64
+        } catch {
+            Log.download.warning("Failed to inspect diffusion file size at \(path, privacy: .private): \(error.localizedDescription)")
+            return nil
+        }
     }
 }

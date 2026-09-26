@@ -76,11 +76,19 @@ internal struct DownloadHygieneJanitor {
     }
 
     internal static func deleteOrphanedResumeDataFiles(in persistenceDirectory: URL, knownIDs: Set<String>) {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: persistenceDirectory,
-            includingPropertiesForKeys: nil,
-            options: .skipsHiddenFiles
-        ) else { return }
+        let contents: [URL]
+        do {
+            contents = try FileManager.default.contentsOfDirectory(
+                at: persistenceDirectory,
+                includingPropertiesForKeys: nil,
+                options: .skipsHiddenFiles
+            )
+        } catch CocoaError.fileReadNoSuchFile {
+            return
+        } catch {
+            Log.download.warning("Failed to inspect resume-data directory: \(error.localizedDescription)")
+            return
+        }
 
         for fileURL in contents where fileURL.lastPathComponent.hasPrefix("resume-") && fileURL.pathExtension == "bin" {
             let filename = fileURL.deletingPathExtension().lastPathComponent

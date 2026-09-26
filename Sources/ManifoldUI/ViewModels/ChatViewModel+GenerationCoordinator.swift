@@ -68,6 +68,10 @@ extension ChatViewModel {
             self?.messages.removeAll(where: predicate)
         }
 
+        coord.invalidateMessageTokenCount = { [weak self] id in
+            self?.tokenCountCache.removeValue(forKey: id)
+        }
+
         // MARK: Side effects
 
         coord.updateContextEstimate = { [weak self] in

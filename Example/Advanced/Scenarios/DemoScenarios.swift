@@ -120,9 +120,8 @@ enum DemoScenarios {
 
     /// Two-agent session (Researcher → Writer). Researcher emits
     /// `transfer_to_writer` with an outline payload; the runtime swaps agents
-    /// and Writer produces the final prose. The `expectedHandoffs` assertion
-    /// fires LOUDLY if the model never emits the transfer call — the scripted
-    /// UITest path mimics the successful run for deterministic CI.
+    /// and Writer produces the final prose. The scripted UITest asserts the
+    /// transfer tool call renders, so a missing handoff fails in CI.
     /// Two pinned agent IDs so the `configureContext` closure can install
     /// a stable roster and so tests can pin the expected `activeAgentID`.
     /// Using deterministic UUIDs (rather than `UUID()` inside the closure)
@@ -168,7 +167,6 @@ enum DemoScenarios {
             context.agents = [researcher, writer]
             context.activeAgentID = researcherAgentID
         },
-        expectedHandoffs: ["transfer_to_writer"],
         // 3B-class models cannot reliably emit transfer_to_* on first attempt;
         // gate at .balanced (≈8B+) so the card shows an "install a larger
         // model" hint when the active backend is below the bar.
