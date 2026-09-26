@@ -304,11 +304,22 @@ final class GateReliabilityScriptTests: XCTestCase {
                 let launcher = root.appendingPathComponent("signal-launcher.py")
                 try """
                 import os, signal, sys
-                # SwiftPM/XCTest workers may start with INT ignored. Seed that
-                # disposition here, then reset only this isolated child before
-                # Bash starts: Bash cannot trap an INT it inherited as ignored.
-                signal.signal(signal.SIGINT, signal.SIG_IGN)
-                signal.signal(signal.SIGINT, signal.SIG_DFL)
+                tested = {signal.SIGHUP, signal.SIGINT, signal.SIGTERM}
+                inherited_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+                inherited_dispositions = {int(sig): str(signal.getsignal(sig)) for sig in tested}
+                print(f"[signal-fixture] inherited-mask={sorted(map(int, inherited_mask))} dispositions={inherited_dispositions}", flush=True)
+                # Both ignored dispositions and blocked masks survive exec.
+                # Seed both failure modes, then own the tested signal state in
+                # this isolated child; never mutate the XCTest worker's state.
+                for sig in tested:
+                    signal.signal(sig, signal.SIG_IGN)
+                signal.pthread_sigmask(signal.SIG_BLOCK, tested)
+                for sig in tested:
+                    signal.signal(sig, signal.SIG_DFL)
+                signal.pthread_sigmask(signal.SIG_UNBLOCK, tested)
+                remaining = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+                defaults = all(signal.getsignal(sig) == signal.SIG_DFL for sig in tested)
+                print(f"[signal-fixture] normalized-tested-blocked={sorted(map(int, remaining & tested))} default-dispositions={defaults}", flush=True)
                 os.execv("/bin/bash", ["/bin/bash", *sys.argv[1:]])
                 """.write(to: launcher, atomically: true, encoding: .utf8)
                 guard FileManager.default.isExecutableFile(atPath: "/usr/bin/python3") else {
@@ -340,6 +351,7 @@ final class GateReliabilityScriptTests: XCTestCase {
                     context: "mode=\(configuration.mode) watchdogDisabled=\(configuration.disabled) signal=\(signal)"
                 )
                 XCTAssertEqual(result.status, 128 + signal, result.output)
+                XCTAssertTrue(result.output.contains("normalized-tested-blocked=[] default-dispositions=True"), result.output)
                 XCTAssertTrue(unrelated.isRunning, "cancellation must leave unrelated processes alive")
                 let groupPID = try XCTUnwrap(Int32(String(contentsOfFile: ready.path + ".group", encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
                 XCTAssertGreaterThan(groupPID, 0)
