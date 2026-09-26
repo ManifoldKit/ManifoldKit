@@ -407,6 +407,22 @@ public enum HardwareRequirements {
         results: inout [URL]
     ) {
         guard depth <= maxDepth else { return }
+        // Default roots include app containers without a Models directory.
+        // Check stat first so absence never throws through Foundation, while
+        // permission failures still produce a diagnostic.
+        var fileStatus = stat()
+        #if canImport(Darwin)
+        let result = directory.path.withCString { Darwin.fstatat(AT_FDCWD, $0, &fileStatus, 0) }
+        #else
+        let result = directory.path.withCString { Glibc.fstatat(AT_FDCWD, $0, &fileStatus, 0) }
+        #endif
+        if result != 0 {
+            let code = errno
+            if code == ENOENT || code == ENOTDIR { return }
+            logger.warning("Failed to inspect MLX model directory: \(String(cString: strerror(code)), privacy: .public)")
+            return
+        }
+        guard (fileStatus.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR) else { return }
         if depth > 0, isValidMLXDirectory(directory, fileManager: fileManager) {
             results.append(directory)
             // A valid MLX snapshot is a leaf for discovery — do not descend into
