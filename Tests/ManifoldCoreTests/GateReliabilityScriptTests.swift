@@ -234,12 +234,28 @@ final class GateReliabilityScriptTests: XCTestCase {
                         trap '' HUP INT TERM
                     fi
                     /bin/ps -p "$$" -o pgid= > "$CANCELLATION_READY.group"
-                    test "$(head -n 1 "$MANIFOLD_GATE_LOCK_FILE")" = "$MANIFOLD_GATE_LOCK_OWNER_PID"
+                    test "$(head -n 1 "$MANIFOLD_GATE_LOCK_FILE")" = "$MANIFOLD_GATE_LOCK_OWNER_PID" || exit 65
                     printf '%s\\n' "$$" > "$CANCELLATION_READY"
                     while :; do sleep 0.05; done
                     """,
                     to: bin.appendingPathComponent("swift")
                 )
+                let wrongLock = root.appendingPathComponent("wrong.lock")
+                try "999\n".write(to: wrongLock, atomically: true, encoding: .utf8)
+                for rejectedLock in [wrongLock, root.appendingPathComponent("missing.lock")] {
+                    let rejectedReady = root.appendingPathComponent("rejected.ready")
+                    let rejected = try run(
+                        bin.appendingPathComponent("swift"),
+                        environment: [
+                            "CANCELLATION_MODE": "resistant",
+                            "CANCELLATION_READY": rejectedReady.path,
+                            "MANIFOLD_GATE_LOCK_FILE": rejectedLock.path,
+                            "MANIFOLD_GATE_LOCK_OWNER_PID": "123",
+                        ]
+                    )
+                    XCTAssertEqual(rejected.status, 65, rejected.output)
+                    XCTAssertFalse(FileManager.default.fileExists(atPath: rejectedReady.path), rejected.output)
+                }
                 if configuration.mode == "failed-ps" {
                     try writeExecutable("#!/bin/bash\nexit 71\n", to: bin.appendingPathComponent("ps"))
                 }
