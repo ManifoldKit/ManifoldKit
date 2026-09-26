@@ -67,6 +67,63 @@ actor ResumableRunState {
     func checkCancelled() -> Bool { isCancelled }
 }
 
+// Records cancellation before the producer task is registered, so a successor
+// can request handoff without racing task creation or resetting the run flags.
+private final class RunProducerCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: Task<Void, Never>?
+    private var cancelled = false
+
+    var isCancelled: Bool { lock.withLock { cancelled } }
+
+    func register(_ task: Task<Void, Never>) {
+        let shouldCancel = lock.withLock {
+            self.task = task
+            return cancelled
+        }
+        if shouldCancel { task.cancel() }
+    }
+
+    func cancel() {
+        let task = lock.withLock {
+            cancelled = true
+            return self.task
+        }
+        task?.cancel()
+    }
+}
+
+// A successor reads the durable checkpoint only after its predecessor finishes
+// writing it. Live same-run resume hands off observation; unrelated runs fail
+// busy rather than cancelling someone else's work or waiting on a paused loop.
+private actor RunProducerGate {
+    private var owner: (UUID, RunProducerCancellation)?
+    private var waiters: [(UUID, RunProducerCancellation, CheckedContinuation<Void, Never>)] = []
+
+    func acquire(runID: UUID, resuming: Bool, cancellation: RunProducerCancellation) async -> Bool {
+        if let owner {
+            if !owner.1.isCancelled {
+                guard resuming && owner.0 == runID else { return false }
+                owner.1.cancel()
+            }
+            await withCheckedContinuation { waiters.append((runID, cancellation, $0)) }
+        } else {
+            owner = (runID, cancellation)
+        }
+        return true
+    }
+
+    func release() {
+        if waiters.isEmpty {
+            owner = nil
+        } else {
+            let next = waiters.removeFirst()
+            owner = (next.0, next.1)
+            next.2.resume()
+        }
+    }
+}
+
 // MARK: - RunInputProvider
 
 /// Supplies the ``TurnInput`` for each step in a ``ConversationRun``.
@@ -241,6 +298,7 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
 
     private let storeProxy: RunStoreProxy
     private let runState = ResumableRunState()
+    private let producerGate = RunProducerGate()
 
     // MARK: Init
 
@@ -290,7 +348,22 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
         let driver = self
 
         return AsyncStream { continuation in
+            let cancellation = RunProducerCancellation()
             let producer = Task {
+                guard !Task.isCancelled else {
+                    continuation.finish()
+                    return
+                }
+                guard await driver.producerGate.acquire(runID: run.id, resuming: false, cancellation: cancellation) else {
+                    continuation.yield(.runFailed(runID: run.id, reason: "another run is still active"))
+                    continuation.finish()
+                    return
+                }
+                defer { Task { await driver.producerGate.release() } }
+                guard !Task.isCancelled else {
+                    continuation.finish()
+                    return
+                }
                 await runState.clearFlags()
                 var currentRun = run
 
@@ -324,13 +397,18 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
 
                 continuation.finish()
             }
-            continuation.onTermination = { @Sendable _ in producer.cancel() }
+            cancellation.register(producer)
+            continuation.onTermination = { @Sendable _ in cancellation.cancel() }
         }
     }
 
     /// Resumes a previously-checkpointed ``ConversationRun`` from the
     /// ``RunStore`` and continues execution from the first not-yet-completed
     /// step (M1 "replay-from-provider").
+    ///
+    /// If this driver still owns an observed producer for the same run, resume
+    /// cancels that observation and waits for its checkpoint before reading it.
+    /// A different live run fails busy without cancelling or mutating it.
     ///
     /// Unlike ``resumeRun()`` (which only flips an in-memory pause flag on the
     /// *currently active* run), this is a durable, cross-process resume: it
@@ -395,7 +473,22 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
         let driver = self
 
         return AsyncStream { continuation in
+            let cancellation = RunProducerCancellation()
             let producer = Task {
+                guard !Task.isCancelled else {
+                    continuation.finish()
+                    return
+                }
+                guard await driver.producerGate.acquire(runID: runID, resuming: true, cancellation: cancellation) else {
+                    continuation.yield(.runFailed(runID: runID, reason: "another run is still active"))
+                    continuation.finish()
+                    return
+                }
+                defer { Task { await driver.producerGate.release() } }
+                guard !Task.isCancelled else {
+                    continuation.finish()
+                    return
+                }
                 // 1. Load the persisted run.
                 guard let fetched = await storeProxy.fetchRun(runID) else {
                     continuation.yield(.runFailed(
@@ -435,6 +528,10 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
 
                 // 2. Determine the resume point from persisted steps.
                 let steps = await storeProxy.fetchSteps(fetched.id)
+                guard !Task.isCancelled else {
+                    continuation.finish()
+                    return
+                }
                 let completed = steps.filter(\.isCompleted)
                 let resumeIndex = completed.count
                 let priorStep = completed.max(by: { $0.stepIndex < $1.stepIndex })
@@ -444,6 +541,10 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                 // deleteStep port, so this keeps the record as inspection-only
                 // metadata; M1 re-drives that index through the provider.
                 for stale in steps where !stale.isCompleted {
+                    guard !Task.isCancelled else {
+                        continuation.finish()
+                        return
+                    }
                     var superseded = stale
                     superseded.isFailed = true
                     superseded.failureReason = "superseded on resume"
@@ -452,6 +553,10 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                 }
 
                 // 3. Transition to running, seed in-memory state, announce resume.
+                guard !Task.isCancelled else {
+                    continuation.finish()
+                    return
+                }
                 await runState.clearFlags()
                 var currentRun = fetched
                 currentRun.status = .running
@@ -479,7 +584,8 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
 
                 continuation.finish()
             }
-            continuation.onTermination = { @Sendable _ in producer.cancel() }
+            cancellation.register(producer)
+            continuation.onTermination = { @Sendable _ in cancellation.cancel() }
         }
     }
 
@@ -619,6 +725,10 @@ package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
                 turnInput: turnInput
             )
             await storeProxy.insertStep(step)
+            if Task.isCancelled {
+                await checkpointAbandonedRun(currentRun)
+                break stepLoop
+            }
             continuation.yield(.stepStarted(
                 runID: currentRun.id,
                 stepIndex: stepIndex,
