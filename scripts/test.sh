@@ -507,17 +507,21 @@ stop_active_gate_child() {
     # Bash monitor mode establishes a new process group whose ID is the
     # launched child's PID. Negative IDs target that owned group only, so a
     # TERM handler's newly forked children remain covered by escalation.
+    echo "[gate-cancel] phase=TERM group=$ACTIVE_GATE_CHILD_PID gate-elapsed=${SECONDS}s"
     # fail-open-ok: the owned group may have already completed naturally
     kill -TERM -- "-$ACTIVE_GATE_CHILD_PID" 2>/dev/null || true
-    local attempt=0
-    while [[ $attempt -lt 20 ]] && kill -0 -- "-$ACTIVE_GATE_CHILD_PID" 2>/dev/null; do
-        sleep 0.05
-        attempt=$((attempt + 1))
-    done
+    # A count of twenty short sleeps is not a one-second bound: process
+    # startup overhead accumulates under hosted runner contention. One grace
+    # sleep keeps cooperative cleanup time without twenty extra launches.
+    if kill -0 -- "-$ACTIVE_GATE_CHILD_PID" 2>/dev/null; then
+        sleep 1
+    fi
+    echo "[gate-cancel] phase=KILL group=$ACTIVE_GATE_CHILD_PID gate-elapsed=${SECONDS}s"
     # fail-open-ok: the owned group may disappear between the probe and KILL
     kill -KILL -- "-$ACTIVE_GATE_CHILD_PID" 2>/dev/null || true
     # fail-open-ok: cancellation expects a nonzero child status; join before unlocking
     wait "$ACTIVE_GATE_CHILD_PID" 2>/dev/null || true
+    echo "[gate-cancel] phase=joined group=$ACTIVE_GATE_CHILD_PID gate-elapsed=${SECONDS}s"
     ACTIVE_GATE_CHILD_PID=""
 }
 

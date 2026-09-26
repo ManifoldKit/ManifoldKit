@@ -219,6 +219,7 @@ final class GateReliabilityScriptTests: XCTestCase {
             (disabled: true, mode: "resistant", signals: [SIGTERM, SIGHUP, SIGINT]),
             (disabled: false, mode: "failed-ps", signals: [SIGTERM]),
             (disabled: false, mode: "late-fork", signals: [SIGTERM]),
+            (disabled: false, mode: "slow-sleep", signals: [SIGHUP]),
         ]
         for configuration in configurations {
             for signal in configuration.signals {
@@ -280,6 +281,20 @@ final class GateReliabilityScriptTests: XCTestCase {
                 }
                 if configuration.mode == "failed-ps" {
                     try writeExecutable("#!/bin/bash\nexit 71\n", to: bin.appendingPathComponent("ps"))
+                }
+                if configuration.mode == "slow-sleep" {
+                    // Model constrained hosted process startup. Twenty short
+                    // polls exceed the unchanged 3s cancellation deadline;
+                    // one grace sleep still allows cleanup within that bound.
+                    try writeExecutable(
+                        """
+                        #!/bin/bash
+                        set -euo pipefail
+                        /bin/sleep 0.15
+                        exec /bin/sleep "$@"
+                        """,
+                        to: bin.appendingPathComponent("sleep")
+                    )
                 }
                 let unrelated = Process()
                 unrelated.executableURL = URL(fileURLWithPath: "/bin/sleep")
