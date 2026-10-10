@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.79.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.79.0...v0.79.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* clean up run streams, token counts, and error handling ([#2556](https://github.com/ManifoldKit/ManifoldKit/issues/2556)) ([15c9c24](https://github.com/ManifoldKit/ManifoldKit/commit/15c9c2443770c9289c2e93c88a55bdebc4562771))
+* **docs:** validate companion install recipes ([#2547](https://github.com/ManifoldKit/ManifoldKit/issues/2547)) ([c3b59ac](https://github.com/ManifoldKit/ManifoldKit/commit/c3b59acd4a2d6a40153f1a0bb17ae774b6b98a0d))
+* **mcp:** use standard stdio framing and own session shutdown ([#2554](https://github.com/ManifoldKit/ManifoldKit/issues/2554)) ([6ecfd72](https://github.com/ManifoldKit/ManifoldKit/commit/6ecfd721a6331ca344dbb2889f0290f2852337a3))
+* **release:** gate every registered consumer before release ([#2548](https://github.com/ManifoldKit/ManifoldKit/issues/2548)) ([c39406f](https://github.com/ManifoldKit/ManifoldKit/commit/c39406fcfe1ced98e1b90bcae5bac9576252fedf))
+* **testsupport:** skip GGUF projectors during model discovery ([#2553](https://github.com/ManifoldKit/ManifoldKit/issues/2553)) ([243ce32](https://github.com/ManifoldKit/ManifoldKit/commit/243ce32b02ebb5428a5f9ff33a5caef90cb0d877))
+
+
+### Documentation
+
+* reconcile retired WWDC trait disposition ([#2557](https://github.com/ManifoldKit/ManifoldKit/issues/2557)) ([edadf10](https://github.com/ManifoldKit/ManifoldKit/commit/edadf105ae31fcb4e890684c040f2a7308a3bba3))
+
 ## [0.79.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.78.0...v0.79.0) (2026-09-20)
 
 ManifoldKit 0.79 raises the deployment floor to iOS 26 and macOS 26, and requires authentication for the optional MCP HTTP host. It also makes bootstrap conflicts recoverable and strengthens conversation, tool, and fuzz diagnostics.
