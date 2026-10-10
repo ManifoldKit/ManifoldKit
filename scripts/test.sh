@@ -112,6 +112,77 @@ GATE_LOCK_HELD_BY_SELF=0
 # age-based orphan sweep in acquire_gate_lock's reclaim branch is what
 # recovers from that case instead.
 GATE_RECLAIM_MUTEX_HELD_BY_SELF=0
+LOCAL_GATE_SLEEP_ASSERTION_PID=""
+ACTIVE_GATE_CHILD_PID=""
+
+# A full local gate is long enough for macOS idle sleep to invalidate timing
+# and watchdog evidence. The gate-owning parent holds one `caffeinate -i`
+# assertion across lock wait and every leaf invocation. `-w $$` is a second
+# cleanup boundary if the shell dies before its EXIT trap can run; the trap
+# still terminates and reaps the child explicitly on normal exits and signals.
+# Non-macOS hosts do nothing and never need a compatibility shim.
+start_local_gate_sleep_assertion() {
+    local platform
+    local caffeinate_bin=""
+    platform="$(uname -s)"
+    if [[ "${MANIFOLD_SLEEP_ASSERTION_SELFTEST:-0}" == "1" && -n "${MANIFOLD_SLEEP_ASSERTION_SELFTEST_PLATFORM:-}" ]]; then
+        platform="$MANIFOLD_SLEEP_ASSERTION_SELFTEST_PLATFORM"
+    fi
+    if [[ "$platform" != "Darwin" ]]; then
+        echo "[sleep-assertion] platform '$platform': macOS idle-sleep assertion not needed."
+        return 0
+    fi
+    if [[ "${MANIFOLD_SLEEP_ASSERTION_SELFTEST:-0}" == "1" && -n "${MANIFOLD_SLEEP_ASSERTION_SELFTEST_CAFFEINATE_BIN:-}" ]]; then
+        caffeinate_bin="$MANIFOLD_SLEEP_ASSERTION_SELFTEST_CAFFEINATE_BIN"
+    else
+        caffeinate_bin="$(command -v caffeinate 2>/dev/null)" || caffeinate_bin=""
+    fi
+    if [[ -z "$caffeinate_bin" || ! -x "$caffeinate_bin" ]]; then
+        echo "::error::scripts/test.sh: macOS local gate requires 'caffeinate' for an idle-sleep assertion, but it is unavailable — failing closed." >&2
+        return 127
+    fi
+
+    "$caffeinate_bin" -i -w "$$" &
+    LOCAL_GATE_SLEEP_ASSERTION_PID=$!
+    # Detect an immediate launch/argument failure rather than printing a
+    # reassuring assertion banner for a child that is already gone.
+    sleep 0.1
+    if ! kill -0 "$LOCAL_GATE_SLEEP_ASSERTION_PID" 2>/dev/null; then
+        local assertion_rc=1
+        if wait "$LOCAL_GATE_SLEEP_ASSERTION_PID" 2>/dev/null; then
+            assertion_rc=0
+        else
+            assertion_rc=$?
+        fi
+        LOCAL_GATE_SLEEP_ASSERTION_PID=""
+        echo "::error::scripts/test.sh: caffeinate failed to establish the local-gate idle-sleep assertion (exit ${assertion_rc})." >&2
+        return 127
+    fi
+    if [[ "${MANIFOLD_SLEEP_ASSERTION_SELFTEST:-0}" == "1" && -n "${MANIFOLD_SLEEP_ASSERTION_SELFTEST_CHILD_READY_FILE:-}" ]]; then
+        local ready_i=0
+        while [[ ! -s "$MANIFOLD_SLEEP_ASSERTION_SELFTEST_CHILD_READY_FILE" && $ready_i -lt 100 ]]; do
+            sleep 0.02
+            ready_i=$((ready_i + 1))
+        done
+        if [[ ! -s "$MANIFOLD_SLEEP_ASSERTION_SELFTEST_CHILD_READY_FILE" ]]; then
+            echo "::error::scripts/test.sh: fake caffeinate did not report ready during sleep-assertion self-test." >&2
+            return 127
+        fi
+    fi
+    echo "[sleep-assertion] macOS idle sleep inhibited for local gate (caffeinate pid ${LOCAL_GATE_SLEEP_ASSERTION_PID}, watching gate pid $$)."
+}
+
+stop_local_gate_sleep_assertion() {
+    [[ -n "$LOCAL_GATE_SLEEP_ASSERTION_PID" ]] || return 0
+    if kill -0 "$LOCAL_GATE_SLEEP_ASSERTION_PID" 2>/dev/null; then
+        # fail-open-ok: -w $$ is the independent cleanup backstop if TERM races natural exit
+        kill -TERM "$LOCAL_GATE_SLEEP_ASSERTION_PID" 2>/dev/null || true
+    fi
+    # fail-open-ok: cleanup reaps either a TERM exit or caffeinate's natural -w parent exit
+    wait "$LOCAL_GATE_SLEEP_ASSERTION_PID" 2>/dev/null || true
+    echo "[sleep-assertion] released macOS idle-sleep assertion (caffeinate pid ${LOCAL_GATE_SLEEP_ASSERTION_PID})."
+    LOCAL_GATE_SLEEP_ASSERTION_PID=""
+}
 
 # Blocks until this process holds $GATE_LOCK_FILE, or fails closed after the
 # ceiling. A no-op when MANIFOLD_GATE_NO_LOCK=1, or when an ancestor
@@ -422,7 +493,64 @@ release_gate_lock() {
         rm -rf "${GATE_LOCK_FILE}.reclaiming" 2>/dev/null || true
     fi
 }
-trap release_gate_lock EXIT
+
+cleanup_gate_process() {
+    stop_local_gate_sleep_assertion
+    release_gate_lock
+}
+
+# A foreground external command defers Bash's traps until it finishes. Profile
+# children therefore run in the background and are joined by interruptible
+# `wait`; cancellation owns only the group established for that child.
+stop_active_gate_child() {
+    [[ -n "$ACTIVE_GATE_CHILD_PID" ]] || return 0
+    # Bash monitor mode establishes a new process group whose ID is the
+    # launched child's PID. Negative IDs target that owned group only, so a
+    # TERM handler's newly forked children remain covered by escalation.
+    echo "[gate-cancel] phase=TERM group=$ACTIVE_GATE_CHILD_PID gate-elapsed=${SECONDS}s"
+    # fail-open-ok: the owned group may have already completed naturally
+    kill -TERM -- "-$ACTIVE_GATE_CHILD_PID" 2>/dev/null || true
+    # A count of twenty short sleeps is not a one-second bound: process
+    # startup overhead accumulates under hosted runner contention. One grace
+    # sleep keeps cooperative cleanup time without twenty extra launches.
+    if kill -0 -- "-$ACTIVE_GATE_CHILD_PID" 2>/dev/null; then
+        sleep 1
+    fi
+    echo "[gate-cancel] phase=KILL group=$ACTIVE_GATE_CHILD_PID gate-elapsed=${SECONDS}s"
+    # fail-open-ok: the owned group may disappear between the probe and KILL
+    kill -KILL -- "-$ACTIVE_GATE_CHILD_PID" 2>/dev/null || true
+    # fail-open-ok: cancellation expects a nonzero child status; join before unlocking
+    wait "$ACTIVE_GATE_CHILD_PID" 2>/dev/null || true
+    echo "[gate-cancel] phase=joined group=$ACTIVE_GATE_CHILD_PID gate-elapsed=${SECONDS}s"
+    ACTIVE_GATE_CHILD_PID=""
+}
+
+wait_for_gate_child() {
+    # Bash 3.2 job control creates the group at launch, without ps/setsid or
+    # targeting the caller's process group. Disable monitor mode after launch
+    # so ordinary foreground cleanup commands keep their usual semantics.
+    set -m
+    "$@" &
+    ACTIVE_GATE_CHILD_PID=$!
+    set +m
+    local child_status
+    if wait "$ACTIVE_GATE_CHILD_PID"; then child_status=0; else child_status=$?; fi
+    ACTIVE_GATE_CHILD_PID=""
+    return "$child_status"
+}
+
+exit_from_signal() {
+    local status="$1"
+    # Ignore repeat cancellation while the owned child tree is being joined.
+    trap '' HUP INT TERM
+    stop_active_gate_child
+    exit "$status"
+}
+
+trap cleanup_gate_process EXIT
+trap 'exit_from_signal 129' HUP
+trap 'exit_from_signal 130' INT
+trap 'exit_from_signal 143' TERM
 
 # Narrow self-test seam for scenario F's cleanup proof. The outer
 # `--lock-selftest` never receives this variable: it is passed only to the
@@ -2080,6 +2208,35 @@ if [[ "${1:-}" == "--lock-selftest" ]]; then
     exit $?
 fi
 
+# Hidden integration seam used by GateReliabilityScriptTests. It exercises
+# the real assertion lifecycle without starting SwiftPM or taking the shared
+# gate lock. Production callers never set MANIFOLD_SLEEP_ASSERTION_SELFTEST.
+if [[ "${1:-}" == "--sleep-assertion-selftest" ]]; then
+    if [[ "${MANIFOLD_SLEEP_ASSERTION_SELFTEST:-0}" != "1" ]]; then
+        echo "error: --sleep-assertion-selftest is test-only" >&2
+        exit 64
+    fi
+    start_local_gate_sleep_assertion
+    case "${2:-success}" in
+        success) exit 0 ;;
+        failure) exit 23 ;;
+        signal) kill -TERM "$$"; sleep 5; exit 99 ;;
+        hold)
+            ready_file="${MANIFOLD_SLEEP_ASSERTION_SELFTEST_READY_FILE:?'hold requires READY_FILE'}"
+            release_file="${MANIFOLD_SLEEP_ASSERTION_SELFTEST_RELEASE_FILE:?'hold requires RELEASE_FILE'}"
+            : > "$ready_file"
+            hold_i=0
+            while [[ ! -e "$release_file" && $hold_i -lt 300 ]]; do
+                sleep 0.1
+                hold_i=$((hold_i + 1))
+            done
+            [[ -e "$release_file" ]] || exit 70
+            exit 0
+            ;;
+        *) echo "error: unknown sleep assertion self-test mode '$2'" >&2; exit 64 ;;
+    esac
+fi
+
 # ── Arguments ────────────────────────────────────────────────────────────────
 # Profile precedence
 # ------------------
@@ -2388,7 +2545,7 @@ run_leaf_with_local_watchdog() {
     # shape is #2464 again.
     if is_authenticated_outer_watchdog; then
         set +e
-        "$SCRIPT_PATH" "$@"
+        wait_for_gate_child "$SCRIPT_PATH" "$@"
         rc=$?
         set -e
         return $rc
@@ -2405,7 +2562,7 @@ run_leaf_with_local_watchdog() {
         # protected path is careful about.
         set +e
         MANIFOLD_TEST_OUTPUT_FILE="$PACKAGE_DIR/test-diagnostics/test_output_${label}.txt" \
-            "$SCRIPT_PATH" "$@"
+            wait_for_gate_child "$SCRIPT_PATH" "$@"
         rc=$?
         set -e
         return $rc
@@ -2424,7 +2581,7 @@ run_leaf_with_local_watchdog() {
         WATCHDOG_POLL_INTERVAL="$poll_interval" \
         MANIFOLD_TEST_OUTPUT_FILE="$PACKAGE_DIR/test-diagnostics/test_output_${label}.txt" \
         WATCHDOG_DIAGNOSTICS_DIR="$PACKAGE_DIR/test-diagnostics" \
-        "$CI_TEST_WATCHDOG" "$@"
+        wait_for_gate_child "$CI_TEST_WATCHDOG" "$@"
     rc=$?
     set -e
     return $rc
@@ -2439,6 +2596,16 @@ if [[ -n "$PROFILE" ]]; then
             exit 64
             ;;
     esac
+
+    # Only the top-level local-profile driver owns the assertion. Its leaf
+    # re-execs receive resolved swift-test flags without `--profile`, so they
+    # cannot accidentally stack extra caffeinate processes. Start before the
+    # gate lock wait: recorded idle sleep during a queued local gate is just
+    # as capable of invalidating the eventual performance run as sleep during
+    # compilation itself.
+    if [[ "$PROFILE" == "local" ]]; then
+        start_local_gate_sleep_assertion
+    fi
 
     # If the caller passed their own --filter, we run a single invocation
     # under the profile's traits/workers (not the three-invocation default
