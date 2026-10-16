@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.79.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.79.0...v0.79.1) (2026-10-11)
+
+ManifoldKit 0.79.1 fixes MCP stdio interoperability and conversation-run cleanup, keeps token counts current during message updates, and strengthens release checks across the registered consumers. It retains the iOS 26 and macOS 26 deployment floors introduced in 0.79.0.
+
+### Highlights
+
+#### Connect to persistent MCP stdio servers
+
+MCP stdio now exchanges newline-delimited JSON-RPC messages and reads short pipe responses without waiting for the server to exit. Connection attempts also own their session cleanup: cancellation, initialization failure, and server shutdown close the affected session and remove its tool source instead of leaving an abandoned connection behind ([#2554](https://github.com/ManifoldKit/ManifoldKit/pull/2554)).
+
+#### Release abandoned conversation runs safely
+
+Resumable runs stop their stream producers when an observer leaves and preserve explicit cancellation while handing off checkpoints. Overlapping observers and queued resume operations revalidate ownership, so an old observer cannot cancel or mutate a newer run ([#2556](https://github.com/ManifoldKit/ManifoldKit/pull/2556)).
+
+### Fixes
+
+- Refresh the displayed token count when message content changes, including resumed generation ([#2556](https://github.com/ManifoldKit/ManifoldKit/pull/2556)).
+- Report download-cleanup and test-model-discovery failures while treating absent test-model directories as expected ([#2556](https://github.com/ManifoldKit/ManifoldKit/pull/2556)).
+- Exclude GGUF vision-projector sidecars from automatic test-model discovery while retaining validation of explicit model paths ([#2553](https://github.com/ManifoldKit/ManifoldKit/pull/2553)).
+- Require canary verification for every registered release consumer, including manifold-eval, and fail visibly when consumer discovery or workflow queries fail ([#2548](https://github.com/ManifoldKit/ManifoldKit/pull/2548)).
+
+### Documentation
+
+- Validate published companion install recipes and align their pins with compatible core versions ([#2547](https://github.com/ManifoldKit/ManifoldKit/pull/2547)).
+- Reconcile guidance for the retired SystemAIProviderExtension and CoreAI traits ([#2557](https://github.com/ManifoldKit/ManifoldKit/pull/2557)).
+
 ## [0.79.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.78.0...v0.79.0) (2026-09-20)
 
 ManifoldKit 0.79 raises the deployment floor to iOS 26 and macOS 26, and requires authentication for the optional MCP HTTP host. It also makes bootstrap conflicts recoverable and strengthens conversation, tool, and fuzz diagnostics.
