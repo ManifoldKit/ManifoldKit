@@ -172,8 +172,11 @@ on:
     types: [checks_requested]
 
 # Collapse concurrent runs, keyed differently per event:
-#   - pull_request → group per PR number, so a force-push cancels the PR's
-#     own in-flight run but never another PR's (force-push collapse, unchanged).
+#   - pull_request → group per PR number AND current draft/ready state. A
+#     synchronize delivered while the PR is still draft must not cancel the
+#     ready_for_review run that follows it: the late draft run skips its jobs,
+#     leaving the required ready run alive. Synchronize events within the same
+#     state still collapse normally, including force-pushes to a ready PR.
 #   - push to main → `pull_request.number` is empty, so we fall back to
 #     `github.ref` (= refs/heads/main) rather than the per-run `github.run_id`.
 #     That makes a BURST of rapid merges to main collapse to a single CI run on
@@ -183,7 +186,7 @@ on:
 #     is the 24h backstop, and each PR was already green pre-merge. The
 #     readme-snippets gate already keys its push group on the ref the same way.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && (github.event.pull_request.draft && 'draft' || 'ready') || github.event_name }}
   # Never cancel a merge_group run: cancelling a queue validation mid-flight
   # leaves the required check unreported and stalls the queue. For merge_group,
   # github.ref is the unique queue branch, so each batch already gets its own group.
