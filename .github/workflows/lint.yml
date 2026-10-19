@@ -371,7 +371,7 @@ jobs:
       # that finding outlives this PR and applies to `changelog-lint` too.
       - name: Set up Node.js (changelog-parser-check)
         if: always() && github.event_name == 'pull_request'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # Pinned to a major, not 'lts/*' — the setup-node action is
           # SHA-pinned but a floating alias here would let a future Node LTS
@@ -614,7 +614,7 @@ jobs:
         # queue branch. Each PR is already secret-scanned on its pull_request run
         # before being queued, so re-scanning the batch adds no coverage.
         if: always() && github.event_name != 'merge_group'
-        uses: trufflesecurity/trufflehog@4dd8831c5f12599465d4d45c3c447b4018a34c85 # v3.97.9
+        uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
         with:
           # The composite action pulls `ghcr.io/trufflesecurity/trufflehog:${version}`.
           # Tag `v3.95.2` is missing from GHCR (manifest unknown), so the explicit
