@@ -97,6 +97,26 @@ final class ModelDiscoveryErrorTests: XCTestCase {
         XCTAssertNil(info.detectedContextLength)
     }
 
+    func test_load_unrepresentableGGUFInteger_returnsModelWithoutMetadata() throws {
+        var data = Data([0x47, 0x47, 0x55, 0x46])
+        appendUInt32(&data, 3)
+        appendUInt64(&data, 0)
+        appendUInt64(&data, 1)
+        let key = Data("llama.context_length".utf8)
+        appendUInt64(&data, UInt64(key.count))
+        data.append(key)
+        appendUInt32(&data, 10) // UINT64
+        appendUInt64(&data, UInt64.max)
+
+        let url = try writeFile(name: "oversized-integer.gguf", contents: data)
+        let info = try ModelInfo.load(ggufURL: url)
+        XCTAssertEqual(info.modelType, .gguf)
+        XCTAssertEqual(info.url, url)
+        XCTAssertNil(info.detectedContextLength)
+        XCTAssertNil(info.detectedPromptTemplate)
+        XCTAssertNil(info.estimatedKVBytesPerToken)
+    }
+
     // MARK: - Error description
 
     func test_errorDescription_notGGUF_isActionable() {

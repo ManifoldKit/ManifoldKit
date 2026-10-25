@@ -355,7 +355,11 @@ package struct GGUFMetadataReader {
         case .int32:
             return Int(try readInt32(from: reader))
         case .uint64:
-            return Int(try readUInt64(from: reader))
+            let value = try readUInt64(from: reader)
+            guard let integer = Int(exactly: value) else {
+                throw GGUFReaderError.readError("Integer value \(value) exceeds supported Int range")
+            }
+            return integer
         case .int64:
             return Int(try readInt64(from: reader))
         default:
