@@ -1,5 +1,5 @@
 {
-  "originHash" : "7c6a0c2a1f0945a0216298504195848c1497a7d879f79e179db1f77e265367f5",
+  "originHash" : "6bb2a72e9cae5743a053eb542906e0615f45eb0aa900417731c0abedb0283023",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -87,8 +87,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/huggingface/swift-huggingface.git",
       "state" : {
-        "revision" : "f2f99991f2d7d8fdb3187e4fd539cd2facf5c13d",
-        "version" : "0.11.0"
+        "revision" : "c30143a4616f3fa994ee3ab3e3464f752845c07c",
+        "version" : "1.0.0"
       }
     },
     {
@@ -96,8 +96,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/huggingface/swift-jinja.git",
       "state" : {
-        "revision" : "4588064a20f3fc093c95f2f7d3359999bf30cae5",
-        "version" : "2.5.1"
+        "revision" : "1e4d0dc69f7ec1277131fb3853808229c5991825",
+        "version" : "2.5.2"
       }
     },
     {
