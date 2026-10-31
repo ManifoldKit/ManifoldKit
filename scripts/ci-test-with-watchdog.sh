@@ -104,6 +104,14 @@ set -uo pipefail  # fail-open-ok: NOT -e — the watchdog must survive probe hic
 STALL_SECONDS="${STALL_SECONDS:-180}"
 PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Production always runs this repository's test driver. The override exists
+# only for this script's hidden self-test, which must exercise the real timer
+# and abort path without recursively launching a Swift build.
+TEST_RUNNER="$PACKAGE_DIR/scripts/test.sh"
+if [[ "${MANIFOLD_WATCHDOG_SELFTEST_CHILD:-0}" == "1" ]]; then
+    TEST_RUNNER="${MANIFOLD_WATCHDOG_TEST_RUNNER:?'watchdog self-test child requires MANIFOLD_WATCHDOG_TEST_RUNNER'}"
+fi
+
 # The wrapper and test.sh both want to control the log path. Point test.sh at
 # the same file we tail, so we don't duplicate the tee pipeline.
 if [[ -z "${MANIFOLD_TEST_OUTPUT_FILE:-}" ]]; then
@@ -138,7 +146,7 @@ mkdir -p "$(dirname "$WATCHDOG_LOG")" "$WATCHDOG_DIAGNOSTICS_DIR"
 export MANIFOLD_WATCHDOG_ACTIVE=1
 export MANIFOLD_WATCHDOG_WRAPPER_PID="$$"
 export MANIFOLD_WATCHDOG_STALL_SECONDS="$STALL_SECONDS"
-"$PACKAGE_DIR/scripts/test.sh" "$@" &
+"$TEST_RUNNER" "$@" &
 TEST_PID=$!
 
 # Watchdog loop. We wake every $POLL_INTERVAL seconds and check whether any
@@ -158,8 +166,12 @@ aborted_by_watchdog=0
 # Pattern matches forward progress in BOTH phases of `swift test`:
 #
 #   1. Build phase — SwiftPM streams "Building for debugging...",
-#      "[N/M] Compiling ...", "Emitting module ...", "[N/M] Write ...", and
-#      "Build complete!". A cold build of the full parallel test bundle can run
+#      legacy "[N/M] Compiling ..." lines, and (Swift 6.4/Xcode 27) compact
+#      build counters such as "[1659 / 2188] ManifoldSecretsTests-product".
+#      The latter uses U+2009 THIN SPACE on both sides of the slash and may
+#      omit the artifact name on intermediate updates. Match that exact
+#      counter grammar rather than arbitrary bracketed chatter. A cold build
+#      of the full parallel test bundle can run
 #      several minutes with *no* test-execution output; without counting these
 #      the watchdog mistakes an advancing-but-slow compile for a stall and
 #      SIGABRTs before a single test starts (TOTAL RUN: 0). A genuinely stuck
@@ -170,7 +182,7 @@ aborted_by_watchdog=0
 #      "Test Case '...' passed" lines.
 #
 # Any one of these proves a worker is alive and making forward progress.
-progress_pattern='^\[[0-9]+/[0-9]+\] (Testing|Compiling|Write|Emitting) |^\[gate-lock\] (waiting for gate lock|waiting for gate-lock reclaim|acquired after waiting) |^Emitting module |^Building for |^Build complete|^Planning build|^Test Case .* (passed|failed|skipped)|^[✔✘↩] (Test|Suite) '
+progress_pattern='^\[[0-9]+/[0-9]+\] (Testing|Compiling|Write|Emitting) |^\[[0-9]+ / [0-9]+\]( [[:alnum:]_][[:alnum:]_.+-]*)?$|^\[gate-lock\] (waiting for gate lock|waiting for gate-lock reclaim|acquired after waiting) |^Emitting module |^Building for |^Build complete|^Planning build|^Test Case .* (passed|failed|skipped)|^[✔✘↩] (Test|Suite) '
 
 # Snapshot the descendant swift-test / xctest pid set so we can SIGABRT them
 # all on stall without touching unrelated Swift work that may be running on the
