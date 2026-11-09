@@ -879,7 +879,7 @@ jobs:
         # watchdog stall snapshots/backtrace tails, plus any xcresult bundles
         # if they exist).
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: xcresult-${{ github.run_attempt }}
           if-no-files-found: ignore
@@ -1104,7 +1104,7 @@ jobs:
 
       - name: Upload test diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: xcresult-server-${{ github.run_attempt }}
           if-no-files-found: ignore
@@ -1175,7 +1175,7 @@ jobs:
 
       - name: Upload test diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: xcresult-macros-${{ github.run_attempt }}
           if-no-files-found: ignore
@@ -1363,7 +1363,7 @@ jobs:
 
       - name: Upload test diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: xcresult-ios-file-protection-${{ github.run_attempt }}
           if-no-files-found: ignore
