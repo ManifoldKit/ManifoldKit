@@ -52,7 +52,7 @@ final class EvalJudgeTests: XCTestCase {
 
     private func makeContext(
         checkpoint: GoldenCheckpoint,
-        visibleText: String = "",
+        visibleText: String = "observed runtime text",
         fixtureID: String = "f"
     ) -> CheckpointEvaluationContext {
         CheckpointEvaluationContext(
@@ -78,7 +78,6 @@ final class EvalJudgeTests: XCTestCase {
     /// A valid judged payload with a 0.7 pass bar.
     private let validPayload: [String: JSONValue] = [
         "content": .string("A knight enters the tavern."),
-        "candidate": .string(#"{"addedEntities":["knight"]}"#),
         "reference": .string(#"{"addedEntities":["knight","tavern"]}"#),
         "rubric": .string("Score 1.0 if every entity in reference is present in candidate."),
         "minScore": .number(0.7),
@@ -101,7 +100,7 @@ final class EvalJudgeTests: XCTestCase {
         let outcome = try await GoldenTaskRunner.run(
             fixture,
             customScorers: [
-                JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge),
+                JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge, candidateExtractor: { $0.output.visibleText }),
             ]
         )
 
@@ -120,7 +119,7 @@ final class EvalJudgeTests: XCTestCase {
         // Request id is derived from the runner-supplied fixture id, not a
         // constructor parameter — no drift possible.
         XCTAssertEqual(received.first?.id, "extraction-fixture#extraction quality")
-        XCTAssertEqual(received.first?.candidate, #"{"addedEntities":["knight"]}"#)
+        XCTAssertEqual(received.first?.candidate, "hello")
         XCTAssertEqual(received.first?.reference, #"{"addedEntities":["knight","tavern"]}"#)
     }
 
@@ -134,7 +133,7 @@ final class EvalJudgeTests: XCTestCase {
         let outcome = await AppEvalRunner.run(
             [fixture],
             customScorers: [
-                JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge),
+                JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge, candidateExtractor: { $0.output.visibleText }),
             ]
         )
 
@@ -151,32 +150,32 @@ final class EvalJudgeTests: XCTestCase {
 
     func test_directScore_exactlyAtBar_passes() async throws {
         let judge = RecordingJudge(verdict: JudgeVerdict(score: 0.7, rationale: "borderline"))
-        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge)
+        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge, candidateExtractor: { $0.output.visibleText })
         let context = makeContext(checkpoint: judgedCheckpoint(payload: validPayload))
 
         let score = await scorer.score(context)
         XCTAssertEqual(score.value, .bool(true), "score == minScore is a pass (>=, not >)")
     }
 
-    // MARK: - Missing minScore: an invalid declaration must fail, never pass
+    // MARK: - Invalid declarations are missing evidence, never a measured pass
 
-    func test_missingMinScore_failsCheckpoint_withValidationExplanation() async throws {
+    func test_missingMinScore_isUnavailable_withValidationExplanation() async throws {
         var payload = validPayload
         payload["minScore"] = nil
         let judge = RecordingJudge(verdict: JudgeVerdict(score: 1.0, rationale: "would have passed"))
-        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge)
+        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge, candidateExtractor: { $0.output.visibleText })
         let context = makeContext(checkpoint: judgedCheckpoint(payload: payload))
 
         let score = await scorer.score(context)
-        XCTAssertEqual(score.value, .bool(false), "a judge assertion with no pass bar must never be able to pass")
+        XCTAssertEqual(score.value, .unavailable, "an invalid bar is missing evidence, not a measured failure")
         let explanation = try XCTUnwrap(score.explanation)
         XCTAssertTrue(explanation.contains("minScore"), explanation)
-        XCTAssertEqual(score.metadata["reason"], "missing-minScore")
+        XCTAssertEqual(score.metadata["reason"], "invalid-minScore")
         let callCount = await judge.callCount
         XCTAssertEqual(callCount, 0, "an invalid declaration must not bill a judge call")
     }
 
-    func test_missingMinScore_failsFixtureVerdict() async throws {
+    func test_missingMinScore_indeterminateFixtureVerdict() async throws {
         var payload = validPayload
         payload["minScore"] = nil
         let judge = RecordingJudge(verdict: JudgeVerdict(score: 1.0, rationale: "unused"))
@@ -188,16 +187,16 @@ final class EvalJudgeTests: XCTestCase {
 
         let outcome = await AppEvalRunner.run(
             [fixture],
-            customScorers: [JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge)]
+            customScorers: [JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge, candidateExtractor: { $0.output.visibleText })]
         )
-        XCTAssertEqual(outcome.verdict, .fail)
-        XCTAssertEqual(outcome.verdict.exitCode, 1)
+        XCTAssertEqual(outcome.verdict, .indeterminate)
+        XCTAssertEqual(outcome.verdict.exitCode, 3)
     }
 
     // MARK: - Absence: no judge registered
 
     func test_absentJudge_scoresUnavailable_neverZeroOrPass() async throws {
-        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: nil)
+        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: nil, candidateExtractor: { $0.output.visibleText })
         let context = makeContext(checkpoint: judgedCheckpoint(payload: validPayload))
 
         let score = await scorer.score(context)
@@ -211,7 +210,7 @@ final class EvalJudgeTests: XCTestCase {
 
     func test_noMatchingPayload_scoresUnavailable() async throws {
         let judge = RecordingJudge(verdict: JudgeVerdict(score: 1.0, rationale: "n/a"))
-        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge)
+        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge, candidateExtractor: { $0.output.visibleText })
         // Checkpoint declares no `custom` payload at all.
         let context = makeContext(checkpoint: GoldenCheckpoint(afterTurnIndex: 0))
 
@@ -224,10 +223,10 @@ final class EvalJudgeTests: XCTestCase {
 
     // MARK: - Malformed payload
 
-    func test_malformedPayload_missingCandidate_scoresUnavailable() async throws {
+    func test_malformedPayload_missingRubric_scoresUnavailable() async throws {
         let judge = RecordingJudge(verdict: JudgeVerdict(score: 1.0, rationale: "n/a"))
-        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge)
-        let malformed: [String: JSONValue] = ["rubric": .string("grade it"), "minScore": .number(0.5)]
+        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge, candidateExtractor: { $0.output.visibleText })
+        let malformed: [String: JSONValue] = ["minScore": .number(0.5)]
         let context = makeContext(checkpoint: judgedCheckpoint(payload: malformed))
 
         let score = await scorer.score(context)
@@ -241,7 +240,7 @@ final class EvalJudgeTests: XCTestCase {
 
     func test_judgeThrows_scoresUnavailable_neverBoolFalse() async throws {
         let judge = RecordingJudge(throwing: StubJudgeError(description: "subprocess timed out"))
-        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge)
+        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge, candidateExtractor: { $0.output.visibleText })
         let context = makeContext(checkpoint: judgedCheckpoint(payload: validPayload))
 
         let score = await scorer.score(context)
@@ -260,7 +259,7 @@ final class EvalJudgeTests: XCTestCase {
         let outcome = await AppEvalRunner.run(
             [fixture],
             customScorers: [
-                JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge),
+                JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge, candidateExtractor: { $0.output.visibleText }),
             ]
         )
 
@@ -274,5 +273,99 @@ final class EvalJudgeTests: XCTestCase {
         XCTAssertTrue(report.contains("hallucinated_entity"), report)
         XCTAssertTrue(report.contains("wrong_fact_value"), report)
         XCTAssertTrue(report.contains("0.4000"), "raw judge score must stay visible in the report: \(report)")
+    }
+}
+
+private actor CandidateJudge: EvalJudge {
+    private(set) var requests: [JudgeRequest] = []
+    func judge(_ request: JudgeRequest) async throws -> JudgeVerdict {
+        requests.append(request)
+        return JudgeVerdict(score: request.candidate == "observed: hello" ? 1 : 0, rationale: "checked runtime state")
+    }
+}
+
+private struct ObservedState: Sendable { let text: String }
+private struct OutputStateProbe: ScenarioStateProbe {
+    let corrupt: Bool
+    func snapshot(after checkpoint: GoldenCheckpoint, runResult: RuntimeScenarioRunner.Result) async -> (any Sendable)? {
+        let actual = runResult.producedMessages.filter { $0.role == .assistant }.map(\.content).joined(separator: "\n")
+        return ObservedState(text: corrupt ? "corrupt runtime state" : "observed: \(actual)")
+    }
+}
+
+extension EvalJudgeTests {
+    func test_sameFixture_corruptedRuntimeSnapshotChangesCandidateVerdictAndCache() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("runtime-judge-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let judge = CandidateJudge()
+        let cached = CachingJudge(underlying: judge, directory: directory)
+        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: cached) { context in
+            guard let state = context.snapshot as? ObservedState else {
+                throw StubJudgeError(description: "required ObservedState snapshot is missing")
+            }
+            return state.text
+        }
+        let fixture = judgedFixture(id: "fixed-fixture")
+        let good = await AppEvalRunner.run([fixture], probe: OutputStateProbe(corrupt: false), customScorers: [scorer])
+        let replay = await AppEvalRunner.run([fixture], probe: OutputStateProbe(corrupt: false), customScorers: [scorer])
+        let corrupt = await AppEvalRunner.run([fixture], probe: OutputStateProbe(corrupt: true), customScorers: [scorer])
+        XCTAssertEqual(good.verdict, .pass)
+        XCTAssertEqual(replay.verdict, .pass)
+        XCTAssertEqual(corrupt.verdict, .fail)
+        let requests = await judge.requests
+        XCTAssertEqual(requests.map(\.candidate), ["observed: hello", "corrupt runtime state"])
+        XCTAssertEqual(requests.first?.reference, #"{"addedEntities":["knight","tavern"]}"#)
+        XCTAssertEqual(requests.first?.reference, requests.last?.reference)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path).count, 2)
+        let missing = await AppEvalRunner.run([fixture], customScorers: [scorer])
+        XCTAssertEqual(missing.verdict, .indeterminate)
+        XCTAssertEqual(missing.verdict.exitCode, 3)
+        let requestsAfterMissing = await judge.requests
+        XCTAssertEqual(requestsAfterMissing.count, 2, "missing snapshot must not invoke or reuse a judge")
+    }
+
+    func test_extractionFailureNeverSubstitutesAnEmptyCandidate() async {
+        let judge = RecordingJudge(verdict: JudgeVerdict(score: 1, rationale: "must not run"))
+        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge) { _ in
+            throw StubJudgeError(description: "extraction failed")
+        }
+        let result = await scorer.score(makeContext(checkpoint: judgedCheckpoint(payload: validPayload)))
+        XCTAssertEqual(result.value, .unavailable)
+        XCTAssertEqual(result.metadata["reason"], "candidate-extraction-error")
+        let count = await judge.callCount
+        XCTAssertEqual(count, 0)
+        XCTAssertEqual(AppEvalVerdict.aggregate([result]), .indeterminate)
+    }
+
+    func test_invalidThresholdsAndLegacyFixtureCandidatesNeverInvokeJudge() async {
+        let judge = RecordingJudge(verdict: JudgeVerdict(score: 1, rationale: "must not run"))
+        let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge, candidateExtractor: { $0.output.visibleText })
+        for threshold in [-0.1, 1.1, Double.nan, Double.infinity, -Double.infinity] {
+            var payload = validPayload
+            payload["minScore"] = .number(threshold)
+            let result = await scorer.score(makeContext(checkpoint: judgedCheckpoint(payload: payload)))
+            XCTAssertEqual(result.value, .unavailable)
+            XCTAssertEqual(AppEvalVerdict.aggregate([result]), .indeterminate)
+        }
+        var legacy = validPayload
+        legacy["candidate"] = .string("fixture answer")
+        let result = await scorer.score(makeContext(checkpoint: judgedCheckpoint(payload: legacy)))
+        XCTAssertEqual(result.metadata["reason"], "fixture-candidate")
+        let count = await judge.callCount
+        XCTAssertEqual(count, 0)
+    }
+
+    func test_invalidJudgeScoreAndAbsentJudgeAreIndeterminate() async {
+        for value in [Double.nan, Double.infinity, -0.1, 1.1] {
+            let judge = RecordingJudge(verdict: JudgeVerdict(score: value, rationale: "invalid"))
+            let scorer = JudgedCheckpointScorer(id: "judge:extraction-quality", judge: judge, candidateExtractor: { $0.output.visibleText })
+            let result = await scorer.score(makeContext(checkpoint: judgedCheckpoint(payload: validPayload)))
+            XCTAssertEqual(result.metadata["reason"], "invalid-judge-score")
+            XCTAssertEqual(AppEvalVerdict.aggregate([result]), .indeterminate)
+        }
+        let absent = await AppEvalRunner.run([judgedFixture(id: "absent-judge")], customScorers: [
+            JudgedCheckpointScorer(id: "judge:extraction-quality", judge: nil, candidateExtractor: { $0.output.visibleText }),
+        ])
+        XCTAssertEqual(absent.verdict, .indeterminate)
     }
 }

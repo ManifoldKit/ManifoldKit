@@ -517,3 +517,9 @@ API breakage: var SessionListService.messageSearchSessionResolveCap has been rem
 API breakage: var EnvironmentValues.endpointStore has been removed
 API breakage: enumelement MCPHostTransportError.invalidAuthorizationToken has been added as a new enum case
 API breakage: constructor MCPHostHTTPTransport.init(port:maxMessageBytes:) has been removed
+API breakage: enumelement AppEvalVerdict.indeterminate has been added as a new enum case
+API breakage: constructor JudgedCheckpointScorer.init(id:judge:) has been removed
+API breakage: constructor AppEvalLedgerEntry.init(fixtureID:verdict:checkpointCount:failingCheckpointLabels:) has been removed
+API breakage: constructor FixtureOutcome.init(fixtureID:checkpoints:) has been removed
+API breakage: constructor CheckpointOutcome.init(label:afterTurnIndex:scores:) has been removed
+API breakage: constructor CheckpointEvaluationContext.init(output:snapshot:checkpoint:eventKinds:producedMessageCount:lastContextAssembledSlotCount:lastCompressionInsertedRecordCount:fixtureID:latestTurnVisibleText:) has been removed

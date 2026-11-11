@@ -16,8 +16,10 @@ AppEvalLedgerEntry.currentSchemaVersion Var
 AppEvalLedgerEntry.encode(to:) Func
 AppEvalLedgerEntry.failingCheckpointLabels Var
 AppEvalLedgerEntry.fixtureID Var
-AppEvalLedgerEntry.init(fixtureID:verdict:checkpointCount:failingCheckpointLabels:) Constructor
+AppEvalLedgerEntry.indeterminateCheckpointLabels Var
+AppEvalLedgerEntry.init(fixtureID:verdict:checkpointCount:failingCheckpointLabels:indeterminateCheckpointLabels:isInformational:) Constructor
 AppEvalLedgerEntry.init(from:) Constructor
+AppEvalLedgerEntry.isInformational Var
 AppEvalLedgerEntry.schemaVersion Var
 AppEvalLedgerEntry.verdict Var
 AppEvalMarkdownRenderer Enum
@@ -52,6 +54,7 @@ AppEvalVerdict.exitCode Var
 AppEvalVerdict.fail EnumElement
 AppEvalVerdict.hash(into:) Func
 AppEvalVerdict.hashValue Var
+AppEvalVerdict.indeterminate EnumElement
 AppEvalVerdict.pass EnumElement
 BuiltInCheckpointAssertion Enum
 BuiltInCheckpointAssertion conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
@@ -96,17 +99,20 @@ CheckpointEvaluationContext conformances: Copyable,Escapable,Sendable,SendableMe
 CheckpointEvaluationContext.checkpoint Var
 CheckpointEvaluationContext.eventKinds Var
 CheckpointEvaluationContext.fixtureID Var
-CheckpointEvaluationContext.init(output:snapshot:checkpoint:eventKinds:producedMessageCount:lastContextAssembledSlotCount:lastCompressionInsertedRecordCount:fixtureID:latestTurnVisibleText:) Constructor
+CheckpointEvaluationContext.init(output:snapshot:checkpoint:eventKinds:producedMessageCount:lastContextAssembledSlotCount:lastCompressionInsertedRecordCount:fixtureID:latestTurnVisibleText:producedMessages:systemPrompt:) Constructor
 CheckpointEvaluationContext.lastCompressionInsertedRecordCount Var
 CheckpointEvaluationContext.lastContextAssembledSlotCount Var
 CheckpointEvaluationContext.latestTurnVisibleText Var
 CheckpointEvaluationContext.output Var
 CheckpointEvaluationContext.producedMessageCount Var
+CheckpointEvaluationContext.producedMessages Var
 CheckpointEvaluationContext.snapshot Var
+CheckpointEvaluationContext.systemPrompt Var
 CheckpointOutcome Struct
 CheckpointOutcome conformances: Copyable,Escapable,Sendable,SendableMetatype
 CheckpointOutcome.afterTurnIndex Var
-CheckpointOutcome.init(label:afterTurnIndex:scores:) Constructor
+CheckpointOutcome.informationalScoreIDs Var
+CheckpointOutcome.init(label:afterTurnIndex:scores:informationalScoreIDs:) Constructor
 CheckpointOutcome.label Var
 CheckpointOutcome.scores Var
 CheckpointScorer Protocol
@@ -145,8 +151,9 @@ FixtureOutcome conformances: Copyable,Escapable,Sendable,SendableMetatype
 FixtureOutcome.checkpoints Var
 FixtureOutcome.errorDescription Var
 FixtureOutcome.fixtureID Var
-FixtureOutcome.init(fixtureID:checkpoints:) Constructor
+FixtureOutcome.init(fixtureID:checkpoints:isInformational:) Constructor
 FixtureOutcome.init(fixtureID:errorDescription:) Constructor
+FixtureOutcome.isInformational Var
 FixtureOutcome.verdict Var
 GoldenCheckpoint Struct
 GoldenCheckpoint conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
@@ -301,7 +308,7 @@ JudgeVerdict.score Var
 JudgedCheckpointScorer Struct
 JudgedCheckpointScorer conformances: CheckpointScorer,Copyable,Escapable,Sendable,SendableMetatype
 JudgedCheckpointScorer.id Var
-JudgedCheckpointScorer.init(id:judge:) Constructor
+JudgedCheckpointScorer.init(id:judge:candidateExtractor:) Constructor
 JudgedCheckpointScorer.score(_:) Func
 RuntimeScenario Struct
 RuntimeScenario conformances: Copyable,Escapable,Sendable,SendableMetatype

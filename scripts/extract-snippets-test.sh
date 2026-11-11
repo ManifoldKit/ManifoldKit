@@ -161,6 +161,8 @@ for snippet in "${snippets[@]}"; do
                 // #2434), so the migration snippet must compile against the
                 // product directly.
                 .product(name: \"ManifoldAgentInstructions\", package: \"ManifoldKit\"),
+                // App-eval migration examples import this opt-in product.
+                .product(name: \"ManifoldAppEval\", package: \"ManifoldKit\"),
                 // HTTP host migration examples import this opt-in product.
                 .product(name: \"ManifoldMCPHost\", package: \"ManifoldKit\"),
             ],

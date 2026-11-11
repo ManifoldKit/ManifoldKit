@@ -51,6 +51,11 @@ public struct CheckpointEvaluationContext: Sendable {
     /// ``BuiltInCheckpointScorers/ContentMatchOptions/Scope/latestTurn``.
     /// Empty for hand-built contexts (unit tests) that don't set it.
     public let latestTurnVisibleText: String
+    /// Ordered runtime messages retained at this checkpoint. Nil means the
+    /// caller did not supply a transcript; an observed empty transcript is [].
+    public let producedMessages: [ChatMessage]?
+    /// The system prompt configured for the executed scenario.
+    public let systemPrompt: String?
 
     public init(
         output: EvalRunOutput,
@@ -61,7 +66,9 @@ public struct CheckpointEvaluationContext: Sendable {
         lastContextAssembledSlotCount: Int?,
         lastCompressionInsertedRecordCount: Int?,
         fixtureID: String = "",
-        latestTurnVisibleText: String = ""
+        latestTurnVisibleText: String = "",
+        producedMessages: [ChatMessage]? = nil,
+        systemPrompt: String? = nil
     ) {
         self.fixtureID = fixtureID
         self.output = output
@@ -72,6 +79,8 @@ public struct CheckpointEvaluationContext: Sendable {
         self.lastContextAssembledSlotCount = lastContextAssembledSlotCount
         self.lastCompressionInsertedRecordCount = lastCompressionInsertedRecordCount
         self.latestTurnVisibleText = latestTurnVisibleText
+        self.producedMessages = producedMessages
+        self.systemPrompt = systemPrompt
     }
 }
 

@@ -13,7 +13,7 @@ public struct AppEvalOutcome: Sendable {
 
     public init(fixtures: [FixtureOutcome]) {
         self.fixtures = fixtures
-        self.verdict = AppEvalVerdict.aggregate(verdicts: fixtures.map(\.verdict))
+        self.verdict = AppEvalVerdict.aggregate(verdicts: fixtures.filter { !$0.isInformational }.map(\.verdict))
     }
 
     /// Builds an outcome from one or more ``GoldenTaskRunner`` outcomes.
@@ -27,16 +27,20 @@ public struct FixtureOutcome: Sendable {
     public let fixtureID: String
     public let checkpoints: [CheckpointOutcome]
     public let verdict: AppEvalVerdict
+    /// Diagnostic fixtures remain visible but do not drive the run's gate.
+    /// A run containing only informational fixtures is indeterminate.
+    public let isInformational: Bool
     /// Non-nil only for ``AppEvalVerdict/error`` rows: a description of the
     /// load/map/run error that prevented this fixture from being evaluated.
     /// Errors are first-class rows (mirroring the absence convention), not a
     /// batch abort — see ``AppEvalRunner/run(_:probe:customScorers:toolExecutors:preTurnCompressionPolicy:)``.
     public let errorDescription: String?
 
-    public init(fixtureID: String, checkpoints: [CheckpointOutcome]) {
+    public init(fixtureID: String, checkpoints: [CheckpointOutcome], isInformational: Bool = false) {
         self.fixtureID = fixtureID
         self.checkpoints = checkpoints
-        self.verdict = AppEvalVerdict.aggregate(checkpoints.flatMap { $0.scores.values })
+        self.verdict = AppEvalVerdict.aggregate(checkpoints.flatMap(\.requiredScores))
+        self.isInformational = isInformational
         self.errorDescription = nil
     }
 
@@ -47,6 +51,7 @@ public struct FixtureOutcome: Sendable {
         self.fixtureID = fixtureID
         self.checkpoints = []
         self.verdict = .error
+        self.isInformational = false
         self.errorDescription = errorDescription
     }
 
@@ -67,10 +72,23 @@ public struct CheckpointOutcome: Sendable {
     /// is rendered (never dictionary-order, which is non-deterministic).
     public let scores: [String: EvalScore]
 
-    public init(label: String, afterTurnIndex: Int, scores: [String: EvalScore]) {
+    /// Score keys explicitly reported as optional measurements, excluded from the gate.
+    public let informationalScoreIDs: Set<String>
+
+    public init(
+        label: String, afterTurnIndex: Int, scores: [String: EvalScore],
+        informationalScoreIDs: Set<String> = []
+    ) {
         self.label = label
         self.afterTurnIndex = afterTurnIndex
         self.scores = scores
+        self.informationalScoreIDs = informationalScoreIDs
+    }
+
+    var requiredScores: [EvalScore] {
+        // An empty checkpoint must not disappear inside an otherwise passing fixture.
+        if scores.isEmpty { return [EvalScore(value: .unavailable, explanation: "no assertions declared")] }
+        return scores.filter { !informationalScoreIDs.contains($0.key) }.map(\.value)
     }
 
     init(result: GoldenTaskRunner.CheckpointResult) {

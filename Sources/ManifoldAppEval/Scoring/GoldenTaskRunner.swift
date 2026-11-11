@@ -124,7 +124,9 @@ public enum GoldenTaskRunner {
                 lastContextAssembledSlotCount: context.lastContextAssembledSlotCount,
                 lastCompressionInsertedRecordCount: context.lastCompressionInsertedRecordCount,
                 fixtureID: context.fixtureID,
-                latestTurnVisibleText: context.latestTurnVisibleText
+                latestTurnVisibleText: context.latestTurnVisibleText,
+                producedMessages: context.producedMessages,
+                systemPrompt: context.systemPrompt
             )
 
             var scores: [String: EvalScore] = [:]
@@ -297,7 +299,9 @@ public enum GoldenTaskRunner {
             lastContextAssembledSlotCount: lastContextAssembledSlotCount,
             lastCompressionInsertedRecordCount: lastCompressionInsertedRecordCount,
             fixtureID: fixtureID,
-            latestTurnVisibleText: latestTurnVisibleText
+            latestTurnVisibleText: latestTurnVisibleText,
+            producedMessages: runResult.producedMessages,
+            systemPrompt: runResult.scenario.systemPrompt
         )
     }
 
