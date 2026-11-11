@@ -63,11 +63,20 @@ protocol and conformer land in the same release train. Until then, the seam
 is proven end-to-end in this repo's own tests via a fake conformer — a real
 app wires a real judge in exactly the same shape.
 
-A judged checkpoint's `custom` payload must declare a **`minScore` pass bar**;
-``JudgedCheckpointScorer`` reduces the judge's continuous score to
-pass/fail against it, so a judge score always carries verdict weight (a bare
-`.number` is invisible to ``AppEvalVerdict/aggregate(_:)`` — see that
-method's invariant note).
+A judged checkpoint's `custom` payload declares a finite `minScore` in 0...1,
+a rubric, and optional reference/grounding text. The required
+`candidateExtractor` reads executed output or a typed snapshot from
+``CheckpointEvaluationContext``; fixture candidate strings are rejected.
+Throw when required state is absent rather than substituting an empty string.
+
+``JudgedCheckpointScorer`` reduces a measured judge score against the explicit
+bar. Missing evidence and raw unassessed numeric scores make
+``AppEvalVerdict/indeterminate`` (exit 3). Measured failures remain `.fail`
+(exit 1), and run errors remain `.error` (exit 2). Empty required evaluations
+cannot pass. Apps assembling reports declare optional measurement keys with
+``CheckpointOutcome/informationalScoreIDs`` and diagnostic fixtures with
+``FixtureOutcome/isInformational``; those rows remain visible and never
+establish a passing gate alone.
 
 ### Import discipline
 

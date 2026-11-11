@@ -79,13 +79,8 @@ final class AppEvalTests: XCTestCase {
 
         let outcome = try await GoldenTaskRunner.run(fixture)
 
-        for result in outcome.checkpointResults {
-            for (assertion, score) in result.scores {
-                if case .bool(false) = score.value {
-                    XCTFail("\(result.checkpoint.displayLabel) failed \(assertion): \(score.explanation ?? "")")
-                }
-            }
-        }
+        let report = AppEvalOutcome.make(from: [outcome])
+        XCTAssertEqual(report.verdict, .pass, AppEvalMarkdownRenderer.render(report))
     }
 }
 ```
@@ -215,26 +210,40 @@ let cachedJudge = CachingJudge(
 let outcome = try await GoldenTaskRunner.run(
     fixture,
     customScorers: [
-        JudgedCheckpointScorer(id: "judge:extraction-quality", judge: cachedJudge)
+        JudgedCheckpointScorer(
+            id: "judge:extraction-quality", judge: cachedJudge,
+            candidateExtractor: { $0.latestTurnVisibleText }
+        )
     ]
 )
 ```
 
 A checkpoint routes to it by declaring
-`"custom": { "judge:extraction-quality": { "candidate": "...", "reference": "...", "rubric": "...", "minScore": 0.7 } }`.
+`"custom": { "judge:extraction-quality": { "reference": "...", "rubric": "...", "minScore": 0.7 } }`.
 
-**`minScore` is required** — it is the pass bar the judge's continuous score
-is reduced against (`score >= minScore` → pass). Without it a judge score
-would be verdict-inert: the aggregate verdict only fails on boolean failures,
-so a `0.0` judge score with no bar would still exit `0`. A payload that omits
-`minScore` scores a *failing* checkpoint (with a validation explanation) until
-you declare one — a judge assertion with no pass bar must never be able to
-pass.
+The candidate comes from the required `candidateExtractor`, which receives the
+executed checkpoint context. Read `output`, `latestTurnVisibleText`, or an
+app-owned typed `snapshot`. Throw when required state is missing; never replace
+missing evidence with a fixture literal or an empty string. Observed empty
+output may still be graded normally. The old fixture `candidate` field is
+rejected. Direct offline grading remains available through `JudgeRequest` and
+`EvalJudge`.
 
-No judge wired in yet (`judge: nil`), or a judge call that throws, both score
-`.unavailable` — never a fabricated pass or a `0.0` — so a fixture can declare
-a judge-scored checkpoint before the app has a real conformer without
-poisoning the aggregate verdict.
+**`minScore` is required and must be finite in 0...1.** The scorer reduces an
+actual judge score against this bar (`score >= minScore`). Invalid declarations,
+missing extractable state, absent judges and thrown judge errors produce
+`.unavailable`. Required unavailable evidence makes the aggregate
+`AppEvalVerdict.indeterminate` (exit 3); a measured below-bar result is `.fail`
+(exit 1). A raw numeric score without an explicit assessment is also
+indeterminate, with no universal numeric threshold.
+
+For reports assembled by an app, declare optional measurement keys using
+`CheckpointOutcome.informationalScoreIDs`. Declare an entirely diagnostic
+fixture using `FixtureOutcome.isInformational`. These rows remain visible;
+they cannot establish a passing gate alone. Empty runs and empty required
+checkpoints are indeterminate. See
+[Migrating app-eval evidence](MIGRATION-app-eval-evidence.md) for the new scorer
+initializer, report policy, ledger version and consumer exit changes.
 
 `CachingJudge` content-addresses responses by a SHA-256 of the request's
 *content* fields (content/candidate/reference/rubric — the diagnostic `id` is
@@ -328,7 +337,7 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
-This is green in hosted CI by construction: the deterministic lane never
+This lane runs in hosted CI without model hardware: the deterministic lane never
 downloads a model, never hits a network, and never touches the real
 filesystem beyond the fixtures you bundled and (optionally) an appended
 `history.jsonl` ledger line.
@@ -339,7 +348,7 @@ Start with the starter corpus (step 3) plus one or two fixtures for your
 app's most load-bearing flows. Add `AppEvalOutcome` + `AppEvalMarkdownRenderer`
 + `AppEvalHistoryLedger` once you want a rendered report and a trend history
 across runs — neither is required for the gate itself, which is just
-"every checkpoint scored true or unavailable."
+"every required assertion was measured and passed."
 
 ---
 

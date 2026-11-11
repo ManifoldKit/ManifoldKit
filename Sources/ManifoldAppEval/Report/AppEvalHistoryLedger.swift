@@ -14,12 +14,15 @@ import ManifoldInference
 ///   **older** reader (`JSONDecoder` already ignores unrecognized keys by
 ///   default; there is nothing else to opt into for forward tolerance).
 public struct AppEvalLedgerEntry: Sendable, Equatable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let fixtureID: String
     public let verdict: String
     public let checkpointCount: Int
+    public let isInformational: Bool
+    /// Checkpoints with missing or unassessed required evidence.
+    public let indeterminateCheckpointLabels: [String]?
     /// Labels of checkpoints that had at least one failing assertion, or
     /// `nil` when every checkpoint passed (omitted from the JSON line, not
     /// encoded as an empty array, to keep passing rows minimal).
@@ -29,19 +32,23 @@ public struct AppEvalLedgerEntry: Sendable, Equatable {
         fixtureID: String,
         verdict: AppEvalVerdict,
         checkpointCount: Int,
-        failingCheckpointLabels: [String]
+        failingCheckpointLabels: [String],
+        indeterminateCheckpointLabels: [String] = [],
+        isInformational: Bool = false
     ) {
         self.schemaVersion = Self.currentSchemaVersion
         self.fixtureID = fixtureID
         self.verdict = verdict.ledgerValue
         self.checkpointCount = checkpointCount
+        self.isInformational = isInformational
+        self.indeterminateCheckpointLabels = indeterminateCheckpointLabels.isEmpty ? nil : indeterminateCheckpointLabels
         self.failingCheckpointLabels = failingCheckpointLabels.isEmpty ? nil : failingCheckpointLabels
     }
 }
 
 extension AppEvalLedgerEntry: Codable {
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, fixtureID, verdict, checkpointCount, failingCheckpointLabels
+        case schemaVersion, fixtureID, verdict, checkpointCount, failingCheckpointLabels, indeterminateCheckpointLabels, isInformational
     }
 
     public init(from decoder: Decoder) throws {
@@ -50,6 +57,8 @@ extension AppEvalLedgerEntry: Codable {
         fixtureID = try container.decode(String.self, forKey: .fixtureID)
         verdict = try container.decode(String.self, forKey: .verdict)
         checkpointCount = try container.decode(Int.self, forKey: .checkpointCount)
+        isInformational = try container.decodeIfPresent(Bool.self, forKey: .isInformational) ?? false
+        indeterminateCheckpointLabels = try container.decodeIfPresent([String].self, forKey: .indeterminateCheckpointLabels)
         failingCheckpointLabels = try container.decodeIfPresent([String].self, forKey: .failingCheckpointLabels)
     }
 
@@ -59,6 +68,8 @@ extension AppEvalLedgerEntry: Codable {
         try container.encode(fixtureID, forKey: .fixtureID)
         try container.encode(verdict, forKey: .verdict)
         try container.encode(checkpointCount, forKey: .checkpointCount)
+        try container.encode(isInformational, forKey: .isInformational)
+        try container.encodeIfPresent(indeterminateCheckpointLabels, forKey: .indeterminateCheckpointLabels)
         try container.encodeIfPresent(failingCheckpointLabels, forKey: .failingCheckpointLabels)
     }
 }
@@ -69,6 +80,7 @@ private extension AppEvalVerdict {
         case .pass: return "pass"
         case .fail: return "fail"
         case .error: return "error"
+        case .indeterminate: return "indeterminate"
         }
     }
 }
@@ -91,14 +103,26 @@ public enum AppEvalHistoryLedger {
                 fixtureID: fixture.fixtureID,
                 verdict: fixture.verdict,
                 checkpointCount: fixture.checkpoints.count,
-                failingCheckpointLabels: failingLabels(fixture)
+                failingCheckpointLabels: failingLabels(fixture),
+                indeterminateCheckpointLabels: fixture.checkpoints.filter {
+                    $0.requiredScores.contains { score in
+                        switch score.value {
+                        case .unavailable, .number: return true
+                        case .bool: return false
+                        }
+                    }
+                }.map(\.label),
+                isInformational: fixture.isInformational
             )
             let data = try encoder.encode(entry)
             lines.append(String(decoding: data, as: UTF8.self))
         }
         let appended = lines.map { $0 + "\n" }.joined()
         if let handle = FileHandle(forWritingAtPath: url.path) {
-            defer { try? handle.close() }
+            defer {
+                do { try handle.close() }
+                catch { Log.inference.warning("AppEvalHistoryLedger: close failed: \(String(describing: error), privacy: .public)") }
+            }
             handle.seekToEndOfFile()
             guard let data = appended.data(using: .utf8) else {
                 throw LedgerError.encodingFailed
@@ -150,7 +174,7 @@ public enum AppEvalHistoryLedger {
 
     private static func failingLabels(_ fixture: FixtureOutcome) -> [String] {
         fixture.checkpoints.filter { checkpoint in
-            checkpoint.scores.values.contains { score in
+            checkpoint.requiredScores.contains { score in
                 if case .bool(false) = score.value { return true }
                 return false
             }

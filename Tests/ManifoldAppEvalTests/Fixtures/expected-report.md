@@ -1,6 +1,6 @@
 # ManifoldAppEval Report
 
-> Deterministic-lane golden scenario results. Absence (`unavailable`) is reported explicitly — it is never scored as a failure.
+> Deterministic-lane golden scenario results. Missing required evidence is INDETERMINATE; informational measurements do not drive the gate.
 
 **Verdict: FAIL**
 
@@ -16,7 +16,7 @@
 
 ## beta-fixture
 
-**Fixture verdict: PASS**
+**Fixture verdict: INDETERMINATE**
 
 | Checkpoint | Assertion | Result | Detail |
 |---|---|---|---|

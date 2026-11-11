@@ -22,7 +22,7 @@ public enum AppEvalMarkdownRenderer {
         var lines: [String] = []
         lines.append("# ManifoldAppEval Report")
         lines.append("")
-        lines.append("> Deterministic-lane golden scenario results. Absence (`unavailable`) is reported explicitly — it is never scored as a failure.")
+        lines.append("> Deterministic-lane golden scenario results. Missing required evidence is INDETERMINATE; informational measurements do not drive the gate.")
         lines.append("")
         lines.append("**Verdict: \(verdictLabel(outcome.verdict))**")
         lines.append("")
@@ -30,7 +30,7 @@ public enum AppEvalMarkdownRenderer {
         for fixture in outcome.fixtures.sorted(by: { $0.fixtureID < $1.fixtureID }) {
             lines.append("## \(fixture.fixtureID)")
             lines.append("")
-            lines.append("**Fixture verdict: \(verdictLabel(fixture.verdict))**")
+            lines.append("**Fixture verdict: \(verdictLabel(fixture.verdict))\(fixture.isInformational ? " (informational)" : "")**")
             lines.append("")
             if let errorDescription = fixture.errorDescription {
                 // Error rows carry no checkpoints — render the contained
@@ -55,7 +55,7 @@ public enum AppEvalMarkdownRenderer {
                 for key in sortedScoreKeys {
                     guard let score = checkpoint.scores[key] else { continue }
                     lines.append(
-                        "| \(escapeCell(checkpoint.label)) | \(escapeCell(key)) | \(resultLabel(score)) | \(escapeCell(detail(score))) |"
+                        "| \(escapeCell(checkpoint.label)) | \(escapeCell(key)) | \(resultLabel(score))\(checkpoint.informationalScoreIDs.contains(key) ? " (informational)" : "") | \(escapeCell(detail(score))) |"
                     )
                 }
             }
@@ -70,6 +70,7 @@ public enum AppEvalMarkdownRenderer {
         case .pass: return "PASS"
         case .fail: return "FAIL"
         case .error: return "ERROR"
+        case .indeterminate: return "INDETERMINATE"
         }
     }
 
