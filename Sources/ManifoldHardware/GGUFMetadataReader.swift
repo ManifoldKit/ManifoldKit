@@ -117,13 +117,9 @@ package struct GGUFMetadataReader {
                 throw GGUFReaderError.unsupportedVersion(Int(version))
             }
 
-            let isV3 = version == 3
-
-            // Tensor count
-            let _: UInt64 = isV3 ? try readUInt64(from: reader) : UInt64(try readUInt32(from: reader))
-
-            // Metadata KV count
-            let metadataCount: UInt64 = isV3 ? try readUInt64(from: reader) : UInt64(try readUInt32(from: reader))
+            // GGUF v2 already uses 64-bit counts; v3 retains that layout.
+            let _: UInt64 = try readUInt64(from: reader)
+            let metadataCount = try readUInt64(from: reader)
 
             logger.debug("GGUF v\(version): \(metadataCount) metadata entries")
 

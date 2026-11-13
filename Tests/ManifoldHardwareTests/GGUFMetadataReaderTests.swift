@@ -216,6 +216,20 @@ final class GGUFMetadataReaderTests: XCTestCase {
         XCTAssertEqual(metadata.generalName, "V2Model")
     }
 
+    func test_readMetadata_truncatedV2MetadataCount_throwsReadError() throws {
+        var data = makeGGUFV2Header(metadata: [])
+        data.removeLast()
+        let url = try writeTempFile(named: "truncated-v2-count.gguf", data: data)
+
+        XCTAssertThrowsError(try GGUFMetadataReader.readMetadata(from: url)) { error in
+            guard case .readError(let detail) = error as? GGUFReaderError else {
+                XCTFail("Expected recoverable readError, got \(error)")
+                return
+            }
+            XCTAssertEqual(detail, "Unexpected end of file reading uint64")
+        }
+    }
+
     // MARK: - Error Cases
 
     func test_readMetadata_invalidMagic_throws() throws {
@@ -484,10 +498,9 @@ final class GGUFMetadataReaderTests: XCTestCase {
         data.append(contentsOf: [0x47, 0x47, 0x55, 0x46])
         // Version: 2
         appendUInt32(&data, 2)
-        // Tensor count: 0 (uint32 for v2)
-        appendUInt32(&data, 0)
-        // Metadata KV count (uint32 for v2)
-        appendUInt32(&data, UInt32(metadata.count))
+        // Both header counts have been UInt64 since GGUF v2.
+        appendUInt64(&data, 0)
+        appendUInt64(&data, UInt64(metadata.count))
         // KV pairs
         for kv in metadata {
             data.append(kv)
