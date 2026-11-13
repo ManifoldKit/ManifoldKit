@@ -10,8 +10,8 @@ import ManifoldPersistenceSwiftData
 /// APIEndpoint, ModelBenchmarkCache) are registered. The container is ephemeral — nothing touches disk.
 ///
 /// Split out of `ManifoldTestSupport/TestHelpers.swift` into
-/// `ManifoldPersistenceTestSupport` (docs/plans/architecture-improvements-2026-07.md
-/// item 4.4) — this is the one function in that file that actually needs the
+/// `ManifoldPersistenceTestSupport` in #2195 — this is the one function in
+/// that file that actually needs the
 /// SwiftData/ManifoldPersistenceSwiftData stack.
 ///
 /// - Returns: A configured `ModelContainer` with in-memory storage.
