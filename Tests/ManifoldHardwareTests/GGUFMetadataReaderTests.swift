@@ -136,6 +136,73 @@ final class GGUFMetadataReaderTests: XCTestCase {
         XCTAssertEqual(metadata.generalName, "Expected")
     }
 
+    func test_readMetadata_uint64AboveIntRange_throwsReadError() throws {
+        let keys = [
+            "general.file_type", "llama.context_length", "llama.block_count",
+            "llama.embedding_length", "llama.attention.head_count",
+            "llama.attention.head_count_kv", "llama.attention.key_length",
+            "llama.attention.value_length"
+        ]
+        for version in [2, 3] {
+            for key in keys {
+                for value in [UInt64(Int.max) + 1, UInt64.max] {
+                    let entries = [makeUInt64KV(key: key, value: value)]
+                    let data = version == 2
+                        ? makeGGUFV2Header(metadata: entries)
+                        : makeGGUFV3Header(metadata: entries)
+                    let url = try writeTempFile(named: "oversized.gguf", data: data)
+                    XCTAssertThrowsError(try GGUFMetadataReader.readMetadata(from: url)) { error in
+                        guard case .readError(let detail) = error as? GGUFReaderError else {
+                            XCTFail("Expected recoverable readError for v\(version) \(key): \(error)")
+                            return
+                        }
+                        XCTAssertTrue(detail.contains("exceeds supported Int range"))
+                        XCTAssertTrue(detail.contains(String(value)))
+                    }
+                }
+            }
+        }
+    }
+
+    func test_readMetadata_uint64WithinIntRange_preservesValue() throws {
+        for version in [2, 3] {
+            for value in [UInt64(0), UInt64(UInt32.max) + 1, UInt64(Int.max)] {
+                let entries = [makeUInt64KV(key: "llama.context_length", value: value)]
+                let data = version == 2
+                    ? makeGGUFV2Header(metadata: entries)
+                    : makeGGUFV3Header(metadata: entries)
+                let url = try writeTempFile(named: "supported.gguf", data: data)
+                let metadata = try GGUFMetadataReader.readMetadata(from: url)
+                XCTAssertEqual(metadata.contextLength, Int(exactly: value))
+            }
+        }
+    }
+
+    func test_readMetadata_truncatedUInt64_throwsReadError() throws {
+        var data = makeGGUFV3Header(metadata: [
+            makeUInt64KV(key: "llama.context_length", value: 4096)
+        ])
+        data.removeLast()
+        let url = try writeTempFile(named: "truncated-integer.gguf", data: data)
+        XCTAssertThrowsError(try GGUFMetadataReader.readMetadata(from: url)) { error in
+            guard case .readError(let detail) = error as? GGUFReaderError else {
+                XCTFail("Expected recoverable readError, got \(error)")
+                return
+            }
+            XCTAssertEqual(detail, "Unexpected end of file reading uint64")
+        }
+    }
+
+    func test_readMetadata_unknownUInt64AboveIntRange_isSkipped() throws {
+        let data = makeGGUFV3Header(metadata: [
+            makeUInt64KV(key: "custom.unsigned", value: UInt64.max),
+            makeStringKV(key: "general.name", value: "Still readable")
+        ])
+        let url = try writeTempFile(named: "unknown-integer.gguf", data: data)
+        let metadata = try GGUFMetadataReader.readMetadata(from: url)
+        XCTAssertEqual(metadata.generalName, "Still readable")
+    }
+
     // MARK: - V2 Header Tests
 
     func test_readMetadata_validV2Header_extractsName() throws {
@@ -147,6 +214,20 @@ final class GGUFMetadataReaderTests: XCTestCase {
         let metadata = try GGUFMetadataReader.readMetadata(from: url)
 
         XCTAssertEqual(metadata.generalName, "V2Model")
+    }
+
+    func test_readMetadata_truncatedV2MetadataCount_throwsReadError() throws {
+        var data = makeGGUFV2Header(metadata: [])
+        data.removeLast()
+        let url = try writeTempFile(named: "truncated-v2-count.gguf", data: data)
+
+        XCTAssertThrowsError(try GGUFMetadataReader.readMetadata(from: url)) { error in
+            guard case .readError(let detail) = error as? GGUFReaderError else {
+                XCTFail("Expected recoverable readError, got \(error)")
+                return
+            }
+            XCTAssertEqual(detail, "Unexpected end of file reading uint64")
+        }
     }
 
     // MARK: - Error Cases
@@ -417,10 +498,9 @@ final class GGUFMetadataReaderTests: XCTestCase {
         data.append(contentsOf: [0x47, 0x47, 0x55, 0x46])
         // Version: 2
         appendUInt32(&data, 2)
-        // Tensor count: 0 (uint32 for v2)
-        appendUInt32(&data, 0)
-        // Metadata KV count (uint32 for v2)
-        appendUInt32(&data, UInt32(metadata.count))
+        // Both header counts have been UInt64 since GGUF v2.
+        appendUInt64(&data, 0)
+        appendUInt64(&data, UInt64(metadata.count))
         // KV pairs
         for kv in metadata {
             data.append(kv)
@@ -455,6 +535,16 @@ final class GGUFMetadataReaderTests: XCTestCase {
         appendUInt32(&data, 4)
         // Value
         appendUInt32(&data, value)
+        return data
+    }
+
+    private func makeUInt64KV(key: String, value: UInt64) -> Data {
+        var data = Data()
+        let keyBytes = Array(key.utf8)
+        appendUInt64(&data, UInt64(keyBytes.count))
+        data.append(contentsOf: keyBytes)
+        appendUInt32(&data, 10) // UINT64
+        appendUInt64(&data, value)
         return data
     }
 

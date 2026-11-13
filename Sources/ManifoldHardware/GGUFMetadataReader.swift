@@ -117,13 +117,9 @@ package struct GGUFMetadataReader {
                 throw GGUFReaderError.unsupportedVersion(Int(version))
             }
 
-            let isV3 = version == 3
-
-            // Tensor count
-            let _: UInt64 = isV3 ? try readUInt64(from: reader) : UInt64(try readUInt32(from: reader))
-
-            // Metadata KV count
-            let metadataCount: UInt64 = isV3 ? try readUInt64(from: reader) : UInt64(try readUInt32(from: reader))
+            // GGUF v2 already uses 64-bit counts; v3 retains that layout.
+            let _: UInt64 = try readUInt64(from: reader)
+            let metadataCount = try readUInt64(from: reader)
 
             logger.debug("GGUF v\(version): \(metadataCount) metadata entries")
 
@@ -355,7 +351,11 @@ package struct GGUFMetadataReader {
         case .int32:
             return Int(try readInt32(from: reader))
         case .uint64:
-            return Int(try readUInt64(from: reader))
+            let value = try readUInt64(from: reader)
+            guard let integer = Int(exactly: value) else {
+                throw GGUFReaderError.readError("Integer value \(value) exceeds supported Int range")
+            }
+            return integer
         case .int64:
             return Int(try readInt64(from: reader))
         default:

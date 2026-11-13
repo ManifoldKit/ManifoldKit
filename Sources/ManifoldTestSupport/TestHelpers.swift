@@ -4,8 +4,8 @@ import Darwin
 import ManifoldInference
 
 // NOTE: `makeInMemoryContainer()` (needs SwiftData + ManifoldPersistenceSwiftData)
-// moved to `ManifoldPersistenceTestSupport/PersistenceTestHelpers.swift` — see
-// docs/plans/architecture-improvements-2026-07.md item 4.4. Everything left in
+// moved to `ManifoldPersistenceTestSupport/PersistenceTestHelpers.swift` in
+// #2195. Everything left in
 // this file is pure-engine (Foundation/os/Darwin/ManifoldInference only), so
 // leaf test suites (Hardware/Secrets/Networking) that link ManifoldTestSupport
 // no longer pull in the SwiftData/persistence stack transitively.
