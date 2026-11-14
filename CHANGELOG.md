@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.80.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.79.1...v0.80.0) (2026-11-13)
+
+ManifoldKit 0.80 makes app-evaluation results depend on evidence from the executed app and handles oversized GGUF metadata without terminating model discovery. Apps using judged checkpoints must update their scorer construction and handle the new indeterminate verdict.
+
+### Highlights
+
+#### Grade the output the app actually produced
+
+Judged checkpoints extract their candidate from the executed turn or observed app state. Fixture-supplied candidates are rejected, and missing or unassessed required evidence produces an indeterminate verdict instead of a misleading pass ([#2571](https://github.com/ManifoldKit/ManifoldKit/pull/2571)).
+
+```swift
+import ManifoldAppEval
+
+func outputJudgeScorer(judge: any EvalJudge) -> JudgedCheckpointScorer {
+    JudgedCheckpointScorer(id: "judge:quality", judge: judge) { context in
+        context.latestTurnVisibleText
+    }
+}
+```
+
+This replaces the removed `JudgedCheckpointScorer(id:judge:)` initializer. Handle `AppEvalVerdict.indeterminate` in exhaustive switches and exit code **3** in CLI integrations; measured passes, measured failures and execution errors retain exit codes 0, 1 and 2. See the [migration guide](docs/MIGRATION-app-eval-evidence.md) for numeric thresholds, informational metrics and fixture updates.
+
+### Fixes
+
+- Read GGUF v2 header counts as 64-bit values so authentic v2 files retain their model metadata ([#2565](https://github.com/ManifoldKit/ManifoldKit/pull/2565)).
+- Return a recoverable metadata read error when a GGUF unsigned integer cannot fit in `Int`, allowing model discovery to continue without inferred metadata ([#2565](https://github.com/ManifoldKit/ManifoldKit/pull/2565)).
+- Preserve informational measurements and fixture verdicts in app-eval reports. History writes schema v2 and continues to read v1 entries without reinterpreting their recorded verdicts ([#2571](https://github.com/ManifoldKit/ManifoldKit/pull/2571)).
+
+### Maintenance
+
+- Update the changelog checker's security dependencies ([#2564](https://github.com/ManifoldKit/ManifoldKit/pull/2564)).
+
 ## [0.79.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.79.0...v0.79.1) (2026-10-11)
 
 ManifoldKit 0.79.1 fixes MCP stdio interoperability and conversation-run cleanup, keeps token counts current during message updates, and strengthens release checks across the registered consumers. It retains the iOS 26 and macOS 26 deployment floors introduced in 0.79.0.
