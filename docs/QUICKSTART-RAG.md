@@ -58,7 +58,7 @@ dependencies: [
     ),
     // Only needed for semantic search (§3) / reranking (§4) —
     // keyword-fallback RAG works with core alone.
-    .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.4.9"),
+    .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.4.10"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [
