@@ -520,11 +520,18 @@ final class ChatGenerationCoordinator {
             activeConversationStreamHandle = nil
             resumeStreamCompletionWaiters()
             transitionPhase(to: .idle)
-            updateContextEstimate()
 
             if reason == .empty {
                 removeMessages { $0.id == messageID }
+            } else if reason == .cancelled {
+                // The runtime persists any partial reply but drops a turn
+                // stopped before content arrived. Mirror that in the transcript.
+                removeMessages {
+                    $0.id == messageID && !$0.hasVisibleContent
+                        && !$0.hasThinkingContent && !$0.hasToolContent
+                }
             }
+            updateContextEstimate()
 
             if reason == .stop,
                let completed = currentMessages().first(where: { $0.id == messageID }),
@@ -742,7 +749,8 @@ final class ChatGenerationCoordinator {
             return
         }
 
-        if outcome.reason == .empty, let assistantMessageID = outcome.assistantMessageID {
+        if (outcome.reason == .empty || outcome.classification == .cancelledEmpty),
+           let assistantMessageID = outcome.assistantMessageID {
             removeMessages { $0.id == assistantMessageID }
         } else if let assistantMessage = outcome.assistantMessage,
                   assistantMessage.sessionID == currentActiveSessionID() {

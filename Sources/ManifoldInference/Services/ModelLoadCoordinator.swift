@@ -304,7 +304,14 @@ public final class ModelLoadCoordinator {
         } catch is CancellationError {
             return
         } catch {
-            setLoadErrorIfCurrent("Failed to load model: \(error.localizedDescription)", error: error, generation: generation)
+            let message: String
+            if case .modelLoadFailed? = error as? InferenceError {
+                // This typed error already supplies the model-load context.
+                message = error.localizedDescription
+            } else {
+                message = "Failed to load model: \(error.localizedDescription)"
+            }
+            setLoadErrorIfCurrent(message, error: error, generation: generation)
         }
     }
 

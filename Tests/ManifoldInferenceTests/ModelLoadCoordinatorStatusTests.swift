@@ -117,7 +117,63 @@ final class ModelLoadCoordinatorStatusTests: XCTestCase {
         b.finish()
     }
 
+    func test_typedModelLoadFailure_surfacesOneModelLoadPrefix() async throws {
+        let underlying = NSError(
+            domain: "ModelLoadCoordinatorStatusTests",
+            code: 42,
+            userInfo: [NSLocalizedDescriptionKey: "Unsupported MLX quantization."]
+        )
+        let error = try await assertSurfacedLoadFailure(
+            InferenceError.modelLoadFailed(underlying: underlying),
+            message: "Failed to load model: Unsupported MLX quantization."
+        )
+        guard case .modelLoadFailed(let surfacedUnderlying)? = error as? InferenceError else {
+            return XCTFail("The chat seam should receive the typed model-load error")
+        }
+        XCTAssertEqual(surfacedUnderlying as NSError, underlying)
+    }
+
+    func test_rawLoadFailure_addsModelLoadContext() async throws {
+        let underlying = NSError(
+            domain: "ModelLoadCoordinatorStatusTests",
+            code: 43,
+            userInfo: [NSLocalizedDescriptionKey: "Weights could not be read."]
+        )
+        let error = try await assertSurfacedLoadFailure(
+            underlying,
+            message: "Failed to load model: Weights could not be read."
+        )
+        XCTAssertEqual(error as NSError, underlying)
+    }
+
     // MARK: - Fixtures
+
+    private func assertSurfacedLoadFailure(
+        _ error: any Error & Sendable,
+        message expectedMessage: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws -> any Error {
+        let service = InferenceService()
+        let backend = GatedLoadBackend()
+        service.registerBackendFactory { type in type == .gguf ? backend : nil }
+        let coordinator = service.modelLoadCoordinator
+        var surfacedMessage: String?
+        var surfacedError: (any Error)?
+        coordinator.onSurfaceError = { message, error in
+            surfacedMessage = message
+            surfacedError = error
+        }
+
+        let loadTask = Task { await coordinator.loadLocalModel(makeModel(), generation: nil) }
+        await backend.waitUntilLoadStarted()
+        await backend.releaseLoadFailure(error)
+        await loadTask.value
+
+        XCTAssertEqual(coordinator.status, .failed(reason: expectedMessage), file: file, line: line)
+        XCTAssertEqual(surfacedMessage, expectedMessage, file: file, line: line)
+        return try XCTUnwrap(surfacedError, file: file, line: line)
+    }
 
     private func makeModel(name: String = "Gated") -> ModelInfo {
         ModelInfo(
