@@ -168,7 +168,7 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
 
     // MARK: - 5. streamFinished(.cancelled) calls onSetLastTurnState(.idle)
 
-    func test_handleStreamFinished_cancelled_callsOnSetLastTurnStateIdle() async {
+    func test_handleStreamFinished_cancelled_removesEmptyReplyAndKeepsHistory() async {
         let coord = makeSilentCoordinator()
         let msgID = UUID()
         let sessionID = UUID()
@@ -177,9 +177,12 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
         coord.onSetLastTurnState = { states.append($0) }
         coord.onTransitionPhase = { _ in true }
         coord.currentActiveSessionID = { sessionID }
-        coord.currentMessages = {
-            [ChatMessage(id: msgID, role: .assistant, content: "", sessionID: sessionID)]
-        }
+        let previousReply = ChatMessage(role: .assistant, content: "Previous reply", sessionID: sessionID)
+        let userRequest = ChatMessage(role: .user, content: "Stopped request", sessionID: sessionID)
+        let placeholder = ChatMessage(id: msgID, role: .assistant, content: "", sessionID: sessionID)
+        var messages = [previousReply, userRequest, placeholder]
+        coord.currentMessages = { messages }
+        coord.removeMessages = { predicate in messages.removeAll(where: predicate) }
         coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
 
         coord.activeConversationMessageID = msgID
@@ -189,6 +192,7 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
 
         XCTAssertTrue(states.contains(where: { if case .idle = $0 { return true }; return false }),
                       "Expected .idle in states after cancellation")
+        XCTAssertEqual(messages, [previousReply, userRequest])
     }
 
     // MARK: - 6. errorRaised(.cancelled) does not surface an error
@@ -657,12 +661,39 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
             return true
         }
         coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
+        var didRemovePartialReply = false
+        coord.removeMessages = { predicate in didRemovePartialReply = predicate(msg) }
 
         await coord.handle(runtimeEvent: .streamStarted(messageID: msgID))
         await coord.handle(runtimeEvent: .tokenEmitted(messageID: msgID, delta: "Buffered text with no boundary"))
         await coord.handle(runtimeEvent: .streamFinished(messageID: msgID, reason: .cancelled))
 
         XCTAssertTrue(recorder.posts.isEmpty, "a cancelled turn must not announce buffered text")
+        XCTAssertFalse(didRemovePartialReply, "Stop must keep content that already streamed")
+    }
+
+    func test_applyTerminalOutcome_cancelledEmpty_removesEmptyReply() {
+        let coord = makeSilentCoordinator()
+        let sessionID = UUID()
+        let request = ChatMessage(role: .user, content: "Stopped request", sessionID: sessionID)
+        let placeholder = ChatMessage(role: .assistant, content: "", sessionID: sessionID)
+        var messages = [request, placeholder]
+        coord.currentMessages = { messages }
+        coord.removeMessages = { predicate in messages.removeAll(where: predicate) }
+
+        coord.applyTerminalOutcome(ConversationTurnOutcome(
+            sessionID: sessionID,
+            streamHandle: ConversationStreamHandle(id: UUID()),
+            assistantMessageID: placeholder.id,
+            assistantMessage: nil,
+            reason: .cancelled,
+            error: nil,
+            finalText: "",
+            promptTokens: nil,
+            completionTokens: nil
+        ))
+
+        XCTAssertEqual(messages, [request])
     }
 
     // MARK: - 13. coordinator does not retain ChatViewModel
