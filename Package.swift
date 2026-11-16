@@ -166,7 +166,7 @@ let package = Package(
         // live in the manifold-mlx / manifold-llama companion packages (#1749).
         // Pin 0.9.0 exactly: this is the verified tag that still exports the
         // `HuggingFace` product consumed by ManifoldHuggingFace and its tests.
-        .package(url: "https://github.com/huggingface/swift-huggingface.git", exact: "0.11.0"),
+        .package(url: "https://github.com/huggingface/swift-huggingface.git", exact: "1.0.0"),
         // swift-jinja: renders a GGUF model's *real* embedded Jinja chat template
         // (`tokenizer.chat_template`) rather than approximating it with the
         // hand-rolled `PromptTemplate` enum (#1811). Consumed by ManifoldInference's
@@ -177,7 +177,7 @@ let package = Package(
         // companions. The package's only transitive dep is swift-collections
         // (OrderedCollections); tools-version 6.0 / macOS 13 / iOS 16 all sit below
         // this package's floor. Pin to the 2.x line to track swift-transformers 1.x.
-        .package(url: "https://github.com/huggingface/swift-jinja.git", from: "2.0.0"),
+        .package(url: "https://github.com/huggingface/swift-jinja.git", from: "3.1.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.17.0"),
         // Test-only: SwiftUI view-tree inspection for accessibility contract tests.
         // Must never appear in any production target.
