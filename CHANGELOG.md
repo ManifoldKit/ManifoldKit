@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.80.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.80.0...v0.80.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **inference:** keep tool-free Llama prompts out of function mode ([#2577](https://github.com/ManifoldKit/ManifoldKit/issues/2577)) ([7832598](https://github.com/ManifoldKit/ManifoldKit/commit/783259815f2c7ce7801293fe1806b4b3367d564b))
+* **ui:** clear empty cancelled replies and deduplicate load errors ([#2575](https://github.com/ManifoldKit/ManifoldKit/issues/2575)) ([dee153f](https://github.com/ManifoldKit/ManifoldKit/commit/dee153f943f27e78c9c57a211c8decea3a8940bd))
+
 ## [0.80.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.79.1...v0.80.0) (2026-11-13)
 
 ManifoldKit 0.80 makes app-evaluation results depend on evidence from the executed app and handles oversized GGUF metadata without terminating model discovery. Apps using judged checkpoints must update their scorer construction and handle the new indeterminate verdict.
