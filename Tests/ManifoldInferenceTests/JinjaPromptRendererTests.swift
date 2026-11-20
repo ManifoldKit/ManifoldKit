@@ -220,6 +220,76 @@ final class JinjaPromptRendererTests: XCTestCase {
         XCTAssertTrue(out.contains("get_weather"), "PromptRenderer must forward tools into the Jinja path (#1909)")
     }
 
+    // MARK: - #2566: no tools means null, matching Hugging Face's default
+
+    func test_noTools_isDefinedButNullAndFalsey() throws {
+        let template = """
+        {%- if tools is defined %}DEFINED{% else %}UNDEFINED{% endif -%}
+        |{% if tools is none %}NULL{% else %}NONNULL{% endif -%}
+        |{% if tools %}TOOLS{% else %}PLAIN{% endif -%}
+        |{% if tools is not none %}FUNCTION_CALL_MODE{% else %}PLAIN_CHAT_MODE{% endif %}
+        """
+        let rendered = try XCTUnwrap(JinjaPromptRenderer.render(
+            rawTemplate: template,
+            messages: [msg("user", "Hi")],
+            systemPrompt: nil
+        ))
+        XCTAssertEqual(rendered, "DEFINED|NULL|PLAIN|PLAIN_CHAT_MODE")
+
+        let withTools = try XCTUnwrap(JinjaPromptRenderer.render(
+            rawTemplate: template,
+            messages: [msg("user", "Hi")],
+            systemPrompt: nil,
+            tools: [Self.weatherTool()]
+        ))
+        XCTAssertEqual(withTools, "DEFINED|NONNULL|TOOLS|FUNCTION_CALL_MODE")
+    }
+
+    /// Full embedded template from Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf.
+    /// Retaining its real null guards catches the function instructions that an
+    /// empty array incorrectly enabled, unlike the truthiness-only fixtures.
+    private func llama31Template() throws -> String {
+        let url = try XCTUnwrap(Bundle.module.url(
+            forResource: "llama31",
+            withExtension: "jinja",
+            subdirectory: "ChatTemplates"
+        ))
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    func test_llama31_noToolsRendersPlainChatWithAndWithoutHostSystem() throws {
+        let renderer = PromptRenderer(template: .llama3, chatTemplateRaw: try llama31Template())
+        let question = "For this fictional story, the lighthouse is named Copper Heron. State its name only."
+        for systemPrompt: String? in [nil, "Answer in plain text."] {
+            let rendered = try renderer.render(
+                messages: [msg("user", question)],
+                systemPrompt: systemPrompt,
+                tools: []
+            )
+            let expected = "<|start_header_id|>system<|end_header_id|>\n\n"
+                + "Cutting Knowledge Date: December 2023\nToday Date: 26 Jul 2024\n\n"
+                + (systemPrompt ?? "") + "<|eot_id|>"
+                + "<|start_header_id|>user<|end_header_id|>\n\n" + question + "<|eot_id|>"
+                + "<|start_header_id|>assistant<|end_header_id|>\n\n"
+            XCTAssertEqual(rendered, expected, "No tool mode or enum fallback; preserve the canonical prompt")
+        }
+    }
+
+    func test_llama31_configuredToolsStillEnableFunctionCallInstructions() throws {
+        let renderer = PromptRenderer(template: .llama3, chatTemplateRaw: try llama31Template())
+        let rendered = try renderer.render(
+            messages: [msg("user", "Weather in Paris?")],
+            systemPrompt: nil,
+            tools: [Self.weatherTool()]
+        )
+        XCTAssertTrue(rendered.contains("Environment: ipython"))
+        XCTAssertTrue(rendered.contains("Given the following functions"))
+        XCTAssertTrue(rendered.contains("get_weather"))
+        XCTAssertTrue(rendered.contains("Look up the weather for a city"))
+        XCTAssertTrue(rendered.contains("\"city\""))
+        XCTAssertTrue(rendered.contains("Weather in Paris?"))
+    }
+
     // MARK: - #1909 Ring 2: prior tool call + result render on the next turn
 
     func test_nativeToolTemplate_rendersPriorToolCallAndResult() throws {

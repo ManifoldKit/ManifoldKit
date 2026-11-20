@@ -122,8 +122,10 @@ def jinja_message(message: dict, thread_images: bool) -> dict:
     return out
 
 
-def tools_context(tools: list[dict]) -> list[dict]:
-    """Mirror `toolsContext(_:)` in JinjaPromptRenderer.swift."""
+def tools_context(tools: list[dict]) -> list[dict] | None:
+    """Mirror the renderer's no-tools null and nonempty `toolsContext(_:)`."""
+    if not tools:
+        return None
     ctx = []
     for tool in tools:
         parameters = tool.get("parameters") or {"type": "object", "properties": {}}

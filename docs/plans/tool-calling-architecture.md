@@ -56,6 +56,17 @@ What MK already has right (do not re-litigate): the cloud/Ollama delegation, a r
 - **llama.cpp** — minja renders the embedded Jinja (`--jinja`); ([function-calling.md](https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md)).
 - **LM Studio / Jan** — both template-derived from the GGUF embedded Jinja; capability is "does the template support the `tool` role."
 
+**No-tools rendering contract (2026-11-21, #2566).** Hugging Face's
+[`render_jinja_template`](https://github.com/huggingface/transformers/blob/42efcfde46e668067a74bbd439d33f107b4a7c6c/src/transformers/utils/chat_template_utils.py#L744-L757)
+passes `tools=None` for its default no-tools call and always supplies that key
+to the template; explicitly passing `[]` instead retains an empty array.
+Core's nonoptional definitions array uses empty to mean no tools, so its Jinja
+context must normalize empty to null. Both null and `[]` are falsey, but only
+null suppresses Llama 3.1's `tools is not none` function-call instructions.
+`tools is defined` remains true and does not establish that tools are available.
+Nonempty definitions retain their existing schemas. This correction does not
+schedule the broader proposal or revalidate its dated cross-backend findings.
+
 ### 2.2 Output handling — the live frontier, and llama.cpp's keystone
 
 This is where projects diverge, and where MK's drift lives.
