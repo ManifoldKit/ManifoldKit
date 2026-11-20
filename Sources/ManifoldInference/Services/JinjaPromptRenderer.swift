@@ -50,8 +50,9 @@ enum JinjaPromptRenderer {
     ///     this matches what every chat template expects (a system turn at index
     ///     0) and lets the template's own "inject default system prompt" branch
     ///     fire only when the host supplied none.
-    ///   - tools: the tool definitions to expose to the template's `{% if tools %}`
-    ///     branch. Empty means "no tools" — the branch evaluates falsey. Each
+    ///   - tools: the tool definitions to expose to the template. Empty means
+    ///     "no tools" and is passed as null, matching Hugging Face's default;
+    ///     `tools is not none` and `{% if tools %}` both evaluate false. Each
     ///     tool is exposed in both the OpenAI-style nested `function` shape and
     ///     the flat `name`/`description`/`parameters` shape so templates written
     ///     against either convention (e.g. gemma's `format_parameters` macro vs
@@ -201,10 +202,10 @@ enum JinjaPromptRenderer {
         let context: [String: Value] = [
             "messages": try Value(any: jinjaMessages),
             "add_generation_prompt": true,
-            // Native tool templates branch on `tools` being defined and
-            // non-empty; supply the real definitions (#1909). An empty array
-            // keeps `{%- if tools %}` falsey for tool-less turns.
-            "tools": try Value(any: toolsContext(tools)),
+            // Hugging Face passes null when no tools are configured. An empty
+            // array is falsey but still `is not none`, which incorrectly enables
+            // Llama 3.1's function-call instructions with zero definitions (#2566).
+            "tools": tools.isEmpty ? .null : (try Value(any: toolsContext(tools))),
             // Many templates also branch on `documents` (RAG retrieval).
             // Thread the retrieved passages through so `{% if documents %}`
             // fires for RAG turns; an empty array keeps it falsey rather than
