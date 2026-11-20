@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.80.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.80.0...v0.80.1) (2026-11-20)
+
+### Highlights
+
+#### Keep tool-free Llama chats out of function-call mode
+
+Llama 3.1 templates now receive null when no tool definitions are configured, so ordinary chats are no longer prompted to invent unavailable function calls. Configured tools keep their existing schemas and native instructions ([#2577](https://github.com/ManifoldKit/ManifoldKit/pull/2577)).
+
+#### Remove empty cancelled replies and duplicate load-error prefixes
+
+Stopping a reply before any text, thinking or tool content arrives now removes the empty assistant entry from the transcript while preserving partial replies. Typed model-load errors also avoid repeating their "Failed to load model" prefix ([#2575](https://github.com/ManifoldKit/ManifoldKit/pull/2575)).
+
 ## [0.80.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.79.1...v0.80.0) (2026-11-13)
 
 ManifoldKit 0.80 makes app-evaluation results depend on evidence from the executed app and handles oversized GGUF metadata without terminating model discovery. Apps using judged checkpoints must update their scorer construction and handle the new indeterminate verdict.
