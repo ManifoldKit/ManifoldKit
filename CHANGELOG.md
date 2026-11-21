@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.80.2](https://github.com/ManifoldKit/ManifoldKit/compare/v0.80.1...v0.80.2) (2026-11-21)
+
+### Highlights
+
+#### Clear blank replies when inference stops first
+
+When inference reports cancellation before the runtime records Stop, the turn now ends as cancelled. Stopping before any reply content removes the empty assistant entry, and any text, thinking, or tool activity already produced stays in the transcript ([#2578](https://github.com/ManifoldKit/ManifoldKit/issues/2578), [aa0f9ac](https://github.com/ManifoldKit/ManifoldKit/commit/aa0f9ac013356d2f2c7091a3f119b258180ad605)).
+
 ## [0.80.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.80.0...v0.80.1) (2026-11-20)
 
 ### Highlights

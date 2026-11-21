@@ -19,7 +19,7 @@ greenfield app with neither.
 ## 0. Add the dependency
 
 ```swift
-.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.80.1"), // x-release-please-version
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.80.2"), // x-release-please-version
 ```
 
 ```swift
