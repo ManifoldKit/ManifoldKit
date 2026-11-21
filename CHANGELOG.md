@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.80.2](https://github.com/ManifoldKit/ManifoldKit/compare/v0.80.1...v0.80.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **runtime:** classify inference-first cancellation correctly ([#2578](https://github.com/ManifoldKit/ManifoldKit/issues/2578)) ([aa0f9ac](https://github.com/ManifoldKit/ManifoldKit/commit/aa0f9ac013356d2f2c7091a3f119b258180ad605))
+
 ## [0.80.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.80.0...v0.80.1) (2026-11-20)
 
 ### Highlights
