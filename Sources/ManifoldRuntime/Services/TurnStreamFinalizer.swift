@@ -274,13 +274,16 @@ package struct TurnStreamFinalizer: Sendable {
         let hasThinkingContent = drained.accumulator.hasThinkingContent
 
         let kind: TerminalKind
-        if cancelled {
+        // The inference stream can report cancellation before the runtime
+        // records it. Either signal must produce the same terminal outcome.
+        switch (cancelled, drained.streamFailed) {
+        case (true, _), (_, .cancelled?):
             kind = .cancelled
-        } else if let streamFailed = drained.streamFailed {
-            kind = .failed(error: streamFailed, timedOut: drained.timedOut)
-        } else if drained.accumulator.isEmptyResponse && !hasToolContent && !hasThinkingContent {
+        case (_, let error?):
+            kind = .failed(error: error, timedOut: drained.timedOut)
+        case (_, nil) where drained.accumulator.isEmptyResponse && !hasToolContent && !hasThinkingContent:
             kind = .empty
-        } else {
+        case (_, nil):
             kind = .completed
         }
 

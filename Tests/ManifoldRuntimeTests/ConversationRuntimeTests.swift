@@ -182,7 +182,7 @@ private final class HangingRuntimeBackend: InferenceBackend, @unchecked Sendable
 /// executor's `error is CancellationError` guard exists for). Used to prove
 /// the guard still works when the turn's progress/stall timeout wrapper is
 /// interposed between the queue stream and the drain loop.
-private final class CancellationThrowingRuntimeBackend: InferenceBackend, @unchecked Sendable {
+private final class CancellationThrowingRuntimeBackend: InferenceBackend, Sendable {
     var isModelLoaded: Bool { true }
     var isGenerating: Bool { false }
     let capabilities = BackendCapabilities(
@@ -903,6 +903,51 @@ final class ConversationRuntimeIntegrationTests: XCTestCase {
                        "Pre-token cancel drops the empty assistant")
     }
 
+    func test_inferenceStopBeforeFirstToken_finishesCancelledAndDropsAssistant() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let backend = HangingRuntimeBackend()
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let runtime = ConversationRuntime(messageStore: stack.provider, inferenceService: inference)
+        let sessionID = UUID()
+        let earlierReply = ChatMessage(role: .assistant, content: "Keep this reply", sessionID: sessionID)
+        try await stack.provider.insertMessage(earlierReply)
+        let drain = drainUntilStreamFinished(from: runtime)
+
+        let pendingTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Stop this reply")
+        ))
+        let turn = try XCTUnwrap(pendingTurn)
+        try await waitForBackendStart(backend)
+
+        // Stop reaches inference first in ChatViewModel. Hold back the runtime
+        // cancel to exercise the ordering where the queue stops first.
+        inference.stopGeneration()
+
+        let outcome = try await waitForOutcome(from: turn)
+        let events = try await waitForEvents(from: drain)
+        let placeholderID = try XCTUnwrap(outcome.assistantMessageID)
+        XCTAssertTrue(events.contains {
+            if case .streamStarted(let id) = $0 { return id == placeholderID }
+            return false
+        })
+        XCTAssertEqual(streamFinishedReasons(in: events), [.cancelled])
+        XCTAssertFalse(events.contains {
+            if case .errorRaised = $0 { return true }
+            return false
+        })
+        XCTAssertEqual(outcome.reason, .cancelled)
+        XCTAssertEqual(outcome.classification, .cancelledEmpty)
+        XCTAssertNil(outcome.error)
+        XCTAssertNil(outcome.assistantMessage)
+        XCTAssertEqual(outcome.finalText, "")
+
+        let stored = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(stored.first?.id, earlierReply.id)
+        XCTAssertEqual(stored.map(\.role), [.assistant, .user])
+        XCTAssertEqual(stored.map(\.content), ["Keep this reply", "Stop this reply"])
+    }
+
     func test_processTurnWithOutcome_cancelCompletesWithCancelledReason() async throws {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["late"]
@@ -966,41 +1011,37 @@ final class ConversationRuntimeIntegrationTests: XCTestCase {
                        "no visible content streamed, so no assistant message persists")
     }
 
-    func test_stallTimeout_backendCancellationError_survivesWrapperAndMapsToCancelled() async throws {
-        // Review finding (PR #2259): the idle-timeout wrapper used to swallow
-        // an upstream `CancellationError` as a clean finish, defeating the
-        // executor's cancel-race guard whenever `progressStallTimeout` was
-        // set — a backend-cancelled turn would classify as `.completed`/`.empty`
-        // instead of carrying the cancellation signal. This pins the fix: the
-        // error must propagate through the wrapper so the drain loop's
-        // `error is CancellationError` mapping produces `ConversationError.cancelled`.
+    func test_stallTimeout_backendCancellationError_preservesPartialReply() async throws {
+        // The idle wrapper must propagate CancellationError even if the
+        // runtime registry has not observed cancellation yet (PR #2259).
+        let stack = try InMemoryPersistenceHarness.make()
         let backend = CancellationThrowingRuntimeBackend()
         let inference = InferenceService(backend: backend, name: "Mock")
-        let store = RuntimeMessageStore()
-        let runtime = ConversationRuntime(
-            messageStore: store,
-            sessionStore: nil,
-            inferenceService: inference
-        )
+        let runtime = ConversationRuntime(messageStore: stack.provider, inferenceService: inference)
+        let sessionID = UUID()
+        let drain = drainUntilStreamFinished(from: runtime)
 
         let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
-            sessionID: UUID(),
-            kind: .send(text: "race"),
-            // Generous timeout: it must NOT fire — the CancellationError
-            // arrives immediately. This test is about signal propagation
-            // through the armed wrapper, not the stall itself.
+            sessionID: sessionID,
+            kind: .send(text: "Preserve the partial reply"),
             config: TurnConfig(progressStallTimeout: .seconds(30))
         ))
         let turn = try XCTUnwrap(maybeTurn)
         let outcome = try await waitForOutcome(from: turn)
+        let events = try await waitForEvents(from: drain)
 
-        XCTAssertNotEqual(outcome.reason, .timedOut,
-                          "the stall timeout must not fire for an immediate backend error")
-        let error = try XCTUnwrap(outcome.error,
-                                  "the backend's CancellationError must survive the idle wrapper — a nil error means it was swallowed as a clean finish")
-        guard case .cancelled = error else {
-            return XCTFail("expected ConversationError.cancelled from the cancel-race guard, got \(error)")
-        }
+        XCTAssertEqual(streamFinishedReasons(in: events), [.cancelled])
+        XCTAssertFalse(events.contains {
+            if case .errorRaised = $0 { return true }
+            return false
+        })
+        XCTAssertEqual(outcome.reason, .cancelled)
+        XCTAssertEqual(outcome.classification, .cancelled)
+        XCTAssertNil(outcome.error)
+        XCTAssertEqual(outcome.finalText, "partial")
+        XCTAssertEqual(outcome.assistantMessage?.content, "partial")
+        let stored = try await stack.provider.fetchMessages(for: sessionID)
+        XCTAssertEqual(stored.filter { $0.role == .assistant }.map(\.content), ["partial"])
     }
 
     func test_finishState_cancelAfterPartialOutput_persistsPartialAndEmitsSingleCancelledTerminal() async throws {
